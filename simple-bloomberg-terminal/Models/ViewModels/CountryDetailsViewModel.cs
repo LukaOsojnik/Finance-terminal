@@ -8,15 +8,13 @@ public class CountryDetailsViewModel
 
     public string? MarketPosition { get; set; }
 
-    public List<string> Advantages { get; set; } = [];
+    public ICollection<CountryAdvantage> Advantages { get; set; } = [];
 
-    public List<string> Challenges { get; set; } = [];
+    public ICollection<CountryChallenge> Challenges { get; set; } = [];
 
     public List<Company> TopCompanies { get; set; } = [];
 
     public List<TradeBloc> TradeBlocs { get; set; } = [];
 
-    public List<(int Year, double GdpUsd)> GdpHistory { get; set; } = [];
-
-    public List<(int Year, long Population)> PopHistory { get; set; } = [];
+    public ICollection<GdpSnapshot> GdpHistory { get; set; } = [];
 }

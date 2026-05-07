@@ -1,3 +1,5 @@
+using System.ComponentModel.DataAnnotations;
+using System.ComponentModel.DataAnnotations.Schema;
 using simple_bloomberg_terminal.Models.Enums;
 
 namespace simple_bloomberg_terminal.Models.Entities;
@@ -11,6 +13,7 @@ public class Company
         Sector = sector;
     }
 
+    [Key]
     public long Id { get; set; }
     public string Name { get; set; }
     public string? Cik { get; set; }
@@ -22,10 +25,20 @@ public class Company
     public DateOnly? AsOf { get; set; }
     public string? Notes { get; set; }
 
-    public Country? Country { get; set; }
-    public List<RevenueSource> RevenueSources { get; set; } = [];
-    public List<CostSource> CostSources { get; set; } = [];
-    public List<RevenueSource> RevenueFromDependents { get; set; } = [];
-    public List<CostSource> CostFromDependents { get; set; } = [];
-    public List<Event> Events { get; set; } = [];
+    [ForeignKey("CountryId")]
+    public virtual Country? Country { get; set; }
+
+    [InverseProperty("Company")]
+    public virtual ICollection<RevenueSource> RevenueSources { get; set; } = [];
+
+    [InverseProperty("Company")]
+    public virtual ICollection<CostSource> CostSources { get; set; } = [];
+
+    [InverseProperty("RelatedCompany")]
+    public virtual ICollection<RevenueSource> RevenueFromDependents { get; set; } = [];
+
+    [InverseProperty("RelatedCompany")]
+    public virtual ICollection<CostSource> CostFromDependents { get; set; } = [];
+
+    public virtual ICollection<Event> Events { get; set; } = [];
 }

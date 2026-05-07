@@ -1,5 +1,5 @@
 @using simple_bloomberg_terminal.Models.Entities
-@model IEnumerable<Country>
+@model IEnumerable<simple_bloomberg_terminal.Models.ViewModels.CountryRowViewModel>
 @{
     ViewData["Title"] = "Countries";
 }
@@ -23,8 +23,9 @@
         </tr>
     </thead>
     <tbody>
-        @foreach (var country in Model)
+        @foreach (var row in Model)
         {
+            var country = row.Country;
             <tr>
                 <td class="code-cell">@country.Code</td>
                 <td class="name-cell">@country.Name</td>
@@ -35,9 +36,7 @@
                 <td class="num-cell">
                     @if (country.RiskRating.HasValue)
                     {
-                        var r = country.RiskRating.Value;
-                        var riskClass = r <= 3.0 ? "risk-low" : r <= 6.0 ? "risk-medium" : "risk-high";
-                        <span class="@riskClass">@r.ToString("F1")</span>
+                        <span class="@row.RiskClass">@country.RiskRating.Value.ToString("F1")</span>
                     }
                     else
                     {

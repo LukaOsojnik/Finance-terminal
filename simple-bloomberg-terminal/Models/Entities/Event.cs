@@ -1,3 +1,4 @@
+using System.ComponentModel.DataAnnotations;
 using simple_bloomberg_terminal.Models.Enums;
 
 namespace simple_bloomberg_terminal.Models.Entities;
@@ -11,6 +12,7 @@ public class Event
         Date = date;
     }
 
+    [Key]
     public long Id { get; set; }
     public string Title { get; set; }
     public EventType Type { get; set; }
@@ -19,7 +21,7 @@ public class Event
     public string? Description { get; set; }
     public double? ImpactScore { get; set; }
 
-    public List<Country> Countries { get; set; } = [];
-    public List<Company> Companies { get; set; } = [];
-    public List<TradeBloc> TradeBlocs { get; set; } = [];
+    public virtual ICollection<Country> Countries { get; set; } = [];
+    public virtual ICollection<Company> Companies { get; set; } = [];
+    public virtual ICollection<TradeBloc> TradeBlocs { get; set; } = [];
 }

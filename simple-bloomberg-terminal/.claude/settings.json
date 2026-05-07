@@ -1,0 +1,20 @@
+{
+  "lsp": {
+    "csharp-ls": {
+      "command": "csharp-ls",
+      "args": []
+    }
+  },
+  "hooks": {
+    "SessionEnd": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "~/.claude/hooks/log-session.sh"
+          }
+        ]
+      }
+    ]
+  }
+}

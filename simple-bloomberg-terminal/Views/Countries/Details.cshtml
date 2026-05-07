@@ -229,24 +229,9 @@
             }
         </div>
     </div>
-    <div class="col-12 col-md-6">
-        <div class="detail-card">
-            <div class="detail-card-title">POPULATION HISTORY (MILLIONS)</div>
-            @if (Model.PopHistory.Count > 0)
-            {
-                <div class="chart-container">
-                    <canvas id="popChart"></canvas>
-                </div>
-            }
-            else
-            {
-                <div class="detail-pending chart-pending">CHART DATA PENDING</div>
-            }
-        </div>
-    </div>
 </div>
 
-@if (Model.GdpHistory.Count > 0 || Model.PopHistory.Count > 0)
+@if (Model.GdpHistory.Count > 0)
 {
     <script>
         Chart.defaults.color = '#7a9ab5';
@@ -288,40 +273,5 @@
             </text>
         }
 
-        @if (Model.PopHistory.Count > 0)
-        {
-            <text>
-            (function () {
-                var popLabels = [@Html.Raw(string.Join(",", Model.PopHistory.Select(p => p.Year)))];
-                var popData   = [@Html.Raw(string.Join(",", Model.PopHistory.Select(p => (p.Population / 1_000_000.0).ToString("F2", System.Globalization.CultureInfo.InvariantCulture))))];
-                var existingPop = Chart.getChart('popChart'); if (existingPop) existingPop.destroy();
-                new Chart(document.getElementById('popChart'), {
-                    type: 'line',
-                    data: {
-                        labels: popLabels,
-                        datasets: [{
-                            label: 'Population (M)',
-                            data: popData,
-                            borderColor: '#39d353',
-                            backgroundColor: '#39d35322',
-                            pointBackgroundColor: '#39d353',
-                            pointRadius: 4,
-                            fill: true,
-                            tension: 0.3
-                        }]
-                    },
-                    options: {
-                        responsive: true,
-                        maintainAspectRatio: true,
-                        plugins: { legend: { display: false } },
-                        scales: {
-                            x: { grid: { color: '#1e2d42' } },
-                            y: { grid: { color: '#1e2d42' }, beginAtZero: false }
-                        }
-                    }
-                });
-            })();
-            </text>
-        }
     </script>
 }

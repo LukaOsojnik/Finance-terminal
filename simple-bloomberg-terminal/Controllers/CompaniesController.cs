@@ -4,6 +4,7 @@ using simple_bloomberg_terminal.Repositories;
 
 namespace simple_bloomberg_terminal.Controllers;
 
+[Route("companies")]
 public class CompaniesController : Controller
 {
     private readonly ICompanyRepository _companies;
@@ -13,11 +14,13 @@ public class CompaniesController : Controller
         _companies = companies;
     }
 
+    [Route("")]
     public IActionResult Index()
     {
         return View(_companies.GetAll());
     }
 
+    [Route("{id:long}/profile")]
     public IActionResult Details(long id)
     {
         var company = _companies.GetById(id);

@@ -1,12 +1,17 @@
+using System.ComponentModel.DataAnnotations;
+using System.ComponentModel.DataAnnotations.Schema;
+
 namespace simple_bloomberg_terminal.Models.Entities;
 
 public class CountryDetails
 {
+    [Key]
     public long CountryId { get; set; }
     public string MarketPosition { get; set; } = string.Empty;
-    public List<string> Advantages { get; set; } = [];
-    public List<string> Challenges { get; set; } = [];
-    public List<(int Year, double GdpUsd)> GdpHistory { get; set; } = [];
-    public List<(int Year, long Population)> PopHistory { get; set; } = [];
-    public List<TradeBloc> TradeBlocs { get; set; } = [];
+
+    [ForeignKey("CountryId")]
+    public virtual Country? Country { get; set; }
+    public virtual ICollection<CountryAdvantage> Advantages { get; set; } = [];
+    public virtual ICollection<CountryChallenge> Challenges { get; set; } = [];
+    public virtual ICollection<GdpSnapshot> GdpHistory { get; set; } = [];
 }

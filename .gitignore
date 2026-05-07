@@ -11,7 +11,6 @@ config/
 *.userprefs
 
 # Claude Code
-.claude/
 *claude-sessions.md
 
 # Environment / secrets

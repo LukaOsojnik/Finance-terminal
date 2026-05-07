@@ -5,6 +5,7 @@ using simple_bloomberg_terminal.Repositories;
 
 namespace simple_bloomberg_terminal.Controllers;
 
+[Route("events")]
 public class EventsController : Controller
 {
     private readonly IEventRepository _events;
@@ -15,6 +16,7 @@ public class EventsController : Controller
         _events = events;
     }
 
+    [Route("feed")]
     public IActionResult Index()
     {
         IEnumerable<Event> all = _events.GetAll();
@@ -27,12 +29,13 @@ public class EventsController : Controller
         IEnumerable<Event> past = all.Where(e =>
             e.EndDate != null && e.EndDate < Today);
 
-        ViewData["LiveEvents"] = live;
-        ViewData["PastEvents"] = past;
-
-        return View();
+        return View(new EventsIndexViewModel {
+            LiveEvents = live.Select(EventRowViewModel.From),
+            PastEvents = past.Select(EventRowViewModel.From)
+        });
     }
 
+    [Route("{id:long}/summary")]
     public IActionResult Details(long id)
     {
         var ev = _events.GetById(id);

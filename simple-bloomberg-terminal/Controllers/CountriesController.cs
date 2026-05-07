@@ -4,6 +4,7 @@ using simple_bloomberg_terminal.Repositories;
 
 namespace simple_bloomberg_terminal.Controllers;
 
+[Route("countries")]
 public class CountriesController : Controller
 {
     private readonly ICountryRepository _countries;
@@ -21,11 +22,13 @@ public class CountriesController : Controller
         _companies = companies;
     }
 
+    [Route("")]
     public IActionResult Index()
     {
-        return View(_countries.GetAll());
+        return View(_countries.GetAll().Select(CountryRowViewModel.From));
     }
 
+    [Route("{id:long}/overview")]
     public IActionResult Details(long id)
     {
         var country = _countries.GetById(id);
@@ -47,9 +50,8 @@ public class CountriesController : Controller
             Advantages = details?.Advantages ?? [],
             Challenges = details?.Challenges ?? [],
             TopCompanies = topCompanies,
-            TradeBlocs = details?.TradeBlocs ?? [],
+            TradeBlocs = country.TradeBlocs.ToList(),
             GdpHistory = details?.GdpHistory ?? [],
-            PopHistory = details?.PopHistory ?? [],
         };
 
         return View(viewModel);

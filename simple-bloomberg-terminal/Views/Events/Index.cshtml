@@ -1,8 +1,9 @@
 @using simple_bloomberg_terminal.Models.Entities
+@model simple_bloomberg_terminal.Models.ViewModels.EventsIndexViewModel
 @{
     ViewData["Title"] = "Events";
-    var liveEvents = ViewData["LiveEvents"] as IEnumerable<Event> ?? Enumerable.Empty<Event>();
-    var pastEvents = ViewData["PastEvents"] as IEnumerable<Event> ?? Enumerable.Empty<Event>();
+    var liveEvents = Model.LiveEvents;
+    var pastEvents = Model.PastEvents;
 }
 
 <div class="page-header">
@@ -34,18 +35,17 @@ else
             </tr>
         </thead>
         <tbody>
-            @foreach (var ev in liveEvents)
+            @foreach (var row in liveEvents)
             {
+                var ev = row.Event;
                 <tr class="row-live">
                     <td class="name-cell" style="font-weight:500;">@ev.Title</td>
-                    <td class="tag-cell">@ev.Type.ToString().Replace("_", " ")</td>
+                    <td class="tag-cell">@row.TypeLabel</td>
                     <td class="num-cell" style="white-space:nowrap;">@ev.Date.ToShortDateString()</td>
                     <td class="num-cell">
                         @if (ev.ImpactScore.HasValue)
                         {
-                            var s = ev.ImpactScore.Value;
-                            var cls = s >= 7 ? "impact-high" : s >= 4 ? "impact-medium" : "impact-low";
-                            <span class="impact-badge @cls">@s.ToString("F1")</span>
+                            <span class="impact-badge @row.ImpactClass">@ev.ImpactScore.Value.ToString("F1")</span>
                         }
                         else
                         {
@@ -88,19 +88,18 @@ else
             </tr>
         </thead>
         <tbody>
-            @foreach (var ev in pastEvents)
+            @foreach (var row in pastEvents)
             {
+                var ev = row.Event;
                 <tr class="row-past">
                     <td class="name-cell">@ev.Title</td>
-                    <td class="tag-cell">@ev.Type.ToString().Replace("_", " ")</td>
+                    <td class="tag-cell">@row.TypeLabel</td>
                     <td class="num-cell" style="white-space:nowrap;">@ev.Date.ToShortDateString()</td>
                     <td class="num-cell" style="white-space:nowrap;">@(ev.EndDate?.ToShortDateString() ?? "—")</td>
                     <td class="num-cell">
                         @if (ev.ImpactScore.HasValue)
                         {
-                            var s = ev.ImpactScore.Value;
-                            var cls = s >= 7 ? "impact-high" : s >= 4 ? "impact-medium" : "impact-low";
-                            <span class="impact-badge @cls">@s.ToString("F1")</span>
+                            <span class="impact-badge @row.ImpactClass">@ev.ImpactScore.Value.ToString("F1")</span>
                         }
                         else
                         {

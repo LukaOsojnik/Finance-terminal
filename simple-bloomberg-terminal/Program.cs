@@ -1,17 +1,20 @@
+using Microsoft.EntityFrameworkCore;
+using simple_bloomberg_terminal.Data;
 using simple_bloomberg_terminal.Repositories;
-
-// ── Web aplikacija ────────────────────────────────────────────────────────────
 
 var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddControllersWithViews();
 
-// AddSingleton = one instance for the full app lifetime (Spring's default singleton scope).
-// Order matters: CompanyMockRepository depends on ICountryRepository,
-// EventMockRepository depends on both — ASP.NET Core DI resolves the graph automatically.
-builder.Services.AddSingleton<ICountryRepository, CountryMockRepository>();
-builder.Services.AddSingleton<ICompanyRepository, CompanyMockRepository>();
-builder.Services.AddSingleton<IEventRepository, EventMockRepository>();
-builder.Services.AddSingleton<ICountryDetailsRepository, CountryDetailsMockRepository>();
+var connectionString = builder.Configuration.GetConnectionString("DefaultConnection");
+builder.Services.AddDbContext<AppDbContext>(options =>
+    options.UseMySql(connectionString, ServerVersion.AutoDetect(connectionString)));
+
+// Scoped = one instance per HTTP request (was Singleton — Singleton cannot hold a Scoped DbContext).
+// Spring equivalent: @Transactional method scope vs application-scoped bean.
+builder.Services.AddScoped<ICountryRepository, CountryRepository>();
+builder.Services.AddScoped<ICompanyRepository, CompanyRepository>();
+builder.Services.AddScoped<IEventRepository, EventRepository>();
+builder.Services.AddScoped<ICountryDetailsRepository, CountryDetailsRepository>();
 
 var app = builder.Build();
 
