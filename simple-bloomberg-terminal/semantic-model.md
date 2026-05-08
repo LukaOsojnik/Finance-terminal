@@ -116,17 +116,21 @@
 
 ```
 Country ──────────────── CountryDetails     (1:1, shared PK)
-Country ──────────────── CountryAdvantage   (1:N, FK CountryId)
-Country ──────────────── CountryChallenge   (1:N, FK CountryId)
-Country ──────────────── GdpSnapshot        (1:N, FK CountryId)
 Country ──────────────── Company            (1:N, FK CountryId)
 Country ◄──────────────► TradeBloc          (N:M, junction table)
 Country ◄──────────────► Event              (N:M, junction table)
 
-Company ──────────────── RevenueSource      (1:N, FK CompanyId)
-Company ──────────────── CostSource         (1:N, FK CompanyId)
-Company ◄──────────────► RevenueSource      (1:N, FK RelatedCompanyId — counterparty)
-Company ◄──────────────► CostSource         (1:N, FK RelatedCompanyId — counterparty)
+CountryDetails ────────── CountryAdvantage  (1:N, FK CountryId — also reachable via Country directly)
+CountryDetails ────────── CountryChallenge  (1:N, FK CountryId — also reachable via Country directly)
+CountryDetails ────────── GdpSnapshot       (1:N, FK CountryId — also reachable via Country directly)
+
+Note: Country.Advantages / Country.Challenges / Country.GdpHistory nav props exist as shortcuts.
+      CountryDetails.Advantages / .Challenges / .GdpHistory are the same rows via a different path.
+
+Company ──────────────── RevenueSource      (1:N, FK CompanyId — owner)
+Company ──────────────── CostSource         (1:N, FK CompanyId — owner)
+Company ──────────────── RevenueSource      (1:N, FK RelatedCompanyId — counterparty, nav: RevenueFromDependents)
+Company ──────────────── CostSource         (1:N, FK RelatedCompanyId — counterparty, nav: CostFromDependents)
 Company ◄──────────────► Event              (N:M, junction table)
 
 Event   ◄──────────────► TradeBloc          (N:M, junction table)
