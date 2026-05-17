@@ -1,0 +1,26 @@
+@model simple_bloomberg_terminal.Models.ViewModels.Shared.DateTimePickerModel
+@{
+    var hasValidation = Model.Required || Model.CustomValidationAttributes.Count > 0;
+    var attrs = new System.Text.StringBuilder();
+    attrs.Append($"data-val=\"{(hasValidation ? "true" : "false")}\" ");
+    if (Model.Required)
+    {
+        attrs.Append($"data-val-required=\"{Model.ErrorMessage}\" ");
+    }
+    foreach (var kv in Model.CustomValidationAttributes)
+    {
+        attrs.Append($"{kv.Key}=\"{kv.Value}\" ");
+    }
+    var placeholder = string.IsNullOrEmpty(Model.Placeholder)
+        ? (Model.ShowTime ? $"{Model.Format} HH:mm" : Model.Format)
+        : Model.Placeholder;
+}
+<div class="dtpicker"
+     data-dtpicker-locale="@Model.Locale"
+     data-dtpicker-format="@Model.Format"
+     data-dtpicker-showtime="@(Model.ShowTime ? "1" : "0")">
+    <input type="text" class="form-control dtpicker-input"
+           value="@Model.FormattedValue" placeholder="@placeholder" autocomplete="off"/>
+    <input type="hidden" name="@Model.FieldName" class="dtpicker-hidden"
+           value="@Model.IsoValue" @Html.Raw(attrs.ToString())/>
+</div>

@@ -1,0 +1,30 @@
+@model simple_bloomberg_terminal.Models.ViewModels.CountryDetailsCreateModel
+@{ ViewData["Title"] = "New Country Details"; }
+
+<div class="page-header"><h2><span class="page-header-accent">//</span> New Country Details</h2></div>
+
+<form asp-action="Create" method="post" style="max-width:640px;">
+    @Html.AntiForgeryToken()
+    <div asp-validation-summary="ModelOnly" class="text-danger"></div>
+
+    <div class="mb-3">
+        <label asp-for="CountryId" class="form-label">Country</label>
+        @await Html.PartialAsync("_AutocompletePicker", new AutocompletePickerModel {
+            FieldName = nameof(Model.CountryId),
+            SelectedId = Model.CountryId == 0 ? null : Model.CountryId,
+            SelectedLabel = "",
+            LookupUrl = Url.Action("Lookup", "Countries"),
+            Required = true,
+            Placeholder = "Type country name...",
+            RemoteUrl = Url.Action("ValidateCountry", "CountryDetails"),
+            RemoteErrorMessage = "This country already has details."
+        })
+        <span asp-validation-for="CountryId" class="text-danger"></span>
+    </div>
+    <div class="mb-3"><label asp-for="MarketPosition" class="form-label"></label><textarea asp-for="MarketPosition" class="form-control" rows="4"></textarea><span asp-validation-for="MarketPosition" class="text-danger"></span></div>
+
+    <button type="submit" class="btn btn-primary">CREATE</button>
+    <a asp-action="Index" class="btn btn-secondary">CANCEL</a>
+</form>
+
+@section Scripts { <partial name="_ValidationScriptsPartial"/> }

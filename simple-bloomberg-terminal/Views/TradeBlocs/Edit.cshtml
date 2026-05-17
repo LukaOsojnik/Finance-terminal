@@ -1,0 +1,37 @@
+@using simple_bloomberg_terminal.Models.Entities
+@model simple_bloomberg_terminal.Models.ViewModels.TradeBlocEditModel
+@{
+    ViewData["Title"] = "Edit Trade Bloc";
+    var countries = (List<Country>)ViewBag.Countries;
+}
+
+<div class="page-header"><h2><span class="page-header-accent">//</span> Edit Trade Bloc</h2></div>
+
+<form asp-action="Edit" asp-route-id="@Model.Id" method="post" style="max-width:640px;">
+    @Html.AntiForgeryToken()
+    <input type="hidden" asp-for="Id"/>
+    <div asp-validation-summary="ModelOnly" class="text-danger"></div>
+
+    <div class="mb-3"><label asp-for="Name" class="form-label"></label><input asp-for="Name" class="form-control"/><span asp-validation-for="Name" class="text-danger"></span></div>
+    <div class="mb-3"><label asp-for="Code" class="form-label"></label><input asp-for="Code" class="form-control"/><span asp-validation-for="Code" class="text-danger"></span></div>
+    <div class="mb-3"><label asp-for="Description" class="form-label"></label><textarea asp-for="Description" class="form-control" rows="3"></textarea><span asp-validation-for="Description" class="text-danger"></span></div>
+    <div class="mb-3">
+        <label asp-for="FoundedDate" class="form-label"></label>
+        <partial name="_DateTimePicker" model="@(new DateTimePickerModel { FieldName = "FoundedDate", IsoValue = Model.FoundedDate?.ToString("yyyy-MM-dd") ?? "", FormattedValue = Model.FoundedDate?.ToString(System.Globalization.CultureInfo.CurrentCulture.DateTimeFormat.ShortDatePattern) ?? "" })"/>
+        <span asp-validation-for="FoundedDate" class="text-danger"></span>
+    </div>
+
+    <fieldset class="mb-3"><legend class="form-label">Member Countries</legend>
+        <div style="max-height:200px; overflow:auto; border:1px solid #444; padding:0.5rem;">
+            @foreach (var c in countries)
+            {
+                <label style="display:block;"><input type="checkbox" name="SelectedCountryIds" value="@c.Id" @(Model.SelectedCountryIds.Contains(c.Id) ? "checked" : null)/> @c.Name</label>
+            }
+        </div>
+    </fieldset>
+
+    <button type="submit" class="btn btn-primary">SAVE</button>
+    <a asp-action="Index" class="btn btn-secondary">CANCEL</a>
+</form>
+
+@section Scripts { <partial name="_ValidationScriptsPartial"/> }

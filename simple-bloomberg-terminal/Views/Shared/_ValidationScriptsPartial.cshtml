@@ -1,2 +1,16 @@
 ﻿<script src="~/lib/jquery-validation/dist/jquery.validate.min.js"></script>
 <script src="~/lib/jquery-validation-unobtrusive/dist/jquery.validate.unobtrusive.min.js"></script>
+<script>
+    (function () {
+        if (!window.jQuery || !jQuery.validator) return;
+        jQuery.validator.addMethod('dategte', function (value, element, otherName) {
+            if (!value) return true;
+            var other = jQuery('[name="' + otherName + '"]').val();
+            if (!other) return true;
+            return new Date(value) >= new Date(other);
+        });
+        if (jQuery.validator.unobtrusive) {
+            jQuery.validator.unobtrusive.adapters.addSingleVal('dategte', 'other');
+        }
+    })();
+</script>

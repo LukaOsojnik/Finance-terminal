@@ -22,6 +22,7 @@ public class RevenueSource
     public DataSource? DataSource { get; set; }
     public long CompanyId { get; set; }
     public long? RelatedCompanyId { get; set; }
+    public DateTime? DeletedAt { get; set; }
 
     [ForeignKey("CompanyId")]
     public virtual Company? Company { get; set; }

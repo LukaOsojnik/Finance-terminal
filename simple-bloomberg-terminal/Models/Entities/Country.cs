@@ -22,6 +22,7 @@ public class Country
     public long? Population { get; set; }
     public double? RiskRating { get; set; }
     public string? Notes { get; set; }
+    public DateTime? DeletedAt { get; set; }
 
     public virtual CountryDetails? Details { get; set; }
     public virtual ICollection<Company> Companies { get; set; } = [];

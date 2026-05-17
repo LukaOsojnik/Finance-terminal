@@ -1,0 +1,42 @@
+@model simple_bloomberg_terminal.Models.ViewModels.CompanyEditModel
+@{
+    ViewData["Title"] = "Edit Company";
+}
+
+<div class="page-header"><h2><span class="page-header-accent">//</span> Edit Company</h2></div>
+
+<form asp-action="Edit" asp-route-id="@Model.Id" method="post" style="max-width:640px;">
+    @Html.AntiForgeryToken()
+    <input type="hidden" asp-for="Id"/>
+    <div asp-validation-summary="ModelOnly" class="text-danger"></div>
+
+    <div class="mb-3"><label asp-for="Name" class="form-label"></label><input asp-for="Name" class="form-control"/><span asp-validation-for="Name" class="text-danger"></span></div>
+    <div class="mb-3"><label asp-for="Cik" class="form-label"></label><input asp-for="Cik" class="form-control"/><span asp-validation-for="Cik" class="text-danger"></span></div>
+    <div class="mb-3">
+        <label asp-for="CountryId" class="form-label">Country</label>
+        @await Html.PartialAsync("_AutocompletePicker", new AutocompletePickerModel {
+            FieldName = nameof(Model.CountryId),
+            SelectedId = Model.CountryId,
+            SelectedLabel = ViewBag.CountryLabel as string ?? "",
+            LookupUrl = Url.Action("Lookup", "Countries"),
+            Required = true,
+            Placeholder = "Type country name..."
+        })
+        <span asp-validation-for="CountryId" class="text-danger"></span>
+    </div>
+    <div class="mb-3"><label asp-for="Sector" class="form-label"></label><select asp-for="Sector" asp-items="ViewBag.Sectors" class="form-control"></select><span asp-validation-for="Sector" class="text-danger"></span></div>
+    <div class="mb-3"><label asp-for="Industry" class="form-label"></label><select asp-for="Industry" asp-items="ViewBag.Industries" class="form-control"><option value="">— none —</option></select><span asp-validation-for="Industry" class="text-danger"></span></div>
+    <div class="mb-3"><label asp-for="RevenueTotal" class="form-label"></label><input asp-for="RevenueTotal" class="form-control" type="number" step="any"/><span asp-validation-for="RevenueTotal" class="text-danger"></span></div>
+    <div class="mb-3"><label asp-for="GrossMargin" class="form-label">Gross Margin (0–1)</label><input asp-for="GrossMargin" class="form-control" type="number" step="0.01"/><span asp-validation-for="GrossMargin" class="text-danger"></span></div>
+    <div class="mb-3">
+        <label asp-for="AsOf" class="form-label"></label>
+        <partial name="_DateTimePicker" model="@(new DateTimePickerModel { FieldName = "AsOf", IsoValue = Model.AsOf?.ToString("yyyy-MM-dd") ?? "", FormattedValue = Model.AsOf?.ToString(System.Globalization.CultureInfo.CurrentCulture.DateTimeFormat.ShortDatePattern) ?? "" })"/>
+        <span asp-validation-for="AsOf" class="text-danger"></span>
+    </div>
+    <div class="mb-3"><label asp-for="Notes" class="form-label"></label><textarea asp-for="Notes" class="form-control" rows="3"></textarea><span asp-validation-for="Notes" class="text-danger"></span></div>
+
+    <button type="submit" class="btn btn-primary">SAVE</button>
+    <a asp-action="Index" class="btn btn-secondary">CANCEL</a>
+</form>
+
+@section Scripts { <partial name="_ValidationScriptsPartial"/> }

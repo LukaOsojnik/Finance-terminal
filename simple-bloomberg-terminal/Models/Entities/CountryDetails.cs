@@ -8,6 +8,7 @@ public class CountryDetails
     [Key]
     public long CountryId { get; set; }
     public string MarketPosition { get; set; } = string.Empty;
+    public DateTime? DeletedAt { get; set; }
 
     [ForeignKey("CountryId")]
     public virtual Country? Country { get; set; }

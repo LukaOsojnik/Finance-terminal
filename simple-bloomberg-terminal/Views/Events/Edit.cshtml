@@ -1,0 +1,66 @@
+@using simple_bloomberg_terminal.Models.Entities
+@model simple_bloomberg_terminal.Models.ViewModels.EventEditModel
+@{
+    ViewData["Title"] = "Edit Event";
+    var countries = (List<Country>)ViewBag.Countries;
+    var companies = (List<Company>)ViewBag.Companies;
+    var blocs = (List<TradeBloc>)ViewBag.TradeBlocs;
+}
+
+<div class="page-header"><h2><span class="page-header-accent">//</span> Edit Event</h2></div>
+
+<form asp-action="Edit" asp-route-id="@Model.Id" method="post" style="max-width:720px;">
+    @Html.AntiForgeryToken()
+    <input type="hidden" asp-for="Id"/>
+    <div asp-validation-summary="ModelOnly" class="text-danger"></div>
+
+    <div class="mb-3"><label asp-for="Title" class="form-label"></label><input asp-for="Title" class="form-control"/><span asp-validation-for="Title" class="text-danger"></span></div>
+    <div class="mb-3"><label asp-for="Type" class="form-label"></label><select asp-for="Type" asp-items="ViewBag.EventTypes" class="form-control"></select><span asp-validation-for="Type" class="text-danger"></span></div>
+    <div class="mb-3">
+        <label asp-for="Date" class="form-label"></label>
+        <partial name="_DateTimePicker" model="@(new DateTimePickerModel { FieldName = "Date", Required = true, ShowTime = true, ErrorMessage = "Date is required.", IsoValue = Model.Date?.ToString("yyyy-MM-ddTHH:mm") ?? "", FormattedValue = Model.Date?.ToString(System.Globalization.CultureInfo.CurrentCulture.DateTimeFormat.ShortDatePattern + " HH:mm") ?? "" })"/>
+        <span asp-validation-for="Date" class="text-danger"></span>
+    </div>
+    <div class="mb-3">
+        <label asp-for="EndDate" class="form-label"></label>
+        <partial name="_DateTimePicker" model="@(new DateTimePickerModel { FieldName = "EndDate", ShowTime = true, IsoValue = Model.EndDate?.ToString("yyyy-MM-ddTHH:mm") ?? "", FormattedValue = Model.EndDate?.ToString(System.Globalization.CultureInfo.CurrentCulture.DateTimeFormat.ShortDatePattern + " HH:mm") ?? "", CustomValidationAttributes = new() { ["data-val-dategte"] = "End date must be on or after start date.", ["data-val-dategte-other"] = "Date" } })"/>
+        <span asp-validation-for="EndDate" class="text-danger"></span>
+    </div>
+    <div class="mb-3"><label asp-for="Description" class="form-label"></label><textarea asp-for="Description" class="form-control" rows="3"></textarea><span asp-validation-for="Description" class="text-danger"></span></div>
+    <div class="mb-3"><label asp-for="ImpactScore" class="form-label"></label><input asp-for="ImpactScore" class="form-control" type="number" step="0.1"/><span asp-validation-for="ImpactScore" class="text-danger"></span></div>
+
+    <fieldset class="mb-3">
+        <legend class="form-label">Linked Countries</legend>
+        <div style="max-height:200px; overflow:auto; border:1px solid #444; padding:0.5rem;">
+            @foreach (var c in countries)
+            {
+                <label style="display:block;"><input type="checkbox" name="SelectedCountryIds" value="@c.Id" @(Model.SelectedCountryIds.Contains(c.Id) ? "checked" : null)/> @c.Name</label>
+            }
+        </div>
+    </fieldset>
+
+    <fieldset class="mb-3">
+        <legend class="form-label">Linked Companies</legend>
+        <div style="max-height:200px; overflow:auto; border:1px solid #444; padding:0.5rem;">
+            @foreach (var c in companies)
+            {
+                <label style="display:block;"><input type="checkbox" name="SelectedCompanyIds" value="@c.Id" @(Model.SelectedCompanyIds.Contains(c.Id) ? "checked" : null)/> @c.Name</label>
+            }
+        </div>
+    </fieldset>
+
+    <fieldset class="mb-3">
+        <legend class="form-label">Linked Trade Blocs</legend>
+        <div style="max-height:200px; overflow:auto; border:1px solid #444; padding:0.5rem;">
+            @foreach (var b in blocs)
+            {
+                <label style="display:block;"><input type="checkbox" name="SelectedTradeBlocIds" value="@b.Id" @(Model.SelectedTradeBlocIds.Contains(b.Id) ? "checked" : null)/> @b.Name</label>
+            }
+        </div>
+    </fieldset>
+
+    <button type="submit" class="btn btn-primary">SAVE</button>
+    <a asp-action="Index" class="btn btn-secondary">CANCEL</a>
+</form>
+
+@section Scripts { <partial name="_ValidationScriptsPartial"/> }

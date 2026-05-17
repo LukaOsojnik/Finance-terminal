@@ -99,6 +99,9 @@ namespace simple_bloomberg_terminal.Migrations
                     b.Property<long>("CountryId")
                         .HasColumnType("bigint");
 
+                    b.Property<DateTime?>("DeletedAt")
+                        .HasColumnType("datetime(6)");
+
                     b.Property<double?>("GrossMargin")
                         .HasColumnType("double");
 
@@ -142,6 +145,9 @@ namespace simple_bloomberg_terminal.Migrations
                     b.Property<int?>("DataSource")
                         .HasColumnType("int");
 
+                    b.Property<DateTime?>("DeletedAt")
+                        .HasColumnType("datetime(6)");
+
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasColumnType("longtext");
@@ -179,6 +185,9 @@ namespace simple_bloomberg_terminal.Migrations
                     b.Property<string>("CurrencyCode")
                         .IsRequired()
                         .HasColumnType("longtext");
+
+                    b.Property<DateTime?>("DeletedAt")
+                        .HasColumnType("datetime(6)");
 
                     b.Property<double?>("GdpUsd")
                         .HasColumnType("double");
@@ -219,6 +228,9 @@ namespace simple_bloomberg_terminal.Migrations
                     b.Property<long>("CountryId")
                         .HasColumnType("bigint");
 
+                    b.Property<DateTime?>("DeletedAt")
+                        .HasColumnType("datetime(6)");
+
                     b.Property<string>("Text")
                         .IsRequired()
                         .HasColumnType("longtext");
@@ -246,6 +258,9 @@ namespace simple_bloomberg_terminal.Migrations
                     b.Property<long>("CountryId")
                         .HasColumnType("bigint");
 
+                    b.Property<DateTime?>("DeletedAt")
+                        .HasColumnType("datetime(6)");
+
                     b.Property<string>("Text")
                         .IsRequired()
                         .HasColumnType("longtext");
@@ -264,6 +279,9 @@ namespace simple_bloomberg_terminal.Migrations
                     b.Property<long>("CountryId")
                         .HasColumnType("bigint");
 
+                    b.Property<DateTime?>("DeletedAt")
+                        .HasColumnType("datetime(6)");
+
                     b.Property<string>("MarketPosition")
                         .IsRequired()
                         .HasColumnType("longtext");
@@ -281,14 +299,17 @@ namespace simple_bloomberg_terminal.Migrations
 
                     MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b.Property<long>("Id"));
 
-                    b.Property<DateOnly>("Date")
-                        .HasColumnType("date");
+                    b.Property<DateTime>("Date")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<DateTime?>("DeletedAt")
+                        .HasColumnType("datetime(6)");
 
                     b.Property<string>("Description")
                         .HasColumnType("longtext");
 
-                    b.Property<DateOnly?>("EndDate")
-                        .HasColumnType("date");
+                    b.Property<DateTime?>("EndDate")
+                        .HasColumnType("datetime(6)");
 
                     b.Property<double?>("ImpactScore")
                         .HasColumnType("double");
@@ -319,6 +340,9 @@ namespace simple_bloomberg_terminal.Migrations
                     b.Property<long>("CountryId")
                         .HasColumnType("bigint");
 
+                    b.Property<DateTime?>("DeletedAt")
+                        .HasColumnType("datetime(6)");
+
                     b.Property<double>("GdpUsd")
                         .HasColumnType("double");
 
@@ -347,6 +371,9 @@ namespace simple_bloomberg_terminal.Migrations
 
                     b.Property<int?>("DataSource")
                         .HasColumnType("int");
+
+                    b.Property<DateTime?>("DeletedAt")
+                        .HasColumnType("datetime(6)");
 
                     b.Property<string>("Name")
                         .IsRequired()
@@ -384,6 +411,9 @@ namespace simple_bloomberg_terminal.Migrations
                     b.Property<string>("Code")
                         .IsRequired()
                         .HasColumnType("longtext");
+
+                    b.Property<DateTime?>("DeletedAt")
+                        .HasColumnType("datetime(6)");
 
                     b.Property<string>("Description")
                         .HasColumnType("longtext");

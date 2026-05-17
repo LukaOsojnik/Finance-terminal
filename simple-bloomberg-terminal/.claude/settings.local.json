@@ -1,3 +1,26 @@
 {
+  "permissions": {
+    "allow": [
+      "Bash(Get-ChildItem -Path \"C:\\\\Users\\\\luka.osojnik\\\\Documents\\\\Coding\\\\simple-bloomberg-terminal\\\\simple-bloomberg-terminal\" -Directory)",
+      "Bash(Select-Object Name)",
+      "PowerShell(Get-ChildItem -Path \"C:\\\\Users\\\\luka.osojnik\\\\Documents\\\\Coding\\\\simple-bloomberg-terminal\\\\simple-bloomberg-terminal\" -Recurse -Directory | ForEach-Object { $_.FullName.Replace\\(\"C:\\\\Users\\\\luka.osojnik\\\\Documents\\\\Coding\\\\simple-bloomberg-terminal\\\\simple-bloomberg-terminal\\\\\", \"\"\\) })",
+      "Bash(Get-ChildItem -Path \"C:\\\\Users\\\\luka.osojnik\\\\Documents\\\\Coding\\\\simple-bloomberg-terminal\\\\simple-bloomberg-terminal\" -Recurse -Directory)",
+      "Bash(Select-Object -ExpandProperty FullName)",
+      "Bash(Sort-Object)",
+      "Bash(dotnet ef *)",
+      "Bash(dotnet build *)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\" http://localhost:5099/countries)",
+      "PowerShell($urls = @\\('http://localhost:5213/companies/create','http://localhost:5213/events/create','http://localhost:5213/trade-blocs/create','http://localhost:5213/country-details/create','http://localhost:5213/country-advantages/create','http://localhost:5213/country-challenges/create','http://localhost:5213/gdp-snapshots/create','http://localhost:5213/revenue-sources/create','http://localhost:5213/cost-sources/create','http://localhost:5213/events/feed','http://localhost:5213/events/search?term=','http://localhost:5213/trade-blocs/search?term=eu'\\); foreach \\($u in $urls\\) { try { $r = Invoke-WebRequest -Uri $u -UseBasicParsing -TimeoutSec 5; \"$\\($r.StatusCode\\) $u\" } catch { \"ERR $u $\\($_.Exception.Message\\)\" } })",
+      "PowerShell(Get-Process *)",
+      "PowerShell(dotnet build *)",
+      "PowerShell(dotnet run *)",
+      "PowerShell(try { $r = Invoke-WebRequest -Uri 'http://localhost:5099/events/create' -UseBasicParsing; \"Status: $\\($r.StatusCode\\); EndDate dategte attr: $\\($r.Content -match 'data-val-dategte-other=\\\\\"Date\\\\\"'\\)\" } catch { $_.Exception.Message })",
+      "PowerShell(try { $r = Invoke-WebRequest -Uri 'http://localhost:5099/country-details/create' -UseBasicParsing; \"Status: $\\($r.StatusCode\\); Remote attr: $\\($r.Content -match 'data-val-remote-url='\\)\" } catch { $_.Exception.Message })",
+      "Bash(xargs -I {} sh -c 'echo \"=== {} ===\"; grep -nE \"public \\(async \\)?\\(Task<\\)?IActionResult \\(Index|Search|Create|Edit|Delete|Lookup\\)\" {}')",
+      "Bash(grep -rn \"DateGreaterThan\\\\|RemoteAttribute\\\\|\\\\\\\\[Remote\" Models/ -r)",
+      "Bash(Get-ChildItem -Recurse -Depth 0)",
+      "Bash(dotnet tool *)"
+    ]
+  },
   "outputStyle": "Learning"
 }

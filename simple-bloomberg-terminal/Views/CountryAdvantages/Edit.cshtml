@@ -1,0 +1,29 @@
+@model simple_bloomberg_terminal.Models.ViewModels.CountryAdvantageEditModel
+@{ ViewData["Title"] = "Edit Country Advantage"; }
+
+<div class="page-header"><h2><span class="page-header-accent">//</span> Edit Country Advantage</h2></div>
+
+<form asp-action="Edit" asp-route-id="@Model.Id" method="post" style="max-width:640px;">
+    @Html.AntiForgeryToken()
+    <input type="hidden" asp-for="Id"/>
+    <div asp-validation-summary="ModelOnly" class="text-danger"></div>
+
+    <div class="mb-3">
+        <label asp-for="CountryId" class="form-label">Country</label>
+        @await Html.PartialAsync("_AutocompletePicker", new AutocompletePickerModel {
+            FieldName = nameof(Model.CountryId),
+            SelectedId = Model.CountryId,
+            SelectedLabel = ViewBag.CountryLabel as string ?? "",
+            LookupUrl = Url.Action("Lookup", "Countries"),
+            Required = true,
+            Placeholder = "Type country name..."
+        })
+        <span asp-validation-for="CountryId" class="text-danger"></span>
+    </div>
+    <div class="mb-3"><label asp-for="Text" class="form-label"></label><textarea asp-for="Text" class="form-control" rows="3"></textarea><span asp-validation-for="Text" class="text-danger"></span></div>
+
+    <button type="submit" class="btn btn-primary">SAVE</button>
+    <a asp-action="Index" class="btn btn-secondary">CANCEL</a>
+</form>
+
+@section Scripts { <partial name="_ValidationScriptsPartial"/> }

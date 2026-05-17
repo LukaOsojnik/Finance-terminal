@@ -1,0 +1,36 @@
+@model IEnumerable<simple_bloomberg_terminal.Models.ViewModels.CountryRowViewModel>
+
+@if (!Model.Any())
+{
+    <tr><td colspan="8" class="muted-cell" style="text-align:center; padding:1rem;">No results</td></tr>
+}
+@foreach (var row in Model)
+{
+    var country = row.Country;
+    <tr>
+        <td class="code-cell">@country.Code</td>
+        <td class="name-cell">@country.Name</td>
+        <td class="tag-cell">@country.Region</td>
+        <td class="tag-cell">@country.CurrencyCode</td>
+        <td class="num-cell">@(country.GdpUsd.HasValue ? $"${country.GdpUsd.Value / 1e12:F2}T" : "—")</td>
+        <td class="num-cell">@(country.Population.HasValue ? $"{country.Population.Value / 1_000_000:F0}M" : "—")</td>
+        <td class="num-cell">
+            @if (country.RiskRating.HasValue)
+            {
+                <span class="@row.RiskClass">@country.RiskRating.Value.ToString("F1")</span>
+            }
+            else
+            {
+                <span class="muted-cell">—</span>
+            }
+        </td>
+        <td style="text-align:right; white-space:nowrap;">
+            <a asp-action="Details" asp-route-id="@country.Id" class="btn-detail">DETAILS</a>
+            <a asp-action="Edit" asp-route-id="@country.Id" class="btn-detail">EDIT</a>
+            <form asp-action="Delete" asp-route-id="@country.Id" method="post" style="display:inline;" onsubmit="return confirm('Delete @country.Name?');">
+                @Html.AntiForgeryToken()
+                <button type="submit" class="btn-detail" style="border:none; background:none; color:var(--red); cursor:pointer;">DEL</button>
+            </form>
+        </td>
+    </tr>
+}

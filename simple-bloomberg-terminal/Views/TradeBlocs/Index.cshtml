@@ -1,0 +1,17 @@
+@using simple_bloomberg_terminal.Models.Entities
+@model IEnumerable<TradeBloc>
+@{ ViewData["Title"] = "Trade Blocs"; }
+
+<div class="page-header"><h2><span class="page-header-accent">//</span> Trade Blocs</h2></div>
+
+@if (TempData["Error"] != null) { <div class="alert alert-danger">@TempData["Error"]</div> }
+
+<div class="d-flex" style="margin-bottom:1rem; gap:0.75rem; align-items:center;">
+    <input type="text" class="form-control search-input" placeholder="Search name / code..." data-search-url="@Url.Action("Search")" style="max-width:420px;"/>
+    <a asp-action="Create" class="btn btn-primary">+ NEW</a>
+</div>
+
+<table class="terminal-table">
+    <thead><tr><th>Code</th><th>Name</th><th>Members</th><th>Founded</th><th></th></tr></thead>
+    <tbody id="table-body">@await Html.PartialAsync("_TableBody", Model)</tbody>
+</table>

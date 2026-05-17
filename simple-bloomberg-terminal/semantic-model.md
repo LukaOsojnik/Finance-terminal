@@ -1,5 +1,7 @@
 # Semantic DB Model
 
+> Soft-delete pattern: every entity has a nullable `DeletedAt` (`DateTime?`); rows with `DeletedAt != null` are hidden from list/detail queries — repositories filter `Where(e => e.DeletedAt == null)` on every read. Migration: `20260516183211_AddSoftDeleteToAllEntities`.
+
 ## Tables / Classes
 
 | Table | Class | Role |
@@ -31,6 +33,7 @@
 | Population | long? | |
 | RiskRating | double? | |
 | Notes | string? | |
+| DeletedAt | DateTime? | Soft-delete timestamp |
 
 ### Company
 | Property | Type | Notes |
@@ -44,6 +47,7 @@
 | GrossMargin | double? | |
 | AsOf | DateOnly? | |
 | Cik | string? | SEC identifier |
+| DeletedAt | DateTime? | Soft-delete timestamp |
 
 ### Event
 | Property | Type | Notes |
@@ -51,10 +55,11 @@
 | Id | long | PK |
 | Title | string | |
 | Type | EventType | EARNINGS, SANCTIONS, TRADE_DEAL… |
-| Date | DateOnly | |
-| EndDate | DateOnly? | |
+| Date | DateTime | |
+| EndDate | DateTime? | |
 | ImpactScore | double? | |
 | Description | string? | |
+| DeletedAt | DateTime? | Soft-delete timestamp |
 
 ### TradeBloc
 | Property | Type | Notes |
@@ -64,12 +69,14 @@
 | Code | string | |
 | Description | string? | |
 | FoundedDate | DateOnly? | |
+| DeletedAt | DateTime? | Soft-delete timestamp |
 
 ### CountryDetails
 | Property | Type | Notes |
 |---|---|---|
 | CountryId | long | PK + FK → Countries (shared PK) |
 | MarketPosition | string | Summary paragraph |
+| DeletedAt | DateTime? | Soft-delete timestamp |
 
 ### CountryAdvantage / CountryChallenge
 | Property | Type | Notes |
@@ -77,6 +84,7 @@
 | Id | long | PK |
 | CountryId | long | FK → Countries |
 | Text | string | Single bullet point |
+| DeletedAt | DateTime? | Soft-delete timestamp |
 
 ### GdpSnapshot
 | Property | Type | Notes |
@@ -85,6 +93,7 @@
 | CountryId | long | FK → Countries |
 | Year | int | |
 | GdpUsd | double | |
+| DeletedAt | DateTime? | Soft-delete timestamp |
 
 ### RevenueSource
 | Property | Type | Notes |
@@ -97,6 +106,7 @@
 | Value | double? | |
 | Percentage | double? | |
 | DataSource | DataSource? | EDGAR, MANUAL, CLAUDE_ESTIMATED… |
+| DeletedAt | DateTime? | Soft-delete timestamp |
 
 ### CostSource
 | Property | Type | Notes |
@@ -109,6 +119,7 @@
 | Value | double? | |
 | Percentage | double? | |
 | DataSource | DataSource? | |
+| DeletedAt | DateTime? | Soft-delete timestamp |
 
 ---
 

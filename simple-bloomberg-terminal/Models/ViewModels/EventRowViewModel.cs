@@ -7,6 +7,7 @@ public class EventRowViewModel
     public required Event Event { get; set; }
     public required string ImpactClass { get; set; }
     public required string TypeLabel { get; set; }
+    public string StatusLabel { get; set; } = "";
 
     public static EventRowViewModel From(Event ev) => new()
     {

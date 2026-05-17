@@ -1,0 +1,174 @@
+/* ─────────────────────────────────────────────────────────────
+   Custom Date+Time Picker — terminal theme
+───────────────────────────────────────────────────────────── */
+
+.dtpicker {
+  position: relative;
+  display: block;
+}
+
+.dtpicker-input {
+  font-family: var(--font-mono);
+  letter-spacing: 0.04em;
+}
+
+.dtpicker-hidden {
+  display: none;
+}
+
+.dtpicker-panel {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  z-index: 30;
+  width: 260px;
+  background: var(--bg-card);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  box-shadow: 0 8px 24px rgba(0,0,0,0.6), 0 0 0 1px var(--border-accent);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  padding: 0.5rem;
+  user-select: none;
+}
+
+.dtpicker-panel[hidden] { display: none; }
+
+.dtpicker-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 0.5rem;
+  padding: 0 0.25rem;
+}
+
+.dtpicker-title {
+  color: var(--accent);
+  font-family: var(--font-display);
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.dtpicker-nav {
+  background: transparent;
+  border: 1px solid var(--border-subtle);
+  color: var(--text-primary);
+  width: 24px;
+  height: 24px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: var(--transition);
+}
+
+.dtpicker-nav:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+  box-shadow: var(--accent-glow);
+}
+
+.dtpicker-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 2px;
+}
+
+.dtpicker-dow {
+  text-align: center;
+  color: var(--muted);
+  font-size: 10px;
+  text-transform: uppercase;
+  padding: 0.25rem 0;
+}
+
+.dtpicker-day {
+  text-align: center;
+  padding: 0.35rem 0;
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  transition: var(--transition);
+  border: 1px solid transparent;
+}
+
+.dtpicker-day:hover {
+  background: var(--bg-row-hover);
+  border-color: var(--accent-dim);
+}
+
+.dtpicker-day.is-other-month {
+  color: var(--muted);
+}
+
+.dtpicker-day.is-today {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.dtpicker-day.is-selected {
+  background: var(--accent);
+  color: var(--bg-base);
+  font-weight: 600;
+}
+
+.dtpicker-time {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.25rem;
+  margin-top: 0.5rem;
+  padding-top: 0.5rem;
+  border-top: 1px solid var(--border-subtle);
+}
+
+.dtpicker-time input {
+  width: 48px;
+  text-align: center;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+  padding: 0.2rem;
+  border-radius: var(--radius-sm);
+}
+
+.dtpicker-time input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.dtpicker-time-sep {
+  color: var(--muted);
+}
+
+.dtpicker-foot {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 0.5rem;
+  padding-top: 0.5rem;
+  border-top: 1px solid var(--border-subtle);
+  gap: 0.5rem;
+}
+
+.dtpicker-btn {
+  flex: 1;
+  background: transparent;
+  border: 1px solid var(--border-subtle);
+  color: var(--text-secondary);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  padding: 0.3rem 0.5rem;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: var(--transition);
+}
+
+.dtpicker-btn:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}

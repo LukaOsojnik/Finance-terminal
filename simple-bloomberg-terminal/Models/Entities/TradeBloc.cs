@@ -16,6 +16,7 @@ public class TradeBloc
     public string Code { get; set; }
     public string? Description { get; set; }
     public DateOnly? FoundedDate { get; set; }
+    public DateTime? DeletedAt { get; set; }
 
     public virtual ICollection<Country> Countries { get; set; } = [];
     public virtual ICollection<Event> Events { get; set; } = [];

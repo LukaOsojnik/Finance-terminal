@@ -1,0 +1,21 @@
+@using simple_bloomberg_terminal.Models.Entities
+@model IEnumerable<CostSource>
+
+@if (!Model.Any()) { <tr><td colspan="6" class="muted-cell" style="text-align:center; padding:1rem;">No results</td></tr> }
+@foreach (var c in Model)
+{
+    <tr>
+        <td class="name-cell">@(c.Company?.Name ?? c.CompanyId.ToString())</td>
+        <td class="tag-cell">@c.Name</td>
+        <td class="tag-cell">@c.CostBase</td>
+        <td class="num-cell">@(c.Value.HasValue ? $"${c.Value.Value / 1e9:F2}B" : "—")</td>
+        <td class="num-cell">@(c.Percentage.HasValue ? $"{c.Percentage.Value:F1}%" : "—")</td>
+        <td style="text-align:right; white-space:nowrap;">
+            <a asp-action="Edit" asp-route-id="@c.Id" class="btn-detail">EDIT</a>
+            <form asp-action="Delete" asp-route-id="@c.Id" method="post" style="display:inline;" onsubmit="return confirm('Delete?');">
+                @Html.AntiForgeryToken()
+                <button type="submit" class="btn-detail" style="border:none; background:none; color:var(--red); cursor:pointer;">DEL</button>
+            </form>
+        </td>
+    </tr>
+}

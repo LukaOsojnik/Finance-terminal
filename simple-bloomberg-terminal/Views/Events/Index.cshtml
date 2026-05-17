@@ -1,9 +1,6 @@
-@using simple_bloomberg_terminal.Models.Entities
-@model simple_bloomberg_terminal.Models.ViewModels.EventsIndexViewModel
+@model IEnumerable<simple_bloomberg_terminal.Models.ViewModels.EventRowViewModel>
 @{
     ViewData["Title"] = "Events";
-    var liveEvents = Model.LiveEvents;
-    var pastEvents = Model.PastEvents;
 }
 
 <div class="page-header">
@@ -11,108 +8,26 @@
     <div class="page-subtitle">MARKET EVENTS — IMPACT SCORES · AFFECTED ENTITIES</div>
 </div>
 
-<div class="section-header">
-    <span class="section-header-dot live"></span>
-    <h4 class="live">Live Events</h4>
+@if (TempData["Error"] != null) { <div class="alert alert-danger">@TempData["Error"]</div> }
+
+<div class="d-flex" style="margin-bottom:1rem; gap:0.75rem; align-items:center;">
+    <input type="text" class="form-control search-input" placeholder="Search title / description..." data-search-url="@Url.Action("Search")" style="max-width:420px;"/>
+    <a asp-action="Create" class="btn btn-primary">+ NEW</a>
 </div>
 
-@if (!liveEvents.Any())
-{
-    <div class="empty-state">NO LIVE EVENTS AT THIS TIME</div>
-}
-else
-{
-    <table class="terminal-table">
-        <thead>
-            <tr>
-                <th>Title</th>
-                <th>Type</th>
-                <th>Date</th>
-                <th style="text-align:right;">Impact</th>
-                <th>Countries</th>
-                <th>Companies</th>
-                <th></th>
-            </tr>
-        </thead>
-        <tbody>
-            @foreach (var row in liveEvents)
-            {
-                var ev = row.Event;
-                <tr class="row-live">
-                    <td class="name-cell" style="font-weight:500;">@ev.Title</td>
-                    <td class="tag-cell">@row.TypeLabel</td>
-                    <td class="num-cell" style="white-space:nowrap;">@ev.Date.ToShortDateString()</td>
-                    <td class="num-cell">
-                        @if (ev.ImpactScore.HasValue)
-                        {
-                            <span class="impact-badge @row.ImpactClass">@ev.ImpactScore.Value.ToString("F1")</span>
-                        }
-                        else
-                        {
-                            <span class="muted-cell">—</span>
-                        }
-                    </td>
-                    <td class="tag-cell">@string.Join(", ", ev.Countries.Select(c => c.Name))</td>
-                    <td class="muted-cell" style="font-size:0.75rem;">@string.Join(", ", ev.Companies.Select(c => c.Name))</td>
-                    <td>
-                        <a asp-controller="Events" asp-action="Details" asp-route-id="@ev.Id" class="btn-detail">VIEW →</a>
-                    </td>
-                </tr>
-            }
-        </tbody>
-    </table>
-}
-
-<div class="section-header" style="margin-top:2.5rem;">
-    <span class="section-header-dot past"></span>
-    <h4 class="past">Past Events</h4>
-</div>
-
-@if (!pastEvents.Any())
-{
-    <div class="empty-state">NO PAST EVENTS RECORDED</div>
-}
-else
-{
-    <table class="terminal-table">
-        <thead>
-            <tr>
-                <th>Title</th>
-                <th>Type</th>
-                <th>Date</th>
-                <th>Ended</th>
-                <th style="text-align:right;">Impact</th>
-                <th>Countries</th>
-                <th>Companies</th>
-                <th></th>
-            </tr>
-        </thead>
-        <tbody>
-            @foreach (var row in pastEvents)
-            {
-                var ev = row.Event;
-                <tr class="row-past">
-                    <td class="name-cell">@ev.Title</td>
-                    <td class="tag-cell">@row.TypeLabel</td>
-                    <td class="num-cell" style="white-space:nowrap;">@ev.Date.ToShortDateString()</td>
-                    <td class="num-cell" style="white-space:nowrap;">@(ev.EndDate?.ToShortDateString() ?? "—")</td>
-                    <td class="num-cell">
-                        @if (ev.ImpactScore.HasValue)
-                        {
-                            <span class="impact-badge @row.ImpactClass">@ev.ImpactScore.Value.ToString("F1")</span>
-                        }
-                        else
-                        {
-                            <span class="muted-cell">—</span>
-                        }
-                    </td>
-                    <td class="tag-cell">@string.Join(", ", ev.Countries.Select(c => c.Name))</td>
-                    <td class="muted-cell" style="font-size:0.75rem;">@string.Join(", ", ev.Companies.Select(c => c.Name))</td>
-                    <td>
-                        <a asp-controller="Events" asp-action="Details" asp-route-id="@ev.Id" class="btn-detail">VIEW →</a>
-                    </td>
-                </tr>
-            }
-        </tbody>
-    </table>
-}
+<table class="terminal-table">
+    <thead>
+        <tr>
+            <th>Title</th>
+            <th>Status</th>
+            <th>Type</th>
+            <th>Date</th>
+            <th style="text-align:right;">Impact</th>
+            <th>Countries</th>
+            <th></th>
+        </tr>
+    </thead>
+    <tbody id="table-body">
+        @await Html.PartialAsync("_TableBody", Model)
+    </tbody>
+</table>

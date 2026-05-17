@@ -1,0 +1,18 @@
+@using simple_bloomberg_terminal.Models.Entities
+@model IEnumerable<CountryDetails>
+
+@if (!Model.Any()) { <tr><td colspan="3" class="muted-cell" style="text-align:center; padding:1rem;">No results</td></tr> }
+@foreach (var d in Model)
+{
+    <tr>
+        <td class="name-cell">@(d.Country?.Name ?? d.CountryId.ToString())</td>
+        <td class="tag-cell">@d.MarketPosition</td>
+        <td style="text-align:right; white-space:nowrap;">
+            <a asp-action="Edit" asp-route-countryId="@d.CountryId" class="btn-detail">EDIT</a>
+            <form asp-action="Delete" asp-route-countryId="@d.CountryId" method="post" style="display:inline;" onsubmit="return confirm('Delete details?');">
+                @Html.AntiForgeryToken()
+                <button type="submit" class="btn-detail" style="border:none; background:none; color:var(--red); cursor:pointer;">DEL</button>
+            </form>
+        </td>
+    </tr>
+}

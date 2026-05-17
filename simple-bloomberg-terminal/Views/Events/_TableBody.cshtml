@@ -1,0 +1,32 @@
+@model IEnumerable<simple_bloomberg_terminal.Models.ViewModels.EventRowViewModel>
+
+@if (!Model.Any())
+{
+    <tr><td colspan="7" class="muted-cell" style="text-align:center; padding:1rem;">No results</td></tr>
+}
+@foreach (var row in Model)
+{
+    var ev = row.Event;
+    <tr>
+        <td class="name-cell" style="font-weight:500;">@ev.Title</td>
+        <td class="tag-cell">@row.StatusLabel</td>
+        <td class="tag-cell">@row.TypeLabel</td>
+        <td class="num-cell" style="white-space:nowrap;">@ev.Date.ToShortDateString()</td>
+        <td class="num-cell">
+            @if (ev.ImpactScore.HasValue)
+            {
+                <span class="impact-badge @row.ImpactClass">@ev.ImpactScore.Value.ToString("F1")</span>
+            }
+            else { <span class="muted-cell">—</span> }
+        </td>
+        <td class="tag-cell">@string.Join(", ", ev.Countries.Select(c => c.Name))</td>
+        <td style="text-align:right; white-space:nowrap;">
+            <a asp-action="Details" asp-route-id="@ev.Id" class="btn-detail">VIEW</a>
+            <a asp-action="Edit" asp-route-id="@ev.Id" class="btn-detail">EDIT</a>
+            <form asp-action="Delete" asp-route-id="@ev.Id" method="post" style="display:inline;" onsubmit="return confirm('Delete @ev.Title?');">
+                @Html.AntiForgeryToken()
+                <button type="submit" class="btn-detail" style="border:none; background:none; color:var(--red); cursor:pointer;">DEL</button>
+            </form>
+        </td>
+    </tr>
+}

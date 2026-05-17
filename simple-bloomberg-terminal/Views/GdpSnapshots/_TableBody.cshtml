@@ -1,0 +1,19 @@
+@using simple_bloomberg_terminal.Models.Entities
+@model IEnumerable<GdpSnapshot>
+
+@if (!Model.Any()) { <tr><td colspan="4" class="muted-cell" style="text-align:center; padding:1rem;">No results</td></tr> }
+@foreach (var g in Model)
+{
+    <tr>
+        <td class="name-cell">@(g.Country?.Name ?? g.CountryId.ToString())</td>
+        <td class="tag-cell">@g.Year</td>
+        <td class="num-cell">$@(g.GdpUsd / 1e12)T</td>
+        <td style="text-align:right; white-space:nowrap;">
+            <a asp-action="Edit" asp-route-id="@g.Id" class="btn-detail">EDIT</a>
+            <form asp-action="Delete" asp-route-id="@g.Id" method="post" style="display:inline;" onsubmit="return confirm('Delete?');">
+                @Html.AntiForgeryToken()
+                <button type="submit" class="btn-detail" style="border:none; background:none; color:var(--red); cursor:pointer;">DEL</button>
+            </form>
+        </td>
+    </tr>
+}

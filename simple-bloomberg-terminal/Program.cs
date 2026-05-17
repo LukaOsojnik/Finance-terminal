@@ -1,3 +1,5 @@
+using System.Globalization;
+using Microsoft.AspNetCore.Localization;
 using Microsoft.EntityFrameworkCore;
 using simple_bloomberg_terminal.Data;
 using simple_bloomberg_terminal.Repositories;
@@ -15,6 +17,12 @@ builder.Services.AddScoped<ICountryRepository, CountryRepository>();
 builder.Services.AddScoped<ICompanyRepository, CompanyRepository>();
 builder.Services.AddScoped<IEventRepository, EventRepository>();
 builder.Services.AddScoped<ICountryDetailsRepository, CountryDetailsRepository>();
+builder.Services.AddScoped<ITradeBlocRepository, TradeBlocRepository>();
+builder.Services.AddScoped<ICountryAdvantageRepository, CountryAdvantageRepository>();
+builder.Services.AddScoped<ICountryChallengeRepository, CountryChallengeRepository>();
+builder.Services.AddScoped<IGdpSnapshotRepository, GdpSnapshotRepository>();
+builder.Services.AddScoped<IRevenueSourceRepository, RevenueSourceRepository>();
+builder.Services.AddScoped<ICostSourceRepository, CostSourceRepository>();
 
 var app = builder.Build();
 
@@ -25,6 +33,19 @@ if (!app.Environment.IsDevelopment())
 }
 
 app.UseHttpsRedirection();
+
+var supportedCultures = new[]
+{
+    new CultureInfo("hr"),
+    new CultureInfo("en-US")
+};
+app.UseRequestLocalization(new RequestLocalizationOptions
+{
+    DefaultRequestCulture = new RequestCulture("hr"),
+    SupportedCultures = supportedCultures,
+    SupportedUICultures = supportedCultures
+});
+
 app.UseRouting();
 app.UseAuthorization();
 app.MapStaticAssets();

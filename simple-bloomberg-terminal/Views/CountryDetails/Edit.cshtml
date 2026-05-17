@@ -1,0 +1,17 @@
+@model simple_bloomberg_terminal.Models.ViewModels.CountryDetailsEditModel
+@{ ViewData["Title"] = "Edit Country Details"; }
+
+<div class="page-header"><h2><span class="page-header-accent">//</span> Edit Country Details</h2></div>
+
+<form asp-action="Edit" asp-route-countryId="@Model.CountryId" method="post" style="max-width:640px;">
+    @Html.AntiForgeryToken()
+    <input type="hidden" asp-for="CountryId"/>
+    <div asp-validation-summary="ModelOnly" class="text-danger"></div>
+
+    <div class="mb-3"><label asp-for="MarketPosition" class="form-label"></label><textarea asp-for="MarketPosition" class="form-control" rows="4"></textarea><span asp-validation-for="MarketPosition" class="text-danger"></span></div>
+
+    <button type="submit" class="btn btn-primary">SAVE</button>
+    <a asp-action="Index" class="btn btn-secondary">CANCEL</a>
+</form>
+
+@section Scripts { <partial name="_ValidationScriptsPartial"/> }

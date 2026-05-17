@@ -1,0 +1,61 @@
+@model simple_bloomberg_terminal.Models.ViewModels.CountryCreateModel
+@{
+    ViewData["Title"] = "New Country";
+}
+
+<div class="page-header">
+    <h2><span class="page-header-accent">//</span> New Country</h2>
+</div>
+
+<form asp-action="Create" method="post" style="max-width:640px;">
+    @Html.AntiForgeryToken()
+    <div asp-validation-summary="ModelOnly" class="text-danger"></div>
+
+    <div class="mb-3">
+        <label asp-for="Code" class="form-label"></label>
+        <input asp-for="Code" class="form-control"/>
+        <span asp-validation-for="Code" class="text-danger"></span>
+    </div>
+    <div class="mb-3">
+        <label asp-for="Name" class="form-label"></label>
+        <input asp-for="Name" class="form-control"/>
+        <span asp-validation-for="Name" class="text-danger"></span>
+    </div>
+    <div class="mb-3">
+        <label asp-for="Region" class="form-label"></label>
+        <input asp-for="Region" class="form-control"/>
+        <span asp-validation-for="Region" class="text-danger"></span>
+    </div>
+    <div class="mb-3">
+        <label asp-for="CurrencyCode" class="form-label"></label>
+        <input asp-for="CurrencyCode" class="form-control"/>
+        <span asp-validation-for="CurrencyCode" class="text-danger"></span>
+    </div>
+    <div class="mb-3">
+        <label asp-for="GdpUsd" class="form-label"></label>
+        <input asp-for="GdpUsd" class="form-control" type="number" step="any"/>
+        <span asp-validation-for="GdpUsd" class="text-danger"></span>
+    </div>
+    <div class="mb-3">
+        <label asp-for="Population" class="form-label"></label>
+        <input asp-for="Population" class="form-control" type="number"/>
+        <span asp-validation-for="Population" class="text-danger"></span>
+    </div>
+    <div class="mb-3">
+        <label asp-for="RiskRating" class="form-label"></label>
+        <input asp-for="RiskRating" class="form-control" type="number" step="0.1"/>
+        <span asp-validation-for="RiskRating" class="text-danger"></span>
+    </div>
+    <div class="mb-3">
+        <label asp-for="Notes" class="form-label"></label>
+        <textarea asp-for="Notes" class="form-control" rows="3"></textarea>
+        <span asp-validation-for="Notes" class="text-danger"></span>
+    </div>
+
+    <button type="submit" class="btn btn-primary">CREATE</button>
+    <a asp-action="Index" class="btn btn-secondary">CANCEL</a>
+</form>
+
+@section Scripts {
+    <partial name="_ValidationScriptsPartial"/>
+}

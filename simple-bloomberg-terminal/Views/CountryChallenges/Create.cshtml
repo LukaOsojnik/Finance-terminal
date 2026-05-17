@@ -1,0 +1,28 @@
+@model simple_bloomberg_terminal.Models.ViewModels.CountryChallengeCreateModel
+@{ ViewData["Title"] = "New Country Challenge"; }
+
+<div class="page-header"><h2><span class="page-header-accent">//</span> New Country Challenge</h2></div>
+
+<form asp-action="Create" method="post" style="max-width:640px;">
+    @Html.AntiForgeryToken()
+    <div asp-validation-summary="ModelOnly" class="text-danger"></div>
+
+    <div class="mb-3">
+        <label asp-for="CountryId" class="form-label">Country</label>
+        @await Html.PartialAsync("_AutocompletePicker", new AutocompletePickerModel {
+            FieldName = nameof(Model.CountryId),
+            SelectedId = Model.CountryId == 0 ? null : Model.CountryId,
+            SelectedLabel = "",
+            LookupUrl = Url.Action("Lookup", "Countries"),
+            Required = true,
+            Placeholder = "Type country name..."
+        })
+        <span asp-validation-for="CountryId" class="text-danger"></span>
+    </div>
+    <div class="mb-3"><label asp-for="Text" class="form-label"></label><textarea asp-for="Text" class="form-control" rows="3"></textarea><span asp-validation-for="Text" class="text-danger"></span></div>
+
+    <button type="submit" class="btn btn-primary">CREATE</button>
+    <a asp-action="Index" class="btn btn-secondary">CANCEL</a>
+</form>
+
+@section Scripts { <partial name="_ValidationScriptsPartial"/> }

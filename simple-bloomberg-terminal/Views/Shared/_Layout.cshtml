@@ -8,6 +8,7 @@
     <link rel="stylesheet" href="~/lib/bootstrap/dist/css/bootstrap.min.css"/>
     <link rel="stylesheet" href="~/css/site.css" asp-append-version="true"/>
     <link rel="stylesheet" href="~/simple_bloomberg_terminal.styles.css" asp-append-version="true"/>
+    <link rel="stylesheet" href="~/css/dtpicker.css" asp-append-version="true"/>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 </head>
 <body>
@@ -36,11 +37,32 @@
                     <li class="nav-item">
                         <a class="nav-link" asp-area="" asp-controller="Events" asp-action="Index">Events</a>
                     </li>
+                    <li class="nav-item">
+                        <a class="nav-link" asp-area="" asp-controller="TradeBlocs" asp-action="Index">Trade Blocs</a>
+                    </li>
+                    <li class="nav-item dropdown">
+                        <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown">More</a>
+                        <ul class="dropdown-menu">
+                            <li><a class="dropdown-item" asp-controller="CountryDetails" asp-action="Index">Country Details</a></li>
+                            <li><a class="dropdown-item" asp-controller="CountryAdvantages" asp-action="Index">Advantages</a></li>
+                            <li><a class="dropdown-item" asp-controller="CountryChallenges" asp-action="Index">Challenges</a></li>
+                            <li><a class="dropdown-item" asp-controller="GdpSnapshots" asp-action="Index">GDP Snapshots</a></li>
+                            <li><a class="dropdown-item" asp-controller="RevenueSources" asp-action="Index">Revenue Sources</a></li>
+                            <li><a class="dropdown-item" asp-controller="CostSources" asp-action="Index">Cost Sources</a></li>
+                        </ul>
+                    </li>
                 </ul>
             </div>
         </div>
     </nav>
 </header>
+
+<div id="ticker" data-turbo-permanent aria-label="Live data ticker">
+    <div class="ticker-tag">LIVE</div>
+    <div class="ticker-viewport">
+        <div class="ticker-track" id="ticker-track"></div>
+    </div>
+</div>
 
 <div class="container">
     <main role="main" class="pb-3">
@@ -67,6 +89,7 @@
 <script src="~/lib/jquery/dist/jquery.min.js"></script>
 <script src="~/lib/bootstrap/dist/js/bootstrap.bundle.min.js"></script>
 <script src="~/js/site.js" asp-append-version="true"></script>
+<script src="~/js/dtpicker.js" asp-append-version="true"></script>
 @await RenderSectionAsync("Scripts", required: false)
 </body>
 </html>

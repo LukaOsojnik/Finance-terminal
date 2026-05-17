@@ -2,13 +2,12 @@ using simple_bloomberg_terminal.Models.Entities;
 
 namespace simple_bloomberg_terminal.Repositories;
 
-// Java equivalent:
-// public interface ICountryRepository {
-//     List<Country> getAll();
-//     Optional<Country> getById(long id);
-// }
 public interface ICountryRepository
 {
     IEnumerable<Country> GetAll();
     Country? GetById(long id);
+    IEnumerable<Country> Search(string? term);
+    void Add(Country entity);
+    void Update(Country entity);
+    void SoftDelete(long id);
 }

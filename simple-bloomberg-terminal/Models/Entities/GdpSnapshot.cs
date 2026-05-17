@@ -10,6 +10,7 @@ public class GdpSnapshot
     public long CountryId { get; set; }
     public int Year { get; set; }
     public double GdpUsd { get; set; }
+    public DateTime? DeletedAt { get; set; }
 
     [ForeignKey("CountryId")]
     public virtual Country? Country { get; set; }

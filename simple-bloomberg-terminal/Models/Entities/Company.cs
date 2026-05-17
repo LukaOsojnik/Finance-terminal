@@ -24,6 +24,7 @@ public class Company
     public double? GrossMargin { get; set; }
     public DateOnly? AsOf { get; set; }
     public string? Notes { get; set; }
+    public DateTime? DeletedAt { get; set; }
 
     [ForeignKey("CountryId")]
     public virtual Country? Country { get; set; }

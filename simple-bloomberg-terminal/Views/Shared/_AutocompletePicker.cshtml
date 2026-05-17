@@ -1,0 +1,23 @@
+@model simple_bloomberg_terminal.Models.ViewModels.Shared.AutocompletePickerModel
+@{
+    var hasValidation = Model.Required || !string.IsNullOrEmpty(Model.RemoteUrl);
+    var attrs = new System.Text.StringBuilder();
+    attrs.Append($"data-val=\"{(hasValidation ? "true" : "false")}\" ");
+    if (Model.Required)
+    {
+        attrs.Append($"data-val-required=\"{Model.ErrorMessage}\" ");
+    }
+    if (!string.IsNullOrEmpty(Model.RemoteUrl))
+    {
+        attrs.Append($"data-val-remote=\"{Model.RemoteErrorMessage}\" ");
+        attrs.Append($"data-val-remote-url=\"{Model.RemoteUrl}\" ");
+        attrs.Append($"data-val-remote-additionalfields=\"*.{Model.FieldName}\" ");
+        attrs.Append("data-val-remote-type=\"GET\" ");
+    }
+}
+<div class="autocomplete" data-lookup-url="@Model.LookupUrl">
+    <input type="text" class="form-control autocomplete-input"
+           value="@Model.SelectedLabel" placeholder="@Model.Placeholder" autocomplete="off"/>
+    <input type="hidden" name="@Model.FieldName" value="@(Model.SelectedId?.ToString() ?? "")" @Html.Raw(attrs.ToString())/>
+    <ul class="autocomplete-results" hidden></ul>
+</div>
