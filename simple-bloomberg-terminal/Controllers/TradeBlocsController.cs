@@ -23,6 +23,14 @@ public class TradeBlocsController : Controller
     [HttpGet, Route("search")]
     public IActionResult Search(string? term) => PartialView("_TableBody", _tradeBlocs.Search(term));
 
+    [HttpGet, Route("{id:long}/overview")]
+    public IActionResult Details(long id)
+    {
+        var entity = _tradeBlocs.GetById(id);
+        if (entity == null) return NotFound();
+        return View(entity);
+    }
+
     [HttpGet, Route("create")]
     public IActionResult Create() { PopulateDropdowns(); return View(new TradeBlocCreateModel()); }
 

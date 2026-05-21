@@ -52,6 +52,7 @@ body {
   font-family: var(--font-mono);
   font-weight: 300;
   margin-bottom: 0;
+  padding-bottom: 2rem;
   min-height: 100vh;
   /* subtle scanline overlay */
   background-image:
@@ -506,11 +507,16 @@ a:hover { color: #fff; }
 
 /* ── Footer ── */
 .terminal-footer {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  width: 100%;
+  z-index: 1030;
   background: var(--bg-surface);
   border-top: 1px solid var(--border-subtle);
-  padding: 1rem 0;
+  padding: 0.15rem 0;
   font-family: var(--font-mono);
-  font-size: 0.68rem;
+  font-size: 0.55rem;
   color: var(--muted);
   letter-spacing: 0.06em;
 }

@@ -328,6 +328,19 @@
 
 ---
 
+## /trade-blocs/{id}/overview
+
+| Field | Value |
+|---|---|
+| Controller | TradeBlocsController |
+| Action | Details |
+| HTTP | GET |
+| Route source | `[Route("trade-blocs")]` + `[Route("{id:long}/overview")]` |
+| View | Views/TradeBlocs/Details.cshtml |
+| Parameters | id: long (route, constrained) |
+
+---
+
 ## /trade-blocs/{id}/edit
 
 | Field | Value |
@@ -667,6 +680,19 @@
 
 ---
 
+## /revenue-sources/{id}/breakdown
+
+| Field | Value |
+|---|---|
+| Controller | RevenueSourcesController |
+| Action | Details |
+| HTTP | GET |
+| Route source | `[Route("revenue-sources")]` + `[Route("{id:long}/breakdown")]` |
+| View | Views/RevenueSources/Details.cshtml |
+| Parameters | id: long (route, constrained) |
+
+---
+
 ## /revenue-sources/{id}/edit
 
 | Field | Value |
@@ -729,6 +755,19 @@
 | Route source | `[Route("cost-sources")]` + `[Route("create")]` |
 | View | Views/CostSources/Create.cshtml |
 | Parameters | form fields (POST) |
+
+---
+
+## /cost-sources/{id}/breakdown
+
+| Field | Value |
+|---|---|
+| Controller | CostSourcesController |
+| Action | Details |
+| HTTP | GET |
+| Route source | `[Route("cost-sources")]` + `[Route("{id:long}/breakdown")]` |
+| View | Views/CostSources/Details.cshtml |
+| Parameters | id: long (route, constrained) |
 
 ---
 

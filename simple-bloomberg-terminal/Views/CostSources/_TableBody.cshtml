@@ -11,6 +11,7 @@
         <td class="num-cell">@(c.Value.HasValue ? $"${c.Value.Value / 1e9:F2}B" : "—")</td>
         <td class="num-cell">@(c.Percentage.HasValue ? $"{c.Percentage.Value:F1}%" : "—")</td>
         <td style="text-align:right; white-space:nowrap;">
+            <a asp-action="Details" asp-route-id="@c.Id" class="btn-detail">DETAILS</a>
             <a asp-action="Edit" asp-route-id="@c.Id" class="btn-detail">EDIT</a>
             <form asp-action="Delete" asp-route-id="@c.Id" method="post" style="display:inline;" onsubmit="return confirm('Delete?');">
                 @Html.AntiForgeryToken()

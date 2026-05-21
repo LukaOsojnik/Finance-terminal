@@ -8,6 +8,7 @@
         <td class="name-cell">@(a.Country?.Name ?? a.CountryId.ToString())</td>
         <td class="tag-cell">@a.Text</td>
         <td style="text-align:right; white-space:nowrap;">
+            <a asp-controller="Countries" asp-action="Details" asp-route-id="@a.CountryId" class="btn-detail">DETAILS</a>
             <a asp-action="Edit" asp-route-id="@a.Id" class="btn-detail">EDIT</a>
             <form asp-action="Delete" asp-route-id="@a.Id" method="post" style="display:inline;" onsubmit="return confirm('Delete?');">
                 @Html.AntiForgeryToken()

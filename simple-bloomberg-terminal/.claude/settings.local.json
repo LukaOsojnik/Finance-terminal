@@ -22,7 +22,9 @@
       "Bash(dotnet tool *)",
       "PowerShell(mysql *)",
       "PowerShell(Get-ChildItem *)",
-      "WebSearch"
+      "WebSearch",
+      "Bash(Get-ChildItem -Recurse -Depth 2 -File)",
+      "Bash(Select-Object FullName)"
     ]
   },
   "outputStyle": "Learning"

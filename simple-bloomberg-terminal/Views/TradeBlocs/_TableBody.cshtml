@@ -10,6 +10,7 @@
         <td class="tag-cell">@t.Countries.Count(c => c.DeletedAt == null)</td>
         <td class="num-cell">@(t.FoundedDate?.ToShortDateString() ?? "—")</td>
         <td style="text-align:right; white-space:nowrap;">
+            <a asp-action="Details" asp-route-id="@t.Id" class="btn-detail">DETAILS</a>
             <a asp-action="Edit" asp-route-id="@t.Id" class="btn-detail">EDIT</a>
             <form asp-action="Delete" asp-route-id="@t.Id" method="post" style="display:inline;" onsubmit="return confirm('Delete @t.Name?');">
                 @Html.AntiForgeryToken()

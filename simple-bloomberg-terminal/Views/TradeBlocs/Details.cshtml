@@ -1,0 +1,191 @@
+@using simple_bloomberg_terminal.Models.Entities
+@model TradeBloc
+@{
+    ViewData["Title"] = Model.Name + " — Details";
+    var activeCountries = Model.Countries.Where(c => c.DeletedAt == null).ToList();
+    var activeEvents = Model.Events.Where(e => e.DeletedAt == null).OrderByDescending(e => e.Date).ToList();
+}
+
+@* ── Hero ── *@
+<section class="detail-hero">
+    <div class="detail-hero-back">
+        <a asp-controller="TradeBlocs" asp-action="Index" class="detail-back-link">← TRADE BLOCS</a>
+    </div>
+
+    <div class="detail-hero-top">
+        <div class="detail-hero-name-row">
+            <h1 class="detail-hero-name">@Model.Name</h1>
+            <span class="detail-code-badge">@Model.Code</span>
+        </div>
+    </div>
+
+    <div class="detail-metrics-row">
+        <div class="detail-metric-card">
+            <div class="detail-metric-label">FOUNDED</div>
+            <div class="detail-metric-value">
+                @if (Model.FoundedDate.HasValue)
+                {
+                    <span>@Model.FoundedDate.Value.ToShortDateString()</span>
+                }
+                else
+                {
+                    <span class="muted-cell">—</span>
+                }
+            </div>
+        </div>
+        <div class="detail-metric-card">
+            <div class="detail-metric-label">MEMBER COUNTRIES</div>
+            <div class="detail-metric-value">@activeCountries.Count</div>
+        </div>
+        <div class="detail-metric-card">
+            <div class="detail-metric-label">RELATED EVENTS</div>
+            <div class="detail-metric-value">@activeEvents.Count</div>
+        </div>
+        <div class="detail-metric-card">
+            <div class="detail-metric-label">TOTAL GDP</div>
+            <div class="detail-metric-value">
+                @{
+                    var totalGdp = activeCountries.Where(c => c.GdpUsd.HasValue).Sum(c => c.GdpUsd!.Value);
+                }
+                @if (totalGdp > 0)
+                {
+                    <span>$@((totalGdp / 1e12).ToString("F2"))T</span>
+                }
+                else
+                {
+                    <span class="muted-cell">—</span>
+                }
+            </div>
+        </div>
+        <div class="detail-metric-card">
+            <div class="detail-metric-label">TOTAL POPULATION</div>
+            <div class="detail-metric-value">
+                @{
+                    var totalPop = activeCountries.Where(c => c.Population.HasValue).Sum(c => c.Population!.Value);
+                }
+                @if (totalPop > 0)
+                {
+                    <span>@((totalPop / 1_000_000.0).ToString("F0"))M</span>
+                }
+                else
+                {
+                    <span class="muted-cell">—</span>
+                }
+            </div>
+        </div>
+    </div>
+</section>
+
+@* ── Description ── *@
+@if (!string.IsNullOrWhiteSpace(Model.Description))
+{
+    <div class="detail-section-label">// CHARTER</div>
+    <div class="row g-3 mb-4">
+        <div class="col-12">
+            <div class="detail-card detail-card-accent">
+                <p class="detail-market-position-text">@Model.Description</p>
+            </div>
+        </div>
+    </div>
+}
+
+@* ── Members + Events ── *@
+<div class="row g-2 mb-2 align-items-center">
+    <div class="col-12 col-md-6"><div class="detail-section-label mb-0">// MEMBER COUNTRIES</div></div>
+    <div class="col-12 col-md-6"><div class="detail-section-label mb-0">// RELATED EVENTS</div></div>
+</div>
+<div class="row g-3 mb-5 align-items-start">
+    <div class="col-12 col-md-6">
+        <div class="detail-card">
+            @if (activeCountries.Count == 0)
+            {
+                <div class="detail-pending">NO MEMBERS ON RECORD</div>
+            }
+            else
+            {
+                <table class="terminal-table">
+                    <thead>
+                        <tr>
+                            <th>Code</th>
+                            <th>Name</th>
+                            <th>Region</th>
+                            <th style="text-align:right;">GDP</th>
+                            <th></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var c in activeCountries.OrderBy(c => c.Name))
+                        {
+                            <tr>
+                                <td class="code-cell">@c.Code</td>
+                                <td class="name-cell">@c.Name</td>
+                                <td class="tag-cell">@c.Region</td>
+                                <td class="num-cell">
+                                    @if (c.GdpUsd.HasValue)
+                                    {
+                                        <span>$@((c.GdpUsd.Value / 1e12).ToString("F2"))T</span>
+                                    }
+                                    else
+                                    {
+                                        <span class="muted-cell">—</span>
+                                    }
+                                </td>
+                                <td>
+                                    <a asp-controller="Countries" asp-action="Details" asp-route-id="@c.Id" class="btn-detail">VIEW →</a>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            }
+        </div>
+    </div>
+    <div class="col-12 col-md-6">
+        <div class="detail-card">
+            @if (activeEvents.Count == 0)
+            {
+                <div class="detail-pending">NO EVENTS ON RECORD</div>
+            }
+            else
+            {
+                <table class="terminal-table">
+                    <thead>
+                        <tr>
+                            <th>Title</th>
+                            <th>Type</th>
+                            <th>Date</th>
+                            <th>Impact</th>
+                            <th></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var ev in activeEvents)
+                        {
+                            var impactClass = ev.ImpactScore.HasValue
+                                ? (ev.ImpactScore.Value >= 7 ? "impact-high" : ev.ImpactScore.Value >= 4 ? "impact-medium" : "impact-low")
+                                : "";
+                            <tr>
+                                <td class="name-cell">@ev.Title</td>
+                                <td class="tag-cell">@ev.Type.ToString().Replace("_", " ")</td>
+                                <td class="muted-cell">@ev.Date.ToShortDateString()</td>
+                                <td>
+                                    @if (ev.ImpactScore.HasValue)
+                                    {
+                                        <span class="impact-badge @impactClass">@ev.ImpactScore.Value</span>
+                                    }
+                                    else
+                                    {
+                                        <span class="muted-cell">—</span>
+                                    }
+                                </td>
+                                <td>
+                                    <a asp-controller="Events" asp-action="Details" asp-route-id="@ev.Id" class="btn-detail">VIEW →</a>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            }
+        </div>
+    </div>
+</div>

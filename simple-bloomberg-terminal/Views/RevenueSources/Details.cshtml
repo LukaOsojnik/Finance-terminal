@@ -1,0 +1,158 @@
+@using simple_bloomberg_terminal.Models.Entities
+@model RevenueSource
+@{
+    ViewData["Title"] = (Model.Company?.Name ?? "Revenue Source") + " — " + Model.Name;
+}
+
+@* ── Hero ── *@
+<section class="detail-hero">
+    <div class="detail-hero-back">
+        <a asp-controller="RevenueSources" asp-action="Index" class="detail-back-link">← REVENUE SOURCES</a>
+    </div>
+
+    <div class="detail-hero-top">
+        <div class="detail-hero-name-row">
+            <h1 class="detail-hero-name">@Model.Name</h1>
+            <span class="detail-code-badge">@Model.SourceType</span>
+            @if (Model.Company != null)
+            {
+                <span class="detail-region-tag">@Model.Company.Name</span>
+            }
+        </div>
+        @if (Model.DataSource.HasValue)
+        {
+            <div class="detail-hero-sub">SOURCE: <span class="detail-hero-accent">@Model.DataSource.Value</span></div>
+        }
+    </div>
+
+    <div class="detail-metrics-row">
+        <div class="detail-metric-card">
+            <div class="detail-metric-label">VALUE</div>
+            <div class="detail-metric-value">
+                @if (Model.Value.HasValue)
+                {
+                    <span>$@((Model.Value.Value / 1e9).ToString("F2"))B</span>
+                }
+                else
+                {
+                    <span class="muted-cell">—</span>
+                }
+            </div>
+        </div>
+        <div class="detail-metric-card">
+            <div class="detail-metric-label">SHARE OF REVENUE</div>
+            <div class="detail-metric-value">
+                @if (Model.Percentage.HasValue)
+                {
+                    <span>@(Model.Percentage.Value.ToString("F1"))%</span>
+                }
+                else
+                {
+                    <span class="muted-cell">—</span>
+                }
+            </div>
+        </div>
+        <div class="detail-metric-card">
+            <div class="detail-metric-label">SOURCE TYPE</div>
+            <div class="detail-metric-value">@Model.SourceType</div>
+        </div>
+        <div class="detail-metric-card">
+            <div class="detail-metric-label">COMPANY</div>
+            <div class="detail-metric-value">
+                @if (Model.Company != null)
+                {
+                    <span>@Model.Company.Name</span>
+                }
+                else
+                {
+                    <span class="muted-cell">—</span>
+                }
+            </div>
+        </div>
+    </div>
+</section>
+
+@* ── Breakdown + Counterparty ── *@
+<div class="row g-2 mb-2 align-items-center">
+    <div class="col-12 col-md-6"><div class="detail-section-label mb-0">// SOURCE DATA</div></div>
+    <div class="col-12 col-md-6"><div class="detail-section-label mb-0">// COUNTERPARTY</div></div>
+</div>
+<div class="row g-3 mb-5 align-items-start">
+    <div class="col-12 col-md-6">
+        <div class="detail-card">
+            <div class="detail-card-title">REVENUE STREAM</div>
+            <table class="terminal-table">
+                <tbody>
+                    <tr>
+                        <td class="tag-cell">Name</td>
+                        <td class="name-cell">@Model.Name</td>
+                    </tr>
+                    <tr>
+                        <td class="tag-cell">Type</td>
+                        <td class="name-cell">@Model.SourceType</td>
+                    </tr>
+                    <tr>
+                        <td class="tag-cell">Value</td>
+                        <td class="num-cell">
+                            @if (Model.Value.HasValue)
+                            {
+                                <span>$@(Model.Value.Value.ToString("N0"))</span>
+                            }
+                            else
+                            {
+                                <span class="muted-cell">—</span>
+                            }
+                        </td>
+                    </tr>
+                    <tr>
+                        <td class="tag-cell">Percentage</td>
+                        <td class="num-cell">
+                            @if (Model.Percentage.HasValue)
+                            {
+                                <span>@(Model.Percentage.Value.ToString("F2"))%</span>
+                            }
+                            else
+                            {
+                                <span class="muted-cell">—</span>
+                            }
+                        </td>
+                    </tr>
+                    <tr>
+                        <td class="tag-cell">Data Source</td>
+                        <td class="name-cell">@(Model.DataSource.HasValue ? Model.DataSource.Value.ToString() : "—")</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+    <div class="col-12 col-md-6">
+        <div class="detail-card">
+            <div class="detail-card-title">RELATED COMPANY</div>
+            @if (Model.RelatedCompany != null)
+            {
+                <table class="terminal-table">
+                    <tbody>
+                        <tr>
+                            <td class="tag-cell">Name</td>
+                            <td class="name-cell">@Model.RelatedCompany.Name</td>
+                        </tr>
+                        <tr>
+                            <td class="tag-cell">Sector</td>
+                            <td class="tag-cell">@Model.RelatedCompany.Sector.ToString().Replace("_", " ")</td>
+                        </tr>
+                        <tr>
+                            <td class="tag-cell"></td>
+                            <td>
+                                <a asp-controller="Companies" asp-action="Details" asp-route-id="@Model.RelatedCompany.Id" class="btn-detail">VIEW COMPANY →</a>
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            }
+            else
+            {
+                <div class="detail-pending">NO COUNTERPARTY LINKED</div>
+            }
+        </div>
+    </div>
+</div>
