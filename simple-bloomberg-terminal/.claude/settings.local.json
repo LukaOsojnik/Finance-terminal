@@ -19,7 +19,10 @@
       "Bash(xargs -I {} sh -c 'echo \"=== {} ===\"; grep -nE \"public \\(async \\)?\\(Task<\\)?IActionResult \\(Index|Search|Create|Edit|Delete|Lookup\\)\" {}')",
       "Bash(grep -rn \"DateGreaterThan\\\\|RemoteAttribute\\\\|\\\\\\\\[Remote\" Models/ -r)",
       "Bash(Get-ChildItem -Recurse -Depth 0)",
-      "Bash(dotnet tool *)"
+      "Bash(dotnet tool *)",
+      "PowerShell(mysql *)",
+      "PowerShell(Get-ChildItem *)",
+      "WebSearch"
     ]
   },
   "outputStyle": "Learning"

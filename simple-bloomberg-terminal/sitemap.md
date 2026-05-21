@@ -758,6 +758,34 @@
 
 ---
 
+## /graph
+
+| Field | Value |
+|---|---|
+| Controller | GraphController |
+| Action | Index |
+| HTTP | GET |
+| Route source | `[Route("graph")]` + `[Route("")]` |
+| View | Views/Graph/Index.cshtml |
+| Parameters | companyId: long? (query string, optional) |
+| Notes | Renders network graph explorer with company picker; `?companyId=` selects starting center. ViewModel: `GraphIndexViewModel` (Models/ViewModels/GraphViewModels.cs) |
+
+---
+
+## /graph/data/company/{id}
+
+| Field | Value |
+|---|---|
+| Controller | GraphController |
+| Action | CompanyGraph |
+| HTTP | GET |
+| Route source | `[Route("graph")]` + `[Route("data/company/{id:long}")]` |
+| View | — (JSON `GraphResponse` record with `GraphNode`, `GraphEdge` records) |
+| Parameters | id: long (route, constrained) |
+| Notes | Consumed by JS in Views/Graph/Index.cshtml; returns NotFound when company missing or soft-deleted |
+
+---
+
 ## /Home/Error
 
 | Field | Value |
@@ -774,4 +802,4 @@
 
 ## Navigation (Views/Shared/_Layout.cshtml)
 
-Top nav links: Countries, Companies, Events, Trade Blocs, plus a "More" dropdown containing: Country Details, Country Advantages, Country Challenges, GDP Snapshots, Revenue Sources, Cost Sources.
+Top nav links: Countries, Companies, Events, Trade Blocs, Graph, plus a "More" dropdown containing: Country Details, Country Advantages, Country Challenges, GDP Snapshots, Revenue Sources, Cost Sources.
