@@ -7,6 +7,7 @@ public interface ICountryRepository
     IEnumerable<Country> GetAll();
     Country? GetById(long id);
     IEnumerable<Country> Search(string? term);
+    IEnumerable<Country> Lookup(string? term);
     void Add(Country entity);
     void Update(Country entity);
     void SoftDelete(long id);

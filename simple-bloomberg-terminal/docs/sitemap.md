@@ -825,6 +825,20 @@
 
 ---
 
+## api/graph/company
+
+| Field | Value |
+|---|---|
+| Controller | GraphController (Controllers/Api/) |
+| Action | CompanyGraph |
+| HTTP | GET |
+| Route source | `[ApiController]` + `[Route("api/[controller]")]` + `[HttpGet("company")]` |
+| View | — (JSON `GraphResponse` record: `CenterId`, `CenterLabel`, `Nodes`, `Edges`) |
+| Parameters | cik: string (query string, `[FromQuery]`) |
+| Notes | Same hub-and-spoke graph as `/graph/data/company/{id}` but keyed by exact CIK; shares the `Company -> GraphResponse` AutoMapper converter. Returns 400 if `cik` blank, 404 if no company with that CIK |
+
+---
+
 ## /Home/Error
 
 | Field | Value |

@@ -24,9 +24,20 @@ public class CountryRepository(AppDbContext db) : ICountryRepository
         {
             var t = term.Trim();
             q = q.Where(c =>
-                EF.Functions.Like(c.Name, $"%{t}%") ||
-                EF.Functions.Like(c.Code, $"%{t}%") ||
-                EF.Functions.Like(c.Region, $"%{t}%"));
+                EF.Functions.Like(c.Name, $"{t}%") ||
+                EF.Functions.Like(c.Code, $"{t}%") ||
+                EF.Functions.Like(c.Region, $"{t}%"));
+        }
+        return q.OrderBy(c => c.Name).ToList();
+    }
+
+    public IEnumerable<Country> Lookup(string? term)
+    {
+        var q = db.Countries.Where(c => c.DeletedAt == null);
+        if (!string.IsNullOrWhiteSpace(term))
+        {
+            var t = term.Trim();
+            q = q.Where(c => EF.Functions.Like(c.Name, $"{t}%"));
         }
         return q.OrderBy(c => c.Name).ToList();
     }

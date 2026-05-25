@@ -13,7 +13,8 @@ public record GraphNode(
     string Label,
     string Group,
     string? Title,
-    double? ValueUsd
+    double? ValueUsd,
+    long? RelatedCompanyId = null
 );
 
 public record GraphEdge(

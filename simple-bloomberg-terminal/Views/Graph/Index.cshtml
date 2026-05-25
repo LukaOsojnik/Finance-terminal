@@ -150,14 +150,19 @@
                 const node = lastData.nodes.find(n => n.id === id);
                 if (!node) return;
 
+                let navTarget = null;
                 if (node.group === 'related') {
-                    const newId = node.id.split(':')[1];
-                    select.value = newId;
+                    navTarget = node.id.split(':')[1];
+                } else if ((node.group === 'revenue' || node.group === 'cost') && node.relatedCompanyId) {
+                    navTarget = String(node.relatedCompanyId);
+                }
+                if (navTarget) {
+                    select.value = navTarget;
                     const url = new URL(window.location.href);
-                    url.searchParams.set('companyId', newId);
+                    url.searchParams.set('companyId', navTarget);
                     history.replaceState({}, '', url);
                     detail.hidden = true;
-                    load(newId);
+                    load(navTarget);
                     return;
                 }
 

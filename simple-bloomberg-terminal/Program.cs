@@ -6,10 +6,16 @@ using simple_bloomberg_terminal.Repositories;
 
 var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddControllersWithViews();
+builder.Services.AddAutoMapper(cfg => { }, typeof(Program).Assembly);
 
 var connectionString = builder.Configuration.GetConnectionString("DefaultConnection");
+// AutoDetect opens a MySQL connection at startup; skip it under the integration-test
+// host ("Testing"), which removes this provider and swaps in SQLite anyway.
+var serverVersion = builder.Environment.IsEnvironment("Testing")
+    ? new MySqlServerVersion(new Version(8, 0, 0))
+    : ServerVersion.AutoDetect(connectionString);
 builder.Services.AddDbContext<AppDbContext>(options =>
-    options.UseMySql(connectionString, ServerVersion.AutoDetect(connectionString)));
+    options.UseMySql(connectionString, serverVersion));
 
 // Scoped = one instance per HTTP request (was Singleton — Singleton cannot hold a Scoped DbContext).
 // Spring equivalent: @Transactional method scope vs application-scoped bean.
@@ -55,3 +61,6 @@ app.MapControllerRoute(
     .WithStaticAssets();
 
 app.Run();
+
+// Exposed so the integration-test WebApplicationFactory<Program> can boot the app.
+public partial class Program { }

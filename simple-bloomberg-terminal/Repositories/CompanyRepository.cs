@@ -19,6 +19,28 @@ public class CompanyRepository(AppDbContext db) : ICompanyRepository
             .Include(c => c.Events)
             .FirstOrDefault(c => c.Id == id && c.DeletedAt == null);
 
+    public Company? GetWithGraphRelations(long id) =>
+        db.Companies
+            .Include(c => c.Country)
+            .Include(c => c.Events)
+            .Include(c => c.RevenueSources).ThenInclude(r => r.RelatedCompany)
+            .Include(c => c.CostSources).ThenInclude(c2 => c2.RelatedCompany)
+            .Include(c => c.RevenueFromDependents).ThenInclude(r => r.Company)
+            .Include(c => c.CostFromDependents).ThenInclude(c2 => c2.Company)
+            .FirstOrDefault(c => c.Id == id && c.DeletedAt == null);
+
+    // Exact, literal CIK match (caller sends the format stored in the DB). Same includes as
+    // GetWithGraphRelations so the graph converter has every relation it needs.
+    public Company? GetWithGraphRelationsByCik(string cik) =>
+        db.Companies
+            .Include(c => c.Country)
+            .Include(c => c.Events)
+            .Include(c => c.RevenueSources).ThenInclude(r => r.RelatedCompany)
+            .Include(c => c.CostSources).ThenInclude(c2 => c2.RelatedCompany)
+            .Include(c => c.RevenueFromDependents).ThenInclude(r => r.Company)
+            .Include(c => c.CostFromDependents).ThenInclude(c2 => c2.Company)
+            .FirstOrDefault(c => c.Cik == cik && c.DeletedAt == null);
+
     public IEnumerable<Company> Search(string? term)
     {
         var q = db.Companies
@@ -28,9 +50,22 @@ public class CompanyRepository(AppDbContext db) : ICompanyRepository
         {
             var t = term.Trim();
             q = q.Where(c =>
-                EF.Functions.Like(c.Name, $"%{t}%") ||
-                (c.Cik != null && EF.Functions.Like(c.Cik, $"%{t}%")) ||
-                (c.Country != null && EF.Functions.Like(c.Country.Name, $"%{t}%")));
+                EF.Functions.Like(c.Name, $"{t}%") ||
+                (c.Cik != null && EF.Functions.Like(c.Cik, $"{t}%")) ||
+                (c.Country != null && EF.Functions.Like(c.Country.Name, $"{t}%")));
+        }
+        return q.OrderBy(c => c.Name).ToList();
+    }
+
+    public IEnumerable<Company> Lookup(string? term)
+    {
+        var q = db.Companies.Where(c => c.DeletedAt == null);
+        if (!string.IsNullOrWhiteSpace(term))
+        {
+            var t = term.Trim();
+            q = q.Where(c =>
+                EF.Functions.Like(c.Name, $"{t}%") ||
+                (c.Cik != null && EF.Functions.Like(c.Cik, $"{t}%")));
         }
         return q.OrderBy(c => c.Name).ToList();
     }

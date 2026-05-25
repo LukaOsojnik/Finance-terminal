@@ -36,7 +36,7 @@ public class CountriesController : Controller
 
     [HttpGet, Route("lookup")]
     public IActionResult Lookup(string? term) =>
-        Json(_countries.Search(term).Take(10).Select(c => new { id = c.Id, label = c.Name }));
+        Json(_countries.Lookup(term).Take(10).Select(c => new { id = c.Id, label = c.Name }));
 
     [HttpGet, Route("{id:long}/overview")]
     public IActionResult Details(long id)

@@ -28,7 +28,7 @@ public class CompaniesController : Controller
 
     [HttpGet, Route("lookup")]
     public IActionResult Lookup(string? term) =>
-        Json(_companies.Search(term).Take(10).Select(c => new { id = c.Id, label = c.Name }));
+        Json(_companies.Lookup(term).Take(10).Select(c => new { id = c.Id, label = c.Name }));
 
     [HttpGet, Route("{id:long}/profile")]
     public IActionResult Details(long id)
