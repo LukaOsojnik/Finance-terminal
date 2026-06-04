@@ -37,6 +37,15 @@ builder.Services.AddScoped<IFilingRepository, FilingRepository>();
 builder.Services.AddHttpClient<IStockApiClient, StockApiClient>();
 builder.Services.AddScoped<IStockService, StockService>();
 
+// DeepSeek: typed HttpClient shared by the phase-2 reviewer (Mode A) and the filing extractor
+// (Mode B) on the /extraction page.
+builder.Services.AddHttpClient<IDeepSeekClient, DeepSeekClient>();
+builder.Services.AddScoped<IReviewService, ReviewService>();
+builder.Services.AddScoped<IFilingExtractionService, FilingExtractionService>();
+builder.Services.AddScoped<IExtractionChatService, ExtractionChatService>();
+// Caches a filing's cleaned section text so each chat turn doesn't re-download the document.
+builder.Services.AddMemoryCache();
+
 // Financial Modeling Prep: typed HttpClient feeding the New Company form (global fundamentals).
 builder.Services.AddHttpClient<IFmpApiClient, FmpApiClient>();
 // REST Countries: typed HttpClient to auto-create a Country row when FMP names one we lack.

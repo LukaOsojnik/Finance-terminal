@@ -1,10 +1,12 @@
 using System.Globalization;
+using System.Text.Json;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Rendering;
 using simple_bloomberg_terminal.Models.Entities;
 using simple_bloomberg_terminal.Models.Enums;
 using simple_bloomberg_terminal.Models.ViewModels;
 using simple_bloomberg_terminal.Repositories;
+using simple_bloomberg_terminal.Services;
 
 namespace simple_bloomberg_terminal.Controllers;
 
@@ -21,17 +23,26 @@ public class ExtractionController : Controller
     private readonly ISourceFieldReviewRepository _reviews;
     private readonly ICompanyRepository _companies;
     private readonly IFilingRepository _filings;
+    private readonly IReviewService _reviewer;
+    private readonly IFilingExtractionService _extractor;
+    private readonly IExtractionChatService _chat;
 
     public ExtractionController(
         IRevenueSourceRepository revenue,
         ISourceFieldReviewRepository reviews,
         ICompanyRepository companies,
-        IFilingRepository filings)
+        IFilingRepository filings,
+        IReviewService reviewer,
+        IFilingExtractionService extractor,
+        IExtractionChatService chat)
     {
         _revenue = revenue;
         _reviews = reviews;
         _companies = companies;
         _filings = filings;
+        _reviewer = reviewer;
+        _extractor = extractor;
+        _chat = chat;
     }
 
     [HttpGet, Route("")]
@@ -76,6 +87,7 @@ public class ExtractionController : Controller
                 pointer = r.ReferencePointer,
                 endpoint = r.Endpoint,
                 mark = r.Mark,
+                rationale = r.Rationale,
                 filing = r.Filing == null ? null : $"{r.Filing.Form} {r.Filing.AccessionNumber}".Trim()
             });
         return Json(refs);
@@ -91,90 +103,229 @@ public class ExtractionController : Controller
         if (!Enum.TryParse<ReviewableField>(req.Field, out var field)) return BadRequest("Invalid field.");
         if (!Enum.TryParse<SourceType>(req.SourceType, out var sourceType)) return BadRequest("Invalid source type.");
 
-        // Resolve the proof filing (upsert by accession) when the proof came from a filing
-        // document. null when the proof was taken from Company Facts. The filing is attached to
-        // this cell's review (below), so one source can cite different filings per field.
-        var filingId = ResolveFilingId(req);
+        // Proof filing: upsert by accession when the proof came from a filing document; null from
+        // Company Facts. Attached per-field, so one source can cite different filings per cell.
+        var filingId = ResolveFilingId(req.CompanyId, req.FilingAccessionNumber, req.FilingForm, req.FilingDate, req.FilingUrl);
 
-        // 1. The source row is the source of truth for the values — create or update it first,
-        //    so a review FK can only ever point at a row that exists.
-        RevenueSource row;
-        if (req.RevenueSourceId is { } id)
-        {
-            var existing = _revenue.GetById(id);
-            if (existing is null) return NotFound("Source row not found.");
-            existing.SourceType = sourceType;
-            existing.Name = req.Name;
-            existing.Value = req.Value;
-            existing.Percentage = req.Percentage;
-            existing.RelatedCompanyId = req.RelatedCompanyId;
-            _revenue.Update(existing);
-            row = existing;
-        }
-        else
-        {
-            row = new RevenueSource(sourceType, req.Name, req.CompanyId)
-            {
-                Value = req.Value,
-                Percentage = req.Percentage,
-                RelatedCompanyId = req.RelatedCompanyId,
-                DataSource = DataSource.MANUAL
-            };
-            _revenue.Add(row);   // assigns row.Id
-        }
+        // The source row is the source of truth for the values — upsert it first so a review FK can
+        // only ever point at a row that exists.
+        var row = UpsertRow(req.CompanyId, req.RevenueSourceId, sourceType, req.Name, req.Value, req.Percentage, req.RelatedCompanyId);
+        if (row is null) return NotFound("Source row not found.");
 
         var endpoint = string.IsNullOrWhiteSpace(req.Endpoint)
             ? $"POST /api/stock/refresh/{req.CompanyId}"
             : req.Endpoint;
+        var review = UpsertReview(req.CompanyId, row.Id, field, endpoint,
+            req.ReferencePointer, req.ReferenceSnapshot, req.ReferencedValue, filingId);
+        return Json(new ReferenceResult(row.Id, review.Id, field.ToString()));
+    }
 
-        // 2. One current reference per (row, field) — unique index demands upsert, not blind insert.
-        var review = _reviews.GetByCompany(req.CompanyId)
-            .FirstOrDefault(r => r.RevenueSourceId == row.Id && r.Field == field);
+    // One button to save the whole form: upsert the row, then upsert a proof per field that carries
+    // one. Replaces the old per-cell "Use as reference" flow.
+    [HttpPost, Route("save")]
+    public IActionResult Save([FromBody] SaveRequest req)
+    {
+        if (req is null || req.CompanyId <= 0) return BadRequest("CompanyId required.");
+        if (string.IsNullOrWhiteSpace(req.Name)) return BadRequest("Name required.");
+        if (!Enum.TryParse<SourceType>(req.SourceType, out var sourceType)) return BadRequest("Invalid source type.");
+
+        var row = UpsertRow(req.CompanyId, req.RevenueSourceId, sourceType, req.Name, req.Value, req.Percentage, req.RelatedCompanyId);
+        if (row is null) return NotFound("Source row not found.");
+
+        var saved = 0;
+        foreach (var p in req.Proofs ?? [])
+        {
+            if (string.IsNullOrWhiteSpace(p.ReferenceSnapshot)) continue;
+            if (!Enum.TryParse<ReviewableField>(p.Field, out var field)) continue;
+            var filingId = ResolveFilingId(req.CompanyId, p.FilingAccessionNumber, p.FilingForm, p.FilingDate, p.FilingUrl);
+            var endpoint = string.IsNullOrWhiteSpace(p.Endpoint) ? "AI extraction" : p.Endpoint;
+            UpsertReview(req.CompanyId, row.Id, field, endpoint, p.ReferencePointer, p.ReferenceSnapshot, p.ReferencedValue, filingId);
+            saved++;
+        }
+        return Json(new { revenueSourceId = row.Id, proofs = saved });
+    }
+
+    // Create or update the source row from the form values. Returns null only when an existing-row
+    // id was given but no such row exists (caller maps that to NotFound).
+    private RevenueSource? UpsertRow(
+        long companyId, long? rowId, SourceType sourceType, string name,
+        double? value, double? percentage, long? relatedCompanyId)
+    {
+        if (rowId is { } id)
+        {
+            var existing = _revenue.GetById(id);
+            if (existing is null) return null;
+            existing.SourceType = sourceType;
+            existing.Name = name;
+            existing.Value = value;
+            existing.Percentage = percentage;
+            existing.RelatedCompanyId = relatedCompanyId;
+            _revenue.Update(existing);
+            return existing;
+        }
+
+        var row = new RevenueSource(sourceType, name, companyId)
+        {
+            Value = value,
+            Percentage = percentage,
+            RelatedCompanyId = relatedCompanyId,
+            DataSource = DataSource.MANUAL
+        };
+        _revenue.Add(row);   // assigns row.Id
+        return row;
+    }
+
+    // One current proof per (row, field) — the unique index demands upsert, not blind insert. New
+    // proof clears any prior phase-2 verdict (stale-pass guard).
+    private SourceFieldReview UpsertReview(
+        long companyId, long rowId, ReviewableField field, string endpoint,
+        string pointer, string snapshot, string? referencedValue, long? filingId)
+    {
+        var review = _reviews.GetByCompany(companyId)
+            .FirstOrDefault(r => r.RevenueSourceId == rowId && r.Field == field);
         if (review is null)
         {
             review = new SourceFieldReview
             {
-                CompanyId = req.CompanyId,
+                CompanyId = companyId,
                 Relation = RelationKind.REVENUE,
-                RevenueSourceId = row.Id,
+                RevenueSourceId = rowId,
                 Field = field,
                 Endpoint = endpoint,
-                ReferencePointer = req.ReferencePointer,
-                ReferenceSnapshot = req.ReferenceSnapshot,
-                ReferencedValue = req.ReferencedValue,
+                ReferencePointer = pointer,
+                ReferenceSnapshot = snapshot,
+                ReferencedValue = referencedValue,
                 FilingId = filingId
             };
             _reviews.Add(review);
         }
         else
         {
-            // New proof invalidates any prior phase-2 verdict (stale-pass guard).
             review.Endpoint = endpoint;
-            review.ReferencePointer = req.ReferencePointer;
-            review.ReferenceSnapshot = req.ReferenceSnapshot;
-            review.ReferencedValue = req.ReferencedValue;
-            review.FilingId = filingId;   // reflects the current proof's filing (null from Company Facts)
+            review.ReferencePointer = pointer;
+            review.ReferenceSnapshot = snapshot;
+            review.ReferencedValue = referencedValue;
+            review.FilingId = filingId;
             review.Mark = null;
             review.Rationale = null;
             review.ReviewedAt = null;
             review.ReviewerModel = null;
             _reviews.Update(review);
         }
+        return review;
+    }
 
-        return Json(new ReferenceResult(row.Id, review.Id, field.ToString()));
+    // Mode A — run the phase-2 AI reviewer over this company's unreviewed cells (human-entered
+    // value + proof). Returns the pass/fail tally so the page can refresh its marks.
+    [HttpPost, Route("review/{companyId:long}")]
+    public async Task<IActionResult> Review(long companyId)
+    {
+        if (_companies.GetById(companyId) is null) return NotFound();
+        try
+        {
+            var result = await _reviewer.ReviewCompanyAsync(companyId);
+            return Json(result);
+        }
+        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
+        {
+            return StatusCode(StatusCodes.Status503ServiceUnavailable, "DeepSeek unreachable.");
+        }
+    }
+
+    // Mode B — AI reads one filing and proposes revenue rows + per-field proof for the human to
+    // confirm. Persists nothing; the page fills the form and the existing save path freezes proof.
+    [HttpPost, Route("auto-extract/{companyId:long}")]
+    public async Task<IActionResult> AutoExtract(long companyId, [FromQuery] string accession, [FromQuery] string doc)
+    {
+        if (_companies.GetById(companyId) is null) return NotFound();
+        if (string.IsNullOrWhiteSpace(accession) || string.IsNullOrWhiteSpace(doc))
+            return BadRequest("accession and doc are required.");
+        try
+        {
+            var suggestions = await _extractor.ExtractAsync(companyId, accession, doc);
+            return Json(suggestions);
+        }
+        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
+        {
+            return StatusCode(StatusCodes.Status503ServiceUnavailable, "DeepSeek unreachable.");
+        }
+    }
+
+    // Mode B (curated) — bold sub-headings inside Items 7/8/1A for the user to pick from.
+    [HttpGet, Route("headings/{companyId:long}")]
+    public async Task<IActionResult> Headings(long companyId, [FromQuery] string accession, [FromQuery] string doc)
+    {
+        if (_companies.GetById(companyId) is null) return NotFound();
+        if (string.IsNullOrWhiteSpace(accession) || string.IsNullOrWhiteSpace(doc))
+            return BadRequest("accession and doc are required.");
+        try
+        {
+            return Json(await _extractor.GetHeadingsAsync(companyId, accession, doc));
+        }
+        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
+        {
+            return StatusCode(StatusCodes.Status503ServiceUnavailable, "SEC unreachable.");
+        }
+    }
+
+    // Mode B (curated) — spawn one worker per picked heading, scan only those paragraphs, and stash
+    // the result as the chat's grounding. Returns the candidate count.
+    [HttpPost, Route("scan-headings/{companyId:long}")]
+    public async Task<IActionResult> ScanHeadings(
+        long companyId, [FromQuery] string accession, [FromQuery] string doc, [FromBody] int[] headingIds)
+    {
+        if (_companies.GetById(companyId) is null) return NotFound();
+        if (string.IsNullOrWhiteSpace(accession) || string.IsNullOrWhiteSpace(doc))
+            return BadRequest("accession and doc are required.");
+        if (headingIds is null || headingIds.Length == 0) return BadRequest("Select at least one section.");
+        try
+        {
+            var found = await _extractor.ScanSelectedHeadingsAsync(companyId, accession, doc, headingIds);
+            return Json(new { findings = found });
+        }
+        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
+        {
+            return StatusCode(StatusCodes.Status503ServiceUnavailable, "DeepSeek/SEC unreachable.");
+        }
+    }
+
+    // Mode B (conversational) — stream a chat grounded on the open filing. Emits NDJSON lines
+    // {"t":"reasoning"|"text","c":"..."} as fragments arrive, so the page renders the thinking trace
+    // and answer live. Persists nothing; ```save``` blocks in the answer pre-fill the form.
+    [HttpPost, Route("chat")]
+    public async Task Chat([FromBody] ChatRequest req, CancellationToken ct)
+    {
+        Response.ContentType = "application/x-ndjson; charset=utf-8";
+        if (req is null || _companies.GetById(req.CompanyId) is null)
+        {
+            Response.StatusCode = StatusCodes.Status404NotFound;
+            return;
+        }
+
+        try
+        {
+            await foreach (var d in _chat.StreamReplyAsync(req.CompanyId, req.Accession, req.Doc, req.Messages, ct))
+            {
+                await Response.WriteAsync(JsonSerializer.Serialize(new { t = d.Kind, c = d.Text }) + "\n", ct);
+                await Response.Body.FlushAsync(ct);
+            }
+        }
+        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
+        {
+            await Response.WriteAsync(JsonSerializer.Serialize(new { t = "error", c = "DeepSeek unreachable." }) + "\n", ct);
+        }
     }
 
     // Upsert the proof filing by accession (globally unique) and return its id. Returns null when
     // no filing was open (proof came from Company Facts) so the caller leaves the link untouched.
-    private long? ResolveFilingId(ReferenceRequest req)
+    private long? ResolveFilingId(long companyId, string? accession, string? form, string? date, string? url)
     {
-        if (string.IsNullOrWhiteSpace(req.FilingAccessionNumber)) return null;
+        if (string.IsNullOrWhiteSpace(accession)) return null;
 
         DateTime? filingDate = DateTime.TryParse(
-            req.FilingDate, CultureInfo.InvariantCulture, DateTimeStyles.None, out var d)
-            ? d : null;
+            date, CultureInfo.InvariantCulture, DateTimeStyles.None, out var d) ? d : null;
 
         // Upsert by accession (revives a soft-deleted row instead of a duplicate-insert).
-        return _filings.Upsert(req.CompanyId, req.FilingAccessionNumber, req.FilingForm, filingDate, req.FilingUrl).Id;
+        return _filings.Upsert(companyId, accession, form, filingDate, url).Id;
     }
 }

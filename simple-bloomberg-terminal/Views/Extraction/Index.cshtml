@@ -21,8 +21,24 @@
                 Required = false,
                 Placeholder = "Type company name..."
             })
-            <button type="button" id="loadBtn" class="ext-btn ext-btn-primary ext-btn-load">LOAD</button>
+            <button type="button" id="loadBtn" class="ext-btn ext-btn-secondary ext-btn-load">LOAD EDGAR ROWS</button>
+            <button type="button" id="reviewBtn" class="ext-btn ext-btn-secondary ext-btn-load">AI REVIEW</button>
             <div id="loadStatus" class="ext-status"></div>
+        </div>
+
+        <!-- Mode B: chat grounded on the open filing. AI surfaces sources & proposes saves. -->
+        <div id="aiChat" class="ai-chat" hidden>
+            <div class="ai-chat-head">
+                <span>AI Chat <span id="aiChatCtx" class="ai-chat-ctx"></span></span>
+                <button type="button" class="ext-btn ext-btn-ghost ai-chat-close" id="aiChatClose">✕</button>
+            </div>
+            <div id="aiChatLog" class="ai-chat-log"></div>
+            <!-- Proposed saves parsed from the reply; click a card to fill the cells above. -->
+            <div id="aiSaveList" class="ai-suggest-list"></div>
+            <div class="ai-chat-input">
+                <textarea id="aiChatText" rows="2" placeholder="Ask about this filing… (Enter to send, Shift+Enter for newline)"></textarea>
+                <button type="button" id="aiChatSend" class="ext-btn ext-btn-primary">Send</button>
+            </div>
         </div>
 
         <div class="extraction-pane-head">
@@ -35,25 +51,21 @@
         <div class="cell-row">
             <label class="ext-field-label">Classification</label>
             <select id="f_sourceType" asp-items="ViewBag.SourceTypes" class="form-control"></select>
-            <button type="button" class="ext-btn ext-btn-ref ref-btn" data-field="CLASSIFICATION">Use as reference</button>
             <div class="ref-info" data-info="CLASSIFICATION"></div>
         </div>
         <div class="cell-row">
             <label class="ext-field-label">Name</label>
             <input id="f_name" class="form-control"/>
-            <button type="button" class="ext-btn ext-btn-ref ref-btn" data-field="NAME">Use as reference</button>
             <div class="ref-info" data-info="NAME"></div>
         </div>
         <div class="cell-row">
             <label class="ext-field-label">Value</label>
             <input id="f_value" class="form-control" type="number" step="any"/>
-            <button type="button" class="ext-btn ext-btn-ref ref-btn" data-field="VALUE">Use as reference</button>
             <div class="ref-info" data-info="VALUE"></div>
         </div>
         <div class="cell-row">
             <label class="ext-field-label">% (0–100)</label>
             <input id="f_percentage" class="form-control" type="number" step="0.1"/>
-            <button type="button" class="ext-btn ext-btn-ref ref-btn" data-field="PERCENTAGE">Use as reference</button>
             <div class="ref-info" data-info="PERCENTAGE"></div>
         </div>
         <div class="cell-row">
@@ -66,8 +78,13 @@
                 Required = false,
                 Placeholder = "Type company name (optional)..."
             })
-            <button type="button" class="ext-btn ext-btn-ref ref-btn" data-field="RELATED_COMPANY">Use as reference</button>
             <div class="ref-info" data-info="RELATED_COMPANY"></div>
+        </div>
+
+        <!-- The one save: writes the row + every field that carries proof, in a single request. -->
+        <div class="cell-row ext-save-row">
+            <button type="button" id="saveBtn" class="ext-btn ext-btn-primary ext-btn-save">SAVE ROW</button>
+            <div id="saveStatus" class="ext-status"></div>
         </div>
     </div>
 
@@ -81,6 +98,8 @@
             <div class="extraction-pane-actions">
                 <button type="button" id="factsBtn" class="ext-btn ext-btn-secondary">Company Facts</button>
                 <button type="button" id="filingsBtn" class="ext-btn ext-btn-secondary">Filings</button>
+                <button type="button" id="pickSectionsBtn" class="ext-btn ext-btn-ref">Pick Sections</button>
+                <button type="button" id="aiChatBtn" class="ext-btn ext-btn-ref">AI Chat</button>
             </div>
         </div>
         <div id="endpointLabel" class="ext-endpoint"></div>
@@ -109,6 +128,24 @@
     </div>
 </div>
 
+<!-- Pick-sections overlay: bold headings in Items 7/8/1A; tick the promising ones to scan. -->
+<div id="headingsModal" class="ext-modal" hidden>
+    <div class="ext-modal-backdrop" data-close></div>
+    <div class="ext-modal-panel">
+        <div class="ext-modal-head">
+            <div class="ext-modal-titlewrap">
+                <span class="ext-modal-title">Pick Sections</span>
+                <span id="headingsCount" class="ext-modal-count"></span>
+            </div>
+            <input id="headingsFilter" class="form-control ext-modal-filter" placeholder="Filter headings..."/>
+            <button type="button" id="headingsScanBtn" class="ext-btn ext-btn-primary">Scan selected → chat</button>
+            <button type="button" class="ext-btn ext-btn-ghost" data-close>✕ CLOSE</button>
+        </div>
+        <div id="headingsList" class="ext-headings-list"></div>
+        <div id="headingsEmpty" class="ext-modal-empty" hidden>No bold headings found in Items 7/8/1A. Use AI Chat for a full scan.</div>
+    </div>
+</div>
+
 @section Scripts {
 <partial name="_ValidationScriptsPartial"/>
 @if (Model.RevenueSourceId is { } prefillId)
@@ -126,6 +163,11 @@
 <style>
     /* ── Company / load ── */
     .ext-btn-load { display: block; margin-top: .4rem; }
+    /* The single commit action — bigger, sits under the cells. */
+    .ext-save-row { margin-top: 1.1rem; padding-top: 1rem; border-top: 1px solid var(--border-subtle); }
+    .ext-btn-save { width: 100%; padding: .7rem; font-size: .82rem; letter-spacing: .14em; }
+    .ext-btn-save:hover { box-shadow: var(--accent-glow); }
+    #saveStatus { margin-top: .55rem; }
     .ext-field-label {
         display: block; font-family: var(--font-display); font-size: .65rem; font-weight: 600;
         letter-spacing: .16em; text-transform: uppercase; color: var(--muted); margin-bottom: .35rem;
@@ -198,8 +240,74 @@
     .cell-row { margin-bottom: .85rem; }
     .ref-info { margin-top: .35rem; font-size: .74rem; line-height: 1.35; font-family: var(--font-mono); }
     .ref-info .ref-ok { color: var(--green); font-weight: bold; }
+    .ref-info .ref-fail { color: var(--red); font-weight: bold; }
     .ref-info .ref-ptr { color: var(--muted); }
     .ref-info .ref-snip { color: var(--text-secondary); font-style: italic; }
+
+    /* ── AI suggestions panel (Mode B) ── */
+    .ai-suggest {
+        margin: .25rem 0 1rem; border: 1px solid var(--border-accent); border-radius: var(--radius-sm);
+        background: #00d4ff08;
+    }
+    .ai-suggest-head {
+        display: flex; align-items: center; justify-content: space-between; gap: .5rem;
+        padding: .5rem .7rem; border-bottom: 1px solid var(--border-subtle);
+        font-family: var(--font-display); font-size: .7rem; font-weight: 600; letter-spacing: .12em;
+        text-transform: uppercase; color: var(--text-secondary);
+    }
+    .ai-suggest-count { color: var(--accent); }
+    .ai-suggest-close { padding: .1rem .45rem; font-size: .7rem; }
+    .ai-suggest-list { max-height: 240px; overflow: auto; padding: .5rem; display: flex; flex-direction: column; gap: .4rem; }
+    .ai-suggest-card {
+        text-align: left; background: var(--bg-card); border: 1px solid var(--border-subtle);
+        border-radius: var(--radius-sm); padding: .5rem .65rem; cursor: pointer;
+        transition: border-color var(--transition), box-shadow var(--transition);
+    }
+    .ai-suggest-card:hover { border-color: var(--accent-dim); box-shadow: var(--accent-glow); }
+    .ai-suggest-name { font-family: var(--font-mono); font-size: .8rem; color: var(--text-primary); font-weight: 600; }
+    .ai-suggest-meta { font-family: var(--font-mono); font-size: .7rem; color: var(--muted); margin-top: .2rem; }
+    .ai-suggest-meta .as-tag { color: var(--accent); }
+
+    /* ── AI chat panel (Mode B, streaming) ── */
+    .ai-chat {
+        margin: .25rem 0 1rem; border: 1px solid var(--border-accent); border-radius: var(--radius-sm);
+        background: #00d4ff08; display: flex; flex-direction: column;
+    }
+    .ai-chat-head {
+        display: flex; align-items: center; justify-content: space-between; gap: .5rem;
+        padding: .5rem .7rem; border-bottom: 1px solid var(--border-subtle);
+        font-family: var(--font-display); font-size: .7rem; font-weight: 600; letter-spacing: .12em;
+        text-transform: uppercase; color: var(--text-secondary);
+    }
+    .ai-chat-ctx { color: var(--accent); font-weight: 400; letter-spacing: .04em; }
+    .ai-chat-close { padding: .1rem .45rem; font-size: .7rem; }
+    .ai-chat-log { max-height: 320px; overflow: auto; padding: .6rem; display: flex; flex-direction: column; gap: .55rem; }
+    .ai-chat-msg { display: flex; flex-direction: column; gap: .25rem; }
+    .ai-chat-user .ai-chat-body {
+        align-self: flex-end; background: var(--accent); color: var(--bg-base);
+        border-radius: var(--radius-sm); padding: .4rem .6rem; max-width: 85%;
+    }
+    .ai-chat-assistant .ai-chat-body {
+        align-self: flex-start; background: var(--bg-card); border: 1px solid var(--border-subtle);
+        color: var(--text-primary); border-radius: var(--radius-sm); padding: .4rem .6rem; max-width: 92%;
+        white-space: pre-wrap; word-break: break-word;
+    }
+    .ai-chat-body { font-family: var(--font-mono); font-size: .78rem; line-height: 1.5; }
+    /* The dim live "thinking" trace (v4 reasoning tokens). */
+    .ai-chat-think {
+        align-self: flex-start; max-width: 92%; font-family: var(--font-mono); font-size: .7rem;
+        line-height: 1.45; color: var(--muted); font-style: italic; white-space: pre-wrap;
+        word-break: break-word; border-left: 2px solid var(--border-subtle); padding: .1rem .5rem;
+        max-height: 120px; overflow: auto;
+    }
+    .ai-chat-input { display: flex; gap: .4rem; padding: .5rem; border-top: 1px solid var(--border-subtle); }
+    .ai-chat-input textarea {
+        flex: 1; resize: vertical; font-family: var(--font-mono); font-size: .78rem;
+        background: var(--bg-base); color: var(--text-primary);
+        border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); padding: .4rem .5rem;
+    }
+    #aiSaveList:empty { display: none; }
+    #aiSaveList { padding: 0 .6rem .4rem; }
 
     .ext-endpoint { font-family: var(--font-mono); font-size: .7rem; color: var(--muted);
         letter-spacing: .04em; margin-bottom: .5rem; min-height: 1em; }
@@ -290,6 +398,23 @@
     .ext-filing-card.no-doc { opacity: .5; cursor: not-allowed; }
     .ext-filing-card.no-doc:hover { border-color: var(--border-subtle); box-shadow: none; transform: none; }
 
+    /* ── Pick-sections list ── */
+    .ext-headings-list { flex: 1; overflow-y: auto; padding: 1rem 1.1rem; }
+    .ext-headings-group { margin-bottom: 1rem; }
+    .ext-headings-sec {
+        font-family: var(--font-display); font-size: .72rem; font-weight: 700; letter-spacing: .1em;
+        text-transform: uppercase; color: var(--accent); margin-bottom: .4rem;
+        padding-bottom: .3rem; border-bottom: 1px solid var(--border-subtle);
+    }
+    .ext-headings-row {
+        display: flex; align-items: center; gap: .55rem; padding: .35rem .4rem;
+        border-radius: var(--radius-sm); cursor: pointer;
+        font-family: var(--font-mono); font-size: .8rem; color: var(--text-primary);
+    }
+    .ext-headings-row:hover { background: #00d4ff0d; }
+    .ext-headings-row .ehr-title { flex: 1; }
+    .ext-headings-row .ehr-chars { color: var(--muted); font-size: .7rem; font-variant-numeric: tabular-nums; }
+
     @@media (max-width: 800px) {
         .extraction-split { flex-direction: column; }
         #leftPane { flex: 1 1 auto; }
@@ -310,6 +435,7 @@
     let currentRowId = null;   // bound source row; null => first reference creates it
     let currentEndpoint = '';  // the EDGAR response currently shown (stored as provenance)
     let currentFiling = null;  // the filing doc currently open (null when viewing Company Facts)
+    let aiProof = {};          // field -> AI-suggested proof snapshot (Mode B); used when nothing is hand-selected
 
     const $ = id => document.getElementById(id);
     const numOrNull = v => v === '' || v == null ? null : Number(v);
@@ -441,11 +567,14 @@
         const el = document.querySelector(`.ref-info[data-info="${field}"]`);
         if (!el) return;
         if (!ref) { el.innerHTML = ''; el.removeAttribute('title'); return; }
+        const badge = ref.mark === 1 ? `<span class="ref-ok">✓ PASS</span>`
+            : ref.mark === 0 ? `<span class="ref-fail">✗ FAIL</span>`
+            : `<span class="ref-ok">✓</span>`;
         el.innerHTML =
-            `<span class="ref-ok">✓</span> ` +
+            `${badge} ` +
             `<span class="ref-ptr">${escapeHtml(ref.pointer || '')}</span> ` +
             `<span class="ref-snip">“${escapeHtml(shortText(ref.snapshot))}”</span>`;
-        el.title = `${ref.endpoint ? ref.endpoint + '\n\n' : ''}${ref.snapshot || ''}`;
+        el.title = `${ref.rationale ? 'AI: ' + ref.rationale + '\n\n' : ''}${ref.endpoint ? ref.endpoint + '\n\n' : ''}${ref.snapshot || ''}`;
     }
     function clearRefs() { document.querySelectorAll('.ref-info').forEach(el => renderRef(el.dataset.info, null)); }
 
@@ -466,6 +595,7 @@
         $('f_value').value = r && r.value != null ? r.value : '';
         $('f_percentage').value = r && r.percentage != null ? r.percentage : '';
         currentRowId = r ? r.id : null;
+        aiProof = {};            // a different row's cells aren't backed by the last AI suggestion
         loadExistingRefs(currentRowId);
     }
 
@@ -608,43 +738,303 @@
         return null;
     }
 
-    // ---- "Use as reference": freeze proof for one cell ----
-    document.querySelectorAll('.ref-btn').forEach(btn => {
-        btn.addEventListener('click', async () => {
-            const id = Number(companyId());
-            if (!id) { alert('Pick a company first.'); return; }
-            const sel = selectionInfo();
-            if (!sel.text.trim()) { alert('Select proof text in the EDGAR pane first.'); return; }
-            const field = btn.dataset.field;
+    // ---- SAVE: one button writes the row + every field that carries proof ----
+    async function saveRow() {
+        const id = Number(companyId());
+        if (!id) { alert('Pick a company first.'); return; }
+        if (!$('f_name').value.trim()) { alert('Name is required before saving.'); return; }
+        const status = $('saveStatus');
+        status.textContent = 'Saving…';
 
-            const body = {
-                companyId: id,
-                revenueSourceId: currentRowId,
-                sourceType: $('f_sourceType').value,
-                name: $('f_name').value,
-                value: numOrNull($('f_value').value),
-                percentage: numOrNull($('f_percentage').value),
-                relatedCompanyId: relatedHidden()?.value ? Number(relatedHidden().value) : null,
+        // Attach proof for any field the AI backed (stashed in aiProof). Fields you typed by hand
+        // with no proof still save their value — they just have no reference row.
+        const proofs = Object.entries(aiProof)
+            .filter(([, snap]) => snap && snap.trim())
+            .map(([field, snapshot]) => ({
                 field,
-                endpoint: currentEndpoint,
-                referencePointer: sel.pointer,
-                referenceSnapshot: sel.text,
+                endpoint: currentEndpoint || 'AI extraction',
+                referencePointer: 'ai-suggested',
+                referenceSnapshot: snapshot,
                 referencedValue: cellValue(field),
                 filingAccessionNumber: currentFiling?.accessionNumber || null,
                 filingForm: currentFiling?.form || null,
                 filingDate: currentFiling?.filingDate || null,
                 filingUrl: currentFiling?.documentUrl || null
-            };
-            const res = await fetch('/extraction/reference', {
+            }));
+
+        const body = {
+            companyId: id,
+            revenueSourceId: currentRowId,
+            sourceType: $('f_sourceType').value,
+            name: $('f_name').value,
+            value: numOrNull($('f_value').value),
+            percentage: numOrNull($('f_percentage').value),
+            relatedCompanyId: relatedHidden()?.value ? Number(relatedHidden().value) : null,
+            proofs
+        };
+        try {
+            const res = await fetch('/extraction/save', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', 'RequestVerificationToken': token },
                 body: JSON.stringify(body)
             });
-            if (!res.ok) { alert('Save failed: ' + await res.text()); return; }
-            const result = await res.json();
-            currentRowId = result.revenueSourceId;  // bind newly-created row for the next cell
-            renderRef(field, { pointer: sel.pointer, snapshot: sel.text, endpoint: currentEndpoint });
+            if (!res.ok) { status.textContent = 'Save failed: ' + await res.text(); return; }
+            const r = await res.json();
+            currentRowId = r.revenueSourceId;            // bind the (possibly new) row
+            status.textContent = `Saved row #${r.revenueSourceId}` + (r.proofs ? ` · ${r.proofs} proof(s)` : ' · no proof attached');
+            loadExistingRefs(currentRowId);              // refresh the per-field proof readout
+        } catch (e) { status.textContent = 'Network error: ' + e.message; }
+    }
+    $('saveBtn').addEventListener('click', saveRow);
+
+    // ---- Mode B: conversational extraction (streaming chat grounded on the open filing) ----
+    const validClassification = c => c && Array.from($('f_sourceType').options).some(o => o.value === c);
+
+    function fillFromSuggestion(s) {
+        rowPicker.value = '';            // an AI suggestion is a new proposed row, not an EDGAR one
+        currentRowId = null;
+        if (validClassification(s.classification)) $('f_sourceType').value = s.classification;
+        $('f_name').value = s.name || '';
+        $('f_value').value = s.value != null ? s.value : '';
+        $('f_percentage').value = s.percentage != null ? s.percentage : '';
+        // Counterparty needs a DB id (name resolution stays manual) — surface the name as a hint.
+        const relInput = relatedHidden()?.closest('.autocomplete')?.querySelector('.autocomplete-input');
+        if (relInput && s.relatedCompany) relInput.value = s.relatedCompany;
+
+        // Stash per-field proof so "Use as reference" freezes it with no manual selection needed.
+        aiProof = {};
+        const p = s.proof || {};
+        const map = { NAME: p.name, VALUE: p.value, PERCENTAGE: p.percentage,
+                      CLASSIFICATION: p.classification, RELATED_COMPANY: p.relatedCompany };
+        clearRefs();
+        Object.entries(map).forEach(([field, snap]) => {
+            if (snap && snap.trim()) {
+                aiProof[field] = snap;
+                renderRef(field, { pointer: 'ai-suggested', snapshot: snap, endpoint: currentEndpoint });
+            }
         });
+    }
+
+    // A ```save {json}``` block in the reply → normalize snake_case to the form-fill shape.
+    function normalizeSave(j) {
+        return {
+            name: j.name || '',
+            classification: j.classification || null,
+            value: j.value != null && j.value !== '' ? Number(j.value) : null,
+            percentage: j.percentage != null && j.percentage !== '' ? Number(j.percentage) : null,
+            relatedCompany: j.related_company || j.relatedCompany || null,
+            section: 'AI chat',
+            proof: {
+                name: j.proof?.name ?? null, value: j.proof?.value ?? null,
+                percentage: j.proof?.percentage ?? null, classification: j.proof?.classification ?? null,
+                relatedCompany: j.proof?.related_company ?? j.proof?.relatedCompany ?? null
+            }
+        };
+    }
+
+    // ---- chat panel state ----
+    const aiChat = $('aiChat'), aiChatLog = $('aiChatLog'), aiChatText = $('aiChatText'), aiSaveList = $('aiSaveList');
+    let chatHistory = [];      // visible turns only; the filing grounding is added server-side
+    let chatFiling = null;     // accession the open chat is grounded on (reset when a new filing opens)
+    let chatBusy = false;
+
+    $('aiChatClose').addEventListener('click', () => { aiChat.hidden = true; });
+
+    function chatBubble(role) {
+        const wrap = document.createElement('div');
+        wrap.className = 'ai-chat-msg ai-chat-' + role;
+        const think = document.createElement('div'); think.className = 'ai-chat-think'; think.hidden = true;
+        const body = document.createElement('div'); body.className = 'ai-chat-body';
+        wrap.append(think, body);
+        aiChatLog.appendChild(wrap);
+        aiChatLog.scrollTop = aiChatLog.scrollHeight;
+        return { think, body };
+    }
+
+    // Reply prose hides the raw save blocks; each becomes a clickable "fill the form" card.
+    const stripSave = t => t.replace(/```save[\s\S]*?```/g, '📌 (proposed save below)');
+    function renderSaveCards(text) {
+        const re = /```save\s*([\s\S]*?)```/g; let m;
+        while ((m = re.exec(text)) !== null) {
+            let j; try { j = JSON.parse(m[1].trim()); } catch { continue; }
+            const s = normalizeSave(j);
+            if (!s.name) continue;
+            const card = document.createElement('button');
+            card.type = 'button'; card.className = 'ai-suggest-card';
+            const bits = [];
+            if (s.value != null) bits.push('$' + Number(s.value).toLocaleString());
+            if (s.percentage != null) bits.push(s.percentage + '%');
+            if (s.relatedCompany) bits.push('↔ ' + s.relatedCompany);
+            card.innerHTML =
+                `<div class="ai-suggest-name">＋ ${escapeHtml(s.name)}</div>` +
+                `<div class="ai-suggest-meta"><span class="as-tag">${escapeHtml(s.classification || '—')}</span>` +
+                (bits.length ? ' · ' + escapeHtml(bits.join(' · ')) : '') + `</div>`;
+            card.addEventListener('click', () => fillFromSuggestion(s));
+            aiSaveList.appendChild(card);
+        }
+    }
+
+    async function sendChat(text) {
+        if (chatBusy || !text.trim()) return;
+        const id = companyId();
+        if (!id) { alert('Pick a company first.'); return; }
+        if (!currentFiling?.accessionNumber || !currentFiling?.primaryDocument) {
+            alert('Open a filing in the right pane first (Filings → pick one).'); return;
+        }
+        chatBusy = true; aiChatText.value = '';
+        chatHistory.push({ role: 'user', content: text });
+        chatBubble('user').body.textContent = text;
+        const out = chatBubble('assistant');
+        let full = '', think = '';
+        try {
+            const res = await fetch('/extraction/chat', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'RequestVerificationToken': token },
+                body: JSON.stringify({
+                    companyId: Number(id),
+                    accession: currentFiling.accessionNumber,
+                    doc: currentFiling.primaryDocument,
+                    messages: chatHistory
+                })
+            });
+            if (!res.ok || !res.body) { out.body.textContent = `[error ${res.status}]`; chatBusy = false; return; }
+            const reader = res.body.getReader(), dec = new TextDecoder();
+            let buf = '';
+            while (true) {
+                const { value, done } = await reader.read();
+                if (done) break;
+                buf += dec.decode(value, { stream: true });
+                let nl;
+                while ((nl = buf.indexOf('\n')) >= 0) {
+                    const line = buf.slice(0, nl).trim(); buf = buf.slice(nl + 1);
+                    if (!line) continue;
+                    let ev; try { ev = JSON.parse(line); } catch { continue; }
+                    if (ev.t === 'status') { if (!full) out.body.textContent = '⏳ ' + ev.c; }
+                    else if (ev.t === 'reasoning') { think += ev.c; out.think.hidden = false; out.think.textContent = think; }
+                    else if (ev.t === 'text') { full += ev.c; out.body.textContent = stripSave(full); }
+                    else if (ev.t === 'error') { out.body.textContent += `\n[${ev.c}]`; }
+                    aiChatLog.scrollTop = aiChatLog.scrollHeight;
+                }
+            }
+            chatHistory.push({ role: 'assistant', content: full });
+            renderSaveCards(full);
+        } catch (e) { out.body.textContent = '[network error]'; }
+        chatBusy = false;
+    }
+
+    $('aiChatSend').addEventListener('click', () => sendChat(aiChatText.value));
+    aiChatText.addEventListener('keydown', e => {
+        if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendChat(aiChatText.value); }
+    });
+
+    // Open the chat from the right pane. A different filing (or reset=true after a curated scan)
+    // clears the conversation; the first open seeds the "find the sources" question.
+    function openChat(reset) {
+        if (!currentFiling?.accessionNumber || !currentFiling?.primaryDocument) {
+            alert('Open a filing in the right pane first (Filings → pick one).'); return;
+        }
+        aiChat.hidden = false;
+        if (reset || chatFiling !== currentFiling.accessionNumber) {
+            chatFiling = currentFiling.accessionNumber;
+            chatHistory = []; aiChatLog.innerHTML = ''; aiSaveList.innerHTML = '';
+        }
+        $('aiChatCtx').textContent = currentFiling.form ? `· ${currentFiling.form} ${currentFiling.filingDate || ''}` : '';
+        aiChatText.focus();
+        if (!chatHistory.length)
+            sendChat('List the most interesting revenue and cost sources in this filing, with values or percentages where stated, then ask me which I want to save.');
+    }
+    $('aiChatBtn').addEventListener('click', () => openChat(false));
+
+    // ---- Pick Sections: choose bold headings → scan only those → ground the chat on the result ----
+    const headingsModal = $('headingsModal'), headingsList = $('headingsList'), headingsFilter = $('headingsFilter');
+    let allHeadings = [];
+
+    function closeHeadings() { headingsModal.hidden = true; }
+    headingsModal.querySelectorAll('[data-close]').forEach(el => el.addEventListener('click', closeHeadings));
+    document.addEventListener('keydown', e => { if (e.key === 'Escape' && !headingsModal.hidden) closeHeadings(); });
+
+    function renderHeadings(list) {
+        headingsList.innerHTML = '';
+        const bySec = {};
+        list.forEach(h => { (bySec[h.section] ||= []).push(h); });
+        Object.entries(bySec).forEach(([sec, items]) => {
+            const grp = document.createElement('div');
+            grp.className = 'ext-headings-group';
+            grp.innerHTML = `<div class="ext-headings-sec">${escapeHtml(sec)}</div>`;
+            items.forEach(h => {
+                const row = document.createElement('label');
+                row.className = 'ext-headings-row';
+                row.innerHTML =
+                    `<input type="checkbox" value="${h.id}"/>` +
+                    `<span class="ehr-title">${escapeHtml(h.title)}</span>` +
+                    `<span class="ehr-chars">${h.chars}c</span>`;
+                grp.appendChild(row);
+            });
+            headingsList.appendChild(grp);
+        });
+        $('headingsCount').textContent = `${list.length} headings`;
+        $('headingsEmpty').hidden = list.length > 0;
+    }
+
+    headingsFilter.addEventListener('input', () => {
+        const q = headingsFilter.value.trim().toLowerCase();
+        renderHeadings(q ? allHeadings.filter(h => `${h.title} ${h.section}`.toLowerCase().includes(q)) : allHeadings);
+    });
+
+    $('pickSectionsBtn').addEventListener('click', async () => {
+        const id = companyId();
+        if (!id) { alert('Pick a company first.'); return; }
+        if (!currentFiling?.accessionNumber || !currentFiling?.primaryDocument) {
+            alert('Open a filing in the right pane first (Filings → pick one).'); return;
+        }
+        headingsList.innerHTML = ''; $('headingsCount').textContent = 'loading…'; $('headingsEmpty').hidden = true;
+        headingsModal.hidden = false; headingsFilter.value = '';
+        const qs = `accession=${encodeURIComponent(currentFiling.accessionNumber)}&doc=${encodeURIComponent(currentFiling.primaryDocument)}`;
+        try {
+            const res = await fetch(`/extraction/headings/${id}?${qs}`);
+            if (!res.ok) { $('headingsCount').textContent = `failed (${res.status})`; return; }
+            allHeadings = await res.json();
+            renderHeadings(allHeadings);
+        } catch (e) { $('headingsCount').textContent = 'network error'; }
+    });
+
+    $('headingsScanBtn').addEventListener('click', async () => {
+        const id = companyId();
+        const ids = [...headingsList.querySelectorAll('input[type=checkbox]:checked')].map(c => Number(c.value));
+        if (!ids.length) { alert('Tick at least one heading.'); return; }
+        const btn = $('headingsScanBtn'), label = btn.textContent;
+        btn.disabled = true; btn.textContent = `Scanning ${ids.length}…`;
+        const qs = `accession=${encodeURIComponent(currentFiling.accessionNumber)}&doc=${encodeURIComponent(currentFiling.primaryDocument)}`;
+        try {
+            const res = await fetch(`/extraction/scan-headings/${id}?${qs}`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'RequestVerificationToken': token },
+                body: JSON.stringify(ids)
+            });
+            if (!res.ok) { alert('Scan failed: ' + await res.text()); return; }
+            await res.json();
+            closeHeadings();
+            openChat(true);   // curated digest is now cached → the chat grounds on it
+        } catch (e) { alert('Network error: ' + e.message); }
+        finally { btn.disabled = false; btn.textContent = label; }
+    });
+
+    // ---- Mode A: run the phase-2 AI reviewer over this company's saved cells ----
+    $('reviewBtn').addEventListener('click', async () => {
+        const id = companyId();
+        if (!id) { alert('Pick a company first.'); return; }
+        const status = $('loadStatus');
+        status.textContent = 'AI reviewing saved cells…';
+        try {
+            const res = await fetch(`/extraction/review/${id}`,
+                { method: 'POST', headers: { 'RequestVerificationToken': token } });
+            if (!res.ok) { status.textContent = `Review failed (${res.status}): ${await res.text()}`; return; }
+            const r = await res.json();
+            status.textContent =
+                `Reviewed ${r.reviewed}: ${r.passed} pass, ${r.failed} fail` +
+                (r.skipped ? `, ${r.skipped} skipped` : '') + '.';
+            loadExistingRefs(currentRowId);   // refresh marks on the bound row
+        } catch (e) { status.textContent = 'Network error: ' + e.message; }
     });
 
     // ---- Prefill: opened from a source's "Add references" — bind that row and show its proof ----
