@@ -2,11 +2,13 @@ using Microsoft.AspNetCore.Hosting;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using simple_bloomberg_terminal.Data;
 using simple_bloomberg_terminal.Models.Entities;
 using simple_bloomberg_terminal.Models.Enums;
+using simple_bloomberg_terminal.Services;
 
 namespace simple_bloomberg_terminal.Tests;
 
@@ -54,6 +56,10 @@ public class CustomWebApplicationFactory : WebApplicationFactory<Program>
             foreach (var d in toRemove) services.Remove(d);
 
             services.AddDbContext<AppDbContext>(options => options.UseSqlite(_connection));
+
+            // Swap the real EDGAR HttpClient for a deterministic fake (no live SEC calls).
+            services.RemoveAll<IStockApiClient>();
+            services.AddScoped<IStockApiClient, FakeStockApiClient>();
         });
     }
 
