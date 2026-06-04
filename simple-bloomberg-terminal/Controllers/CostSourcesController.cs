@@ -12,11 +12,13 @@ public class CostSourcesController : Controller
 {
     private readonly ICostSourceRepository _repo;
     private readonly ICompanyRepository _companies;
+    private readonly IFilingRepository _filings;
 
-    public CostSourcesController(ICostSourceRepository repo, ICompanyRepository companies)
+    public CostSourcesController(ICostSourceRepository repo, ICompanyRepository companies, IFilingRepository filings)
     {
         _repo = repo;
         _companies = companies;
+        _filings = filings;
     }
 
     [HttpGet, Route("")]
@@ -81,11 +83,13 @@ public class CostSourcesController : Controller
         return RedirectToAction(nameof(Index));
     }
 
-    [HttpPost, Route("{id:long}/delete"), ValidateAntiForgeryToken]
-    public IActionResult Delete(long id)
+    // Cascade: removes this source + its proof reviews + its filing + every other source on that
+    // filing. returnUrl lets the company profile send the user back to itself after deleting.
+    [HttpPost, Route("{id:long}/delete", Name = "CostSourceDelete"), ValidateAntiForgeryToken]
+    public IActionResult Delete(long id, string? returnUrl)
     {
-        try { _repo.SoftDelete(id); }
-        catch (InvalidOperationException ex) { TempData["Error"] = ex.Message; }
+        _filings.SoftDeleteSourceCluster(RelationKind.COST, id);
+        if (Url.IsLocalUrl(returnUrl)) return Redirect(returnUrl);
         return RedirectToAction(nameof(Index));
     }
 

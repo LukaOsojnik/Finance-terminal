@@ -222,3 +222,144 @@
         </div>
     </div>
 </div>
+
+@* ── Revenue Sources ── *@
+<div class="detail-section-label">// REVENUE SOURCES</div>
+<div class="row g-3 mb-4">
+    <div class="col-12">
+        <div class="detail-card">
+            @if (!Model.RevenueSources.Any())
+            {
+                <div class="detail-pending">NO REVENUE SOURCES ON RECORD</div>
+            }
+            else
+            {
+                <table class="terminal-table">
+                    <thead>
+                        <tr>
+                            <th>Name</th>
+                            <th>Type</th>
+                            <th>Value</th>
+                            <th>%</th>
+                            <th>Source</th>
+                            <th>Counterparty</th>
+                            <th>Proof filing</th>
+                            <th></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var r in Model.RevenueSources)
+                        {
+                            <tr>
+                                <td class="name-cell">@r.Name</td>
+                                <td class="tag-cell">@r.SourceType</td>
+                                <td class="num-cell">@(r.Value.HasValue ? "$" + (r.Value.Value / 1e9).ToString("F2") + "B" : "—")</td>
+                                <td class="num-cell">@(r.Percentage.HasValue ? r.Percentage.Value.ToString("F1") + "%" : "—")</td>
+                                <td class="tag-cell">@(r.DataSource?.ToString() ?? "—")</td>
+                                <td class="name-cell">@(r.RelatedCompany != null && r.RelatedCompany.DeletedAt == null ? r.RelatedCompany.Name : "—")</td>
+                                <td class="muted-cell">
+                                    @{
+                                        var revFilings = r.Reviews
+                                            .Where(rv => rv.DeletedAt == null && rv.Filing != null && rv.Filing.DeletedAt == null)
+                                            .Select(rv => rv.Filing!)
+                                            .DistinctBy(f => f.Id)
+                                            .ToList();
+                                    }
+                                    @if (revFilings.Count == 0)
+                                    {
+                                        <span class="muted-cell">—</span>
+                                    }
+                                    else
+                                    {
+                                        @foreach (var f in revFilings)
+                                        {
+                                            <div><a href="@f.PrimaryDocUrl" target="_blank" rel="noopener">@f.Form @f.AccessionNumber</a></div>
+                                        }
+                                    }
+                                </td>
+                                <td style="white-space:nowrap;">
+                                    <a asp-controller="RevenueSources" asp-action="Details" asp-route-id="@r.Id" class="btn-detail">VIEW</a>
+                                    <form asp-route="RevenueSourceDelete" asp-route-id="@r.Id" asp-route-returnUrl="@Context.Request.Path" method="post" style="display:inline"
+                                          onsubmit="return confirm('Delete this source, its proof, its filing, and every source sharing that filing?');">
+                                        @Html.AntiForgeryToken()
+                                        <button type="submit" class="btn-detail">DELETE</button>
+                                    </form>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            }
+        </div>
+    </div>
+</div>
+
+@* ── Cost Sources ── *@
+<div class="detail-section-label">// COST SOURCES</div>
+<div class="row g-3 mb-5">
+    <div class="col-12">
+        <div class="detail-card">
+            @if (!Model.CostSources.Any())
+            {
+                <div class="detail-pending">NO COST SOURCES ON RECORD</div>
+            }
+            else
+            {
+                <table class="terminal-table">
+                    <thead>
+                        <tr>
+                            <th>Name</th>
+                            <th>Cost base</th>
+                            <th>Value</th>
+                            <th>%</th>
+                            <th>Source</th>
+                            <th>Counterparty</th>
+                            <th>Proof filing</th>
+                            <th></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var c in Model.CostSources)
+                        {
+                            <tr>
+                                <td class="name-cell">@c.Name</td>
+                                <td class="tag-cell">@c.CostBase</td>
+                                <td class="num-cell">@(c.Value.HasValue ? "$" + (c.Value.Value / 1e9).ToString("F2") + "B" : "—")</td>
+                                <td class="num-cell">@(c.Percentage.HasValue ? c.Percentage.Value.ToString("F1") + "%" : "—")</td>
+                                <td class="tag-cell">@(c.DataSource?.ToString() ?? "—")</td>
+                                <td class="name-cell">@(c.RelatedCompany != null && c.RelatedCompany.DeletedAt == null ? c.RelatedCompany.Name : "—")</td>
+                                <td class="muted-cell">
+                                    @{
+                                        var costFilings = c.Reviews
+                                            .Where(rv => rv.DeletedAt == null && rv.Filing != null && rv.Filing.DeletedAt == null)
+                                            .Select(rv => rv.Filing!)
+                                            .DistinctBy(f => f.Id)
+                                            .ToList();
+                                    }
+                                    @if (costFilings.Count == 0)
+                                    {
+                                        <span class="muted-cell">—</span>
+                                    }
+                                    else
+                                    {
+                                        @foreach (var f in costFilings)
+                                        {
+                                            <div><a href="@f.PrimaryDocUrl" target="_blank" rel="noopener">@f.Form @f.AccessionNumber</a></div>
+                                        }
+                                    }
+                                </td>
+                                <td>
+                                    <form asp-route="CostSourceDelete" asp-route-id="@c.Id" asp-route-returnUrl="@Context.Request.Path" method="post" style="display:inline"
+                                          onsubmit="return confirm('Delete this source, its proof, its filing, and every source sharing that filing?');">
+                                        @Html.AntiForgeryToken()
+                                        <button type="submit" class="btn-detail">DELETE</button>
+                                    </form>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            }
+        </div>
+    </div>
+</div>

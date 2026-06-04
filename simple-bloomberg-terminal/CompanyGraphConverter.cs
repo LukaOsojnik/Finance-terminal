@@ -20,6 +20,35 @@ public class CompanyGraphConverter : ITypeConverter<Company, GraphResponse>
         var nodes = new List<GraphNode>();
         var edges = new List<GraphEdge>();
 
+        // A source connects to the EDGAR filings that prove it — proof is per field, so a source
+        // may cite several filings via its reviews. Dedup the filing node globally; dedup edges
+        // per source (multiple fields can cite the same filing).
+        var filingSeen = new HashSet<long>();
+        void AddFilingLinks(IEnumerable<SourceFieldReview> reviews, string sourceNodeId)
+        {
+            var linked = new HashSet<long>();
+            foreach (var f in reviews
+                         .Where(rv => rv.DeletedAt == null && rv.Filing != null && rv.Filing.DeletedAt == null)
+                         .Select(rv => rv.Filing!))
+            {
+                if (!linked.Add(f.Id)) continue;   // already drew this source's edge to f
+
+                var filingId = $"filing:{f.Id}";
+                if (filingSeen.Add(f.Id))
+                {
+                    var date = f.FilingDate?.ToString("yyyy-MM-dd");
+                    nodes.Add(new GraphNode(
+                        Id: filingId,
+                        Label: f.Form ?? "Filing",
+                        Group: "filing",
+                        Title: $"{f.AccessionNumber}{(date is null ? "" : " · " + date)}",
+                        ValueUsd: null
+                    ));
+                }
+                edges.Add(new GraphEdge(sourceNodeId, filingId, "proof", "filing"));
+            }
+        }
+
         var centerId = $"company:{company.Id}";
         nodes.Add(new GraphNode(
             Id: centerId,
@@ -52,6 +81,7 @@ public class CompanyGraphConverter : ITypeConverter<Company, GraphResponse>
                     RelatedCompanyId: navId
                 ));
                 edges.Add(new GraphEdge(hubId, nodeId, r.Value.HasValue ? $"${r.Value.Value / 1e9:F1}B" : null, "revenue"));
+                AddFilingLinks(r.Reviews, nodeId);
             }
         }
 
@@ -73,6 +103,7 @@ public class CompanyGraphConverter : ITypeConverter<Company, GraphResponse>
                     RelatedCompanyId: navId
                 ));
                 edges.Add(new GraphEdge(hubId, nodeId, c.Value.HasValue ? $"${c.Value.Value / 1e9:F1}B" : null, "cost"));
+                AddFilingLinks(c.Reviews, nodeId);
             }
         }
 

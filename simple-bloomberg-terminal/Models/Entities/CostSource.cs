@@ -29,4 +29,7 @@ public class CostSource
 
     [ForeignKey("RelatedCompanyId")]
     public virtual Company? RelatedCompany { get; set; }
+
+    // Per-field proof rows; their distinct filings are the source's proof filings.
+    public virtual ICollection<SourceFieldReview> Reviews { get; set; } = [];
 }

@@ -33,13 +33,17 @@ public class CompaniesController : Controller
     [HttpGet, Route("{id:long}/profile")]
     public IActionResult Details(long id)
     {
-        var company = _companies.GetById(id);
+        // GetWithGraphRelations loads sources (with RelatedCompany + Filing) and events; Includes
+        // don't filter soft-deleted rows, so filter to active here per the soft-delete convention.
+        var company = _companies.GetWithGraphRelations(id);
         if (company == null) return NotFound();
 
         var vm = new CompanyDetailsViewModel
         {
             Company = company,
-            RelatedEvents = company.Events,
+            RelatedEvents = company.Events.Where(e => e.DeletedAt == null),
+            RevenueSources = company.RevenueSources.Where(r => r.DeletedAt == null),
+            CostSources = company.CostSources.Where(c => c.DeletedAt == null),
             SectorLabel = company.Sector.ToString().Replace("_", " "),
             IndustryLabel = company.Industry.HasValue
                 ? company.Industry.Value.ToString().Replace("_", " ")

@@ -1,0 +1,337 @@
+@model simple_bloomberg_terminal.Models.ViewModels.ExtractionIndexViewModel
+@{ ViewData["Title"] = "Extraction"; }
+
+<div class="page-header"><h2><span class="page-header-accent">//</span> Extraction — Revenue</h2></div>
+
+@Html.AntiForgeryToken()
+
+<div class="mb-3" style="max-width:520px;">
+    <label class="form-label">Company</label>
+    <div class="d-flex" style="gap:.5rem;">
+        <div style="flex:1;">
+            @await Html.PartialAsync("_AutocompletePicker", new AutocompletePickerModel {
+                FieldName = "companyId",
+                SelectedId = Model.CompanyId,
+                SelectedLabel = Model.CompanyLabel ?? "",
+                LookupUrl = Url.Action("Lookup", "Companies"),
+                Required = false,
+                Placeholder = "Type company name..."
+            })
+        </div>
+        <button type="button" id="loadBtn" class="btn btn-primary">LOAD</button>
+    </div>
+    <div id="loadStatus" class="text-muted small mt-1"></div>
+</div>
+
+<div class="extraction-split">
+    <!-- LEFT: source cells bound to a RevenueSource row -->
+    <div class="extraction-pane">
+        <div class="d-flex justify-content-between align-items-center mb-2">
+            <strong>Source row</strong>
+            <select id="rowPicker" class="form-control" style="max-width:280px;">
+                <option value="">— new row —</option>
+            </select>
+        </div>
+
+        <div class="cell-row">
+            <label class="form-label">Classification</label>
+            <select id="f_sourceType" asp-items="ViewBag.SourceTypes" class="form-control"></select>
+            <button type="button" class="btn btn-secondary ref-btn" data-field="CLASSIFICATION">Use as reference</button>
+            <div class="ref-info" data-info="CLASSIFICATION"></div>
+        </div>
+        <div class="cell-row">
+            <label class="form-label">Name</label>
+            <input id="f_name" class="form-control"/>
+            <button type="button" class="btn btn-secondary ref-btn" data-field="NAME">Use as reference</button>
+            <div class="ref-info" data-info="NAME"></div>
+        </div>
+        <div class="cell-row">
+            <label class="form-label">Value</label>
+            <input id="f_value" class="form-control" type="number" step="any"/>
+            <button type="button" class="btn btn-secondary ref-btn" data-field="VALUE">Use as reference</button>
+            <div class="ref-info" data-info="VALUE"></div>
+        </div>
+        <div class="cell-row">
+            <label class="form-label">% (0–100)</label>
+            <input id="f_percentage" class="form-control" type="number" step="0.1"/>
+            <button type="button" class="btn btn-secondary ref-btn" data-field="PERCENTAGE">Use as reference</button>
+            <div class="ref-info" data-info="PERCENTAGE"></div>
+        </div>
+        <div class="cell-row">
+            <label class="form-label">Counterparty</label>
+            @await Html.PartialAsync("_AutocompletePicker", new AutocompletePickerModel {
+                FieldName = "relatedCompanyId",
+                SelectedId = null,
+                SelectedLabel = "",
+                LookupUrl = Url.Action("Lookup", "Companies"),
+                Required = false,
+                Placeholder = "Type company name (optional)..."
+            })
+            <button type="button" class="btn btn-secondary ref-btn" data-field="RELATED_COMPANY">Use as reference</button>
+            <div class="ref-info" data-info="RELATED_COMPANY"></div>
+        </div>
+    </div>
+
+    <!-- RIGHT: the actual EDGAR response; select text here to back a cell -->
+    <div class="extraction-pane">
+        <div class="d-flex justify-content-between align-items-center mb-2">
+            <strong>EDGAR — select proof text</strong>
+            <div style="display:flex; gap:.25rem;">
+                <button type="button" id="factsBtn" class="btn btn-secondary">Company Facts</button>
+                <button type="button" id="filingsBtn" class="btn btn-secondary">Filings</button>
+            </div>
+        </div>
+        <div id="endpointLabel" class="text-muted small mb-1"></div>
+        <ul id="filings" class="filings-list" hidden></ul>
+        <pre id="response" class="extraction-json">Load a company, then open Company Facts or a filing.</pre>
+    </div>
+</div>
+
+@section Scripts {
+<partial name="_ValidationScriptsPartial"/>
+<style>
+    .extraction-split { display:flex; gap:1rem; align-items:flex-start; }
+    .extraction-pane { flex:1; min-width:0; border:1px solid var(--border, #333); padding:.75rem; }
+    .extraction-json { max-height:70vh; overflow:auto; white-space:pre-wrap; word-break:break-word;
+        background:#0c0c0c; color:#cfcfcf; padding:.5rem; font-size:.8rem; }
+    .extraction-json::selection { background:var(--accent, #f60); color:#000; }
+    .filings-list { max-height:28vh; overflow:auto; list-style:none; padding:0; margin:0 0 .5rem;
+        border:1px solid var(--border, #333); font-size:.8rem; }
+    .filings-list li { padding:.3rem .5rem; cursor:pointer; border-bottom:1px solid #222; }
+    .filings-list li:hover { background:#1a1a1a; }
+    .cell-row { margin-bottom:.6rem; }
+    .cell-row .form-label { display:block; margin-bottom:.15rem; }
+    .ref-btn { margin-top:.25rem; }
+    .ref-info { margin-top:.25rem; font-size:.78rem; line-height:1.3; }
+    .ref-info .ref-ok { color:var(--accent, #2e7d32); font-weight:bold; }
+    .ref-info .ref-ptr { color:#888; }
+    .ref-info .ref-snip { color:#cfcfcf; font-style:italic; }
+</style>
+<script>
+(function () {
+    const token = document.querySelector('input[name="__RequestVerificationToken"]')?.value;
+    const companyHidden = () => document.querySelector('input[name="companyId"]');
+    const relatedHidden = () => document.querySelector('input[name="relatedCompanyId"]');
+    const pre = document.getElementById('response');
+    const filingsList = document.getElementById('filings');
+    const endpointLabel = document.getElementById('endpointLabel');
+    const rowPicker = document.getElementById('rowPicker');
+    let edgarRows = [];        // revenue rows pulled from the refresh response (left pre-fill)
+    let currentRowId = null;   // bound source row; null => first reference creates it
+    let currentEndpoint = '';  // the EDGAR response currently shown (stored as provenance)
+    let currentFiling = null;  // the filing doc currently open (null when viewing Company Facts)
+
+    const $ = id => document.getElementById(id);
+    const numOrNull = v => v === '' || v == null ? null : Number(v);
+    const companyId = () => companyHidden()?.value;
+
+    function showText(text, endpoint) {
+        filingsList.hidden = true;
+        pre.textContent = text;
+        currentEndpoint = endpoint;
+        currentFiling = null;   // generic text view: no filing backs it (openFiling re-sets this)
+        endpointLabel.textContent = endpoint ? `source: ${endpoint}` : '';
+    }
+
+    const escapeHtml = s => (s || '').replace(/[&<>"]/g,
+        c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+    const shortText = (s, n = 90) => {
+        s = (s || '').replace(/\s+/g, ' ').trim();
+        return s.length > n ? s.slice(0, n) + '…' : s;
+    };
+
+    // Render the saved pointer (✓ + char offsets + snapshot preview) under a cell.
+    function renderRef(field, ref) {
+        const el = document.querySelector(`.ref-info[data-info="${field}"]`);
+        if (!el) return;
+        if (!ref) { el.innerHTML = ''; el.removeAttribute('title'); return; }
+        el.innerHTML =
+            `<span class="ref-ok">✓</span> ` +
+            `<span class="ref-ptr">${escapeHtml(ref.pointer || '')}</span> ` +
+            `<span class="ref-snip">“${escapeHtml(shortText(ref.snapshot))}”</span>`;
+        el.title = `${ref.endpoint ? ref.endpoint + '\n\n' : ''}${ref.snapshot || ''}`;
+    }
+    function clearRefs() { document.querySelectorAll('.ref-info').forEach(el => renderRef(el.dataset.info, null)); }
+
+    // Show whatever references already exist for the bound row (survives reloads).
+    async function loadExistingRefs(rowId) {
+        clearRefs();
+        if (!rowId) return;
+        try {
+            const res = await fetch(`/extraction/references/${rowId}`);
+            if (!res.ok) return;
+            (await res.json()).forEach(r => renderRef(r.field, r));
+        } catch { /* non-fatal */ }
+    }
+
+    function fillCells(r) {
+        $('f_sourceType').value = r ? r.sourceType : $('f_sourceType').options[0].value;
+        $('f_name').value = r ? (r.name ?? '') : '';
+        $('f_value').value = r && r.value != null ? r.value : '';
+        $('f_percentage').value = r && r.percentage != null ? r.percentage : '';
+        currentRowId = r ? r.id : null;
+        loadExistingRefs(currentRowId);
+    }
+
+    // ---- LOAD: refresh persists+pre-fills the left, then show Company Facts on the right ----
+    $('loadBtn').addEventListener('click', async () => {
+        const id = companyId();
+        const status = $('loadStatus');
+        if (!id) { status.textContent = 'Pick a company first.'; return; }
+        status.textContent = 'Refreshing rows…';
+        try {
+            const res = await fetch(`/api/stock/refresh/${id}`, { method: 'POST' });
+            if (!res.ok) { status.textContent = `Refresh failed (${res.status}): ${await res.text()}`; return; }
+            const dto = await res.json();
+
+            const byKey = new Map();
+            (dto.revenueSources || []).filter(r => r.dataSource === 'EDGAR')
+                .forEach(r => byKey.set(r.name, r)); // later (higher-id) wins
+            edgarRows = [...byKey.values()];
+            rowPicker.innerHTML = '<option value="">— new row —</option>';
+            edgarRows.forEach(r => {
+                const o = document.createElement('option');
+                o.value = r.id; o.textContent = `${r.name} (#${r.id})`;
+                rowPicker.appendChild(o);
+            });
+            if (edgarRows.length) { rowPicker.value = edgarRows[0].id; fillCells(edgarRows[0]); }
+            else fillCells(null);
+            status.textContent = `Pre-filled ${edgarRows.length} EDGAR row(s).`;
+        } catch (e) { status.textContent = 'Network error: ' + e.message; return; }
+        loadFacts();
+    });
+
+    rowPicker.addEventListener('change', () => {
+        const r = edgarRows.find(x => String(x.id) === rowPicker.value);
+        fillCells(r || null);
+    });
+
+    // ---- right pane: Company Facts ----
+    async function loadFacts() {
+        const id = companyId();
+        if (!id) { alert('Pick a company first.'); return; }
+        showText('Loading company facts…', '');
+        const res = await fetch(`/api/stock/facts/${id}`);
+        if (!res.ok) { showText(`Facts failed (${res.status}): ${await res.text()}`, ''); return; }
+        let body = await res.text();
+        try { body = JSON.stringify(JSON.parse(body), null, 2); } catch { /* leave raw */ }
+        showText(body, `GET /api/stock/facts/${id}`);
+    }
+    $('factsBtn').addEventListener('click', loadFacts);
+
+    // ---- right pane: Filings list -> open one document ----
+    $('filingsBtn').addEventListener('click', async () => {
+        const id = companyId();
+        if (!id) { alert('Pick a company first.'); return; }
+        endpointLabel.textContent = '';
+        pre.textContent = 'Loading filings…';
+        const res = await fetch(`/api/stock/filings/${id}`);
+        if (!res.ok) { showText(`Filings failed (${res.status}): ${await res.text()}`, ''); return; }
+        const filings = await res.json();
+        filingsList.innerHTML = '';
+        filings.forEach(f => {
+            const li = document.createElement('li');
+            li.textContent = `${f.form} — ${f.filingDate}${f.description ? ' · ' + f.description : ''}`;
+            li.addEventListener('click', () => openFiling(id, f));
+            filingsList.appendChild(li);
+        });
+        filingsList.hidden = false;
+        pre.textContent = `${filings.length} filings — click one to open.`;
+    });
+
+    // Inline-XBRL 10-K/10-Q docs are HTML. Use the browser's layout-aware innerText (block
+    // elements -> newlines) for readable paragraphs; collapse runs of blank lines to one gap.
+    function htmlToReadableText(html) {
+        const tmp = document.createElement('div');
+        tmp.innerHTML = html;
+        tmp.querySelectorAll('script,style,noscript').forEach(e => e.remove());
+        tmp.style.position = 'absolute';
+        tmp.style.left = '-99999px';
+        tmp.style.whiteSpace = 'normal';
+        document.body.appendChild(tmp);
+        const text = tmp.innerText || tmp.textContent || '';
+        document.body.removeChild(tmp);
+        return text.replace(/[ \t]+\n/g, '\n').replace(/\n{3,}/g, '\n\n').trim();
+    }
+
+    async function openFiling(id, f) {
+        if (!f.accessionNumber || !f.primaryDocument) { alert('Filing has no primary document.'); return; }
+        pre.textContent = 'Loading filing…';
+        const qs = `accession=${encodeURIComponent(f.accessionNumber)}&doc=${encodeURIComponent(f.primaryDocument)}`;
+        const res = await fetch(`/api/stock/filing/${id}?${qs}`);
+        filingsList.hidden = true;
+        if (!res.ok) { showText(`Filing failed (${res.status}): ${await res.text()}`, ''); return; }
+        const raw = await res.text();
+        const isHtml = /\.html?$/i.test(f.primaryDocument) || /<html|<body|<div/i.test(raw.slice(0, 2000));
+        showText(isHtml ? htmlToReadableText(raw) : raw, f.documentUrl || `GET /api/stock/filing/${id}?${qs}`);
+        currentFiling = f;   // proof taken here links the source row to this filing
+    }
+
+    // ---- capture the selected proof text within the response pane ----
+    function selectionInfo() {
+        const sel = window.getSelection();
+        const text = sel ? sel.toString() : '';
+        let pointer = 'selection';
+        if (sel && sel.rangeCount && text) {
+            const range = sel.getRangeAt(0);
+            const node = pre.firstChild;
+            if (node && range.startContainer === node && range.endContainer === node)
+                pointer = `chars ${range.startOffset}-${range.endOffset}`;
+        }
+        return { text, pointer };
+    }
+    function cellValue(field) {
+        switch (field) {
+            case 'VALUE': return $('f_value').value || null;
+            case 'PERCENTAGE': return $('f_percentage').value || null;
+            case 'NAME': return $('f_name').value || null;
+            case 'CLASSIFICATION': return $('f_sourceType').value || null;
+            case 'RELATED_COMPANY': {
+                const inp = relatedHidden()?.closest('.autocomplete')?.querySelector('.autocomplete-input');
+                return inp ? (inp.value || null) : null;
+            }
+        }
+        return null;
+    }
+
+    // ---- "Use as reference": freeze proof for one cell ----
+    document.querySelectorAll('.ref-btn').forEach(btn => {
+        btn.addEventListener('click', async () => {
+            const id = Number(companyId());
+            if (!id) { alert('Pick a company first.'); return; }
+            const sel = selectionInfo();
+            if (!sel.text.trim()) { alert('Select proof text in the EDGAR pane first.'); return; }
+            const field = btn.dataset.field;
+
+            const body = {
+                companyId: id,
+                revenueSourceId: currentRowId,
+                sourceType: $('f_sourceType').value,
+                name: $('f_name').value,
+                value: numOrNull($('f_value').value),
+                percentage: numOrNull($('f_percentage').value),
+                relatedCompanyId: relatedHidden()?.value ? Number(relatedHidden().value) : null,
+                field,
+                endpoint: currentEndpoint,
+                referencePointer: sel.pointer,
+                referenceSnapshot: sel.text,
+                referencedValue: cellValue(field),
+                filingAccessionNumber: currentFiling?.accessionNumber || null,
+                filingForm: currentFiling?.form || null,
+                filingDate: currentFiling?.filingDate || null,
+                filingUrl: currentFiling?.documentUrl || null
+            };
+            const res = await fetch('/extraction/reference', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'RequestVerificationToken': token },
+                body: JSON.stringify(body)
+            });
+            if (!res.ok) { alert('Save failed: ' + await res.text()); return; }
+            const result = await res.json();
+            currentRowId = result.revenueSourceId;  // bind newly-created row for the next cell
+            renderRef(field, { pointer: sel.pointer, snapshot: sel.text, endpoint: currentEndpoint });
+        });
+    });
+})();
+</script>
+}

@@ -1,3 +1,4 @@
+using System.Globalization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Rendering;
 using simple_bloomberg_terminal.Models.Entities;
@@ -12,11 +13,19 @@ public class RevenueSourcesController : Controller
 {
     private readonly IRevenueSourceRepository _repo;
     private readonly ICompanyRepository _companies;
+    private readonly IFilingRepository _filings;
+    private readonly ISourceFieldReviewRepository _reviews;
 
-    public RevenueSourcesController(IRevenueSourceRepository repo, ICompanyRepository companies)
+    public RevenueSourcesController(
+        IRevenueSourceRepository repo,
+        ICompanyRepository companies,
+        IFilingRepository filings,
+        ISourceFieldReviewRepository reviews)
     {
         _repo = repo;
         _companies = companies;
+        _filings = filings;
+        _reviews = reviews;
     }
 
     [HttpGet, Route("")]
@@ -30,7 +39,61 @@ public class RevenueSourcesController : Controller
     {
         var entity = _repo.GetById(id);
         if (entity == null) return NotFound();
-        return View(entity);
+
+        PopulateDropdowns();
+        ViewBag.CompanyLabel = entity.Company?.Name;
+        ViewBag.RelatedCompanyLabel = entity.RelatedCompany?.Name;
+
+        var vm = new RevenueSourceDetailViewModel
+        {
+            Source = entity,
+            Edit = ToEditModel(entity),
+            Reviews = _reviews.GetByCompany(entity.CompanyId)
+                .Where(r => r.RevenueSourceId == id)
+                .OrderBy(r => r.Field)
+                .ToList(),
+            CompanyFilings = _filings.GetByCompany(entity.CompanyId).ToList()
+        };
+        return View(vm);
+    }
+
+    // Detach one field's proof: soft-delete that review (removes its filing link too).
+    [HttpPost, Route("{id:long}/reviews/{reviewId:long}/detach"), ValidateAntiForgeryToken]
+    public IActionResult DetachReview(long id, long reviewId)
+    {
+        var review = _reviews.GetById(reviewId);
+        if (review is not null && review.RevenueSourceId == id)
+            _reviews.SoftDelete(reviewId);
+        return RedirectToAction(nameof(Details), new { id });
+    }
+
+    // Replace which filing backs one field. Identified by accession so a filing not yet in the DB
+    // (just browsed from EDGAR) gets upserted and attached. Blank accession clears the link. New
+    // proof context, so the phase-2 verdict is reset.
+    [HttpPost, Route("{id:long}/reviews/{reviewId:long}/filing"), ValidateAntiForgeryToken]
+    public IActionResult SetReviewFiling(long id, long reviewId,
+        string? filingAccession, string? filingForm, string? filingDate, string? filingUrl)
+    {
+        var review = _reviews.GetById(reviewId);
+        if (review is null || review.RevenueSourceId != id) return RedirectToAction(nameof(Details), new { id });
+
+        if (string.IsNullOrWhiteSpace(filingAccession))
+        {
+            review.FilingId = null;
+        }
+        else
+        {
+            DateTime? d = DateTime.TryParse(filingDate, CultureInfo.InvariantCulture, DateTimeStyles.None, out var dd)
+                ? dd : null;
+            review.FilingId = _filings.Upsert(review.CompanyId, filingAccession, filingForm, d, filingUrl).Id;
+        }
+
+        review.Mark = null;
+        review.Rationale = null;
+        review.ReviewedAt = null;
+        review.ReviewerModel = null;
+        _reviews.Update(review);
+        return RedirectToAction(nameof(Details), new { id });
     }
 
     [HttpGet, Route("create")]
@@ -63,7 +126,7 @@ public class RevenueSourcesController : Controller
     }
 
     [HttpPost, ActionName("Edit"), Route("{id:long}/edit"), ValidateAntiForgeryToken]
-    public async Task<IActionResult> EditPost(long id)
+    public async Task<IActionResult> EditPost(long id, string? returnUrl)
     {
         var entity = _repo.GetById(id);
         if (entity == null) return NotFound();
@@ -78,14 +141,17 @@ public class RevenueSourcesController : Controller
         entity.CompanyId = model.CompanyId;
         entity.RelatedCompanyId = model.RelatedCompanyId;
         _repo.Update(entity);
+        if (Url.IsLocalUrl(returnUrl)) return Redirect(returnUrl);
         return RedirectToAction(nameof(Index));
     }
 
-    [HttpPost, Route("{id:long}/delete"), ValidateAntiForgeryToken]
-    public IActionResult Delete(long id)
+    // Cascade: removes this source + its proof reviews + its filing + every other source on that
+    // filing. returnUrl lets the company profile send the user back to itself after deleting.
+    [HttpPost, Route("{id:long}/delete", Name = "RevenueSourceDelete"), ValidateAntiForgeryToken]
+    public IActionResult Delete(long id, string? returnUrl)
     {
-        try { _repo.SoftDelete(id); }
-        catch (InvalidOperationException ex) { TempData["Error"] = ex.Message; }
+        _filings.SoftDeleteSourceCluster(RelationKind.REVENUE, id);
+        if (Url.IsLocalUrl(returnUrl)) return Redirect(returnUrl);
         return RedirectToAction(nameof(Index));
     }
 

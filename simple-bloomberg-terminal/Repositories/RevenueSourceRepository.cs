@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using simple_bloomberg_terminal.Data;
 using simple_bloomberg_terminal.Models.Entities;
+using simple_bloomberg_terminal.Models.Enums;
 
 namespace simple_bloomberg_terminal.Repositories;
 
@@ -44,6 +45,16 @@ public class RevenueSourceRepository(AppDbContext db) : IRevenueSourceRepository
         var entity = db.RevenueSources.FirstOrDefault(r => r.Id == id);
         if (entity == null || entity.DeletedAt != null) return;
         entity.DeletedAt = DateTime.UtcNow;
+        db.SaveChanges();
+    }
+
+    public void ClearByCompanyAndDataSource(long companyId, DataSource source)
+    {
+        var rows = db.RevenueSources
+            .Where(r => r.CompanyId == companyId && r.DataSource == source && r.DeletedAt == null)
+            .ToList();
+        if (rows.Count == 0) return;
+        foreach (var r in rows) r.DeletedAt = DateTime.UtcNow;
         db.SaveChanges();
     }
 }

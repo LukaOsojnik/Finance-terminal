@@ -19,14 +19,21 @@ public class CompanyRepository(AppDbContext db) : ICompanyRepository
             .Include(c => c.Events)
             .FirstOrDefault(c => c.Id == id && c.DeletedAt == null);
 
+    // AsSplitQuery: five collection Includes off Company would otherwise be one JOINed query whose
+    // row count is the *product* of the collections (cartesian explosion) — crippling for a company
+    // with many events. Split fetches each collection separately. Events is filtered to active so
+    // soft-deleted rows (e.g. retired filing-events) aren't loaded only to be discarded in memory.
     public Company? GetWithGraphRelations(long id) =>
         db.Companies
             .Include(c => c.Country)
-            .Include(c => c.Events)
+            .Include(c => c.Events.Where(e => e.DeletedAt == null))
             .Include(c => c.RevenueSources).ThenInclude(r => r.RelatedCompany)
+            .Include(c => c.RevenueSources).ThenInclude(r => r.Reviews).ThenInclude(rv => rv.Filing)
             .Include(c => c.CostSources).ThenInclude(c2 => c2.RelatedCompany)
+            .Include(c => c.CostSources).ThenInclude(c2 => c2.Reviews).ThenInclude(rv => rv.Filing)
             .Include(c => c.RevenueFromDependents).ThenInclude(r => r.Company)
             .Include(c => c.CostFromDependents).ThenInclude(c2 => c2.Company)
+            .AsSplitQuery()
             .FirstOrDefault(c => c.Id == id && c.DeletedAt == null);
 
     // Exact, literal CIK match (caller sends the format stored in the DB). Same includes as
@@ -34,11 +41,14 @@ public class CompanyRepository(AppDbContext db) : ICompanyRepository
     public Company? GetWithGraphRelationsByCik(string cik) =>
         db.Companies
             .Include(c => c.Country)
-            .Include(c => c.Events)
+            .Include(c => c.Events.Where(e => e.DeletedAt == null))
             .Include(c => c.RevenueSources).ThenInclude(r => r.RelatedCompany)
+            .Include(c => c.RevenueSources).ThenInclude(r => r.Reviews).ThenInclude(rv => rv.Filing)
             .Include(c => c.CostSources).ThenInclude(c2 => c2.RelatedCompany)
+            .Include(c => c.CostSources).ThenInclude(c2 => c2.Reviews).ThenInclude(rv => rv.Filing)
             .Include(c => c.RevenueFromDependents).ThenInclude(r => r.Company)
             .Include(c => c.CostFromDependents).ThenInclude(c2 => c2.Company)
+            .AsSplitQuery()
             .FirstOrDefault(c => c.Cik == cik && c.DeletedAt == null);
 
     public IEnumerable<Company> Search(string? term)

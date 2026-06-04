@@ -17,6 +17,8 @@ public class AppDbContext : DbContext
     public DbSet<CountryAdvantage> CountryAdvantages { get; set; }
     public DbSet<CountryChallenge> CountryChallenges { get; set; }
     public DbSet<GdpSnapshot> GdpSnapshots { get; set; }
+    public DbSet<SourceFieldReview> SourceFieldReviews { get; set; }
+    public DbSet<Filing> Filings { get; set; }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -26,5 +28,52 @@ public class AppDbContext : DbContext
             .HasOne(c => c.Details)
             .WithOne(d => d.Country)
             .HasForeignKey<CountryDetails>(d => d.CountryId);
+
+        modelBuilder.Entity<SourceFieldReview>(e =>
+        {
+            e.HasOne(r => r.Company)
+                .WithMany()
+                .HasForeignKey(r => r.CompanyId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            e.HasOne(r => r.RevenueSource)
+                .WithMany(rs => rs.Reviews)
+                .HasForeignKey(r => r.RevenueSourceId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            e.HasOne(r => r.CostSource)
+                .WithMany(cs => cs.Reviews)
+                .HasForeignKey(r => r.CostSourceId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            // The filing this per-field proof was drawn from (one source -> many filings via its
+            // reviews). Restrict so a referenced filing can't be hard-deleted from under a review.
+            e.HasOne(r => r.Filing)
+                .WithMany()
+                .HasForeignKey(r => r.FilingId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            // one current reference per cell; MySQL allows multiple NULLs so
+            // cost rows (null RevenueSourceId) and revenue rows (null CostSourceId) don't collide
+            e.HasIndex(r => new { r.RevenueSourceId, r.Field }).IsUnique();
+            e.HasIndex(r => new { r.CostSourceId, r.Field }).IsUnique();
+
+            e.ToTable(t => t.HasCheckConstraint(
+                "CK_SourceFieldReview_OneSource",
+                "(RevenueSourceId IS NULL) <> (CostSourceId IS NULL)"));
+        });
+
+        modelBuilder.Entity<Filing>(e =>
+        {
+            e.HasOne(f => f.Company)
+                .WithMany()
+                .HasForeignKey(f => f.CompanyId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            // EDGAR accession numbers are globally unique => one Filing row per filing,
+            // shared by every review (and thus source) it backs (upsert-by-accession in
+            // ExtractionController).
+            e.HasIndex(f => f.AccessionNumber).IsUnique();
+        });
     }
 }

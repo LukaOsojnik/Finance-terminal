@@ -1,7 +1,17 @@
 @using simple_bloomberg_terminal.Models.Entities
-@model RevenueSource
+@model simple_bloomberg_terminal.Models.ViewModels.RevenueSourceDetailViewModel
 @{
-    ViewData["Title"] = (Model.Company?.Name ?? "Revenue Source") + " — " + Model.Name;
+    var src = Model.Source;
+    ViewData["Title"] = (src.Company?.Name ?? "Revenue Source") + " — " + src.Name;
+    // Inline edit form posts to Edit and returns here.
+    ViewData["ReturnUrl"] = Context.Request.Path;
+    ViewData["CancelUrl"] = Context.Request.Path;
+
+    string Short(string? s, int n = 90)
+    {
+        s = (s ?? "").Replace("\n", " ").Trim();
+        return s.Length > n ? s.Substring(0, n) + "…" : s;
+    }
 }
 
 @* ── Hero ── *@
@@ -9,150 +19,175 @@
     <div class="detail-hero-back">
         <a asp-controller="RevenueSources" asp-action="Index" class="detail-back-link">← REVENUE SOURCES</a>
     </div>
-
     <div class="detail-hero-top">
         <div class="detail-hero-name-row">
-            <h1 class="detail-hero-name">@Model.Name</h1>
-            <span class="detail-code-badge">@Model.SourceType</span>
-            @if (Model.Company != null)
+            <h1 class="detail-hero-name">@src.Name</h1>
+            <span class="detail-code-badge">@src.SourceType</span>
+            @if (src.Company != null)
             {
-                <span class="detail-region-tag">@Model.Company.Name</span>
+                <span class="detail-region-tag">@src.Company.Name</span>
             }
         </div>
-        @if (Model.DataSource.HasValue)
+        @if (src.DataSource.HasValue)
         {
-            <div class="detail-hero-sub">SOURCE: <span class="detail-hero-accent">@Model.DataSource.Value</span></div>
+            <div class="detail-hero-sub">SOURCE: <span class="detail-hero-accent">@src.DataSource.Value</span></div>
         }
     </div>
-
     <div class="detail-metrics-row">
         <div class="detail-metric-card">
             <div class="detail-metric-label">VALUE</div>
-            <div class="detail-metric-value">
-                @if (Model.Value.HasValue)
-                {
-                    <span>$@((Model.Value.Value / 1e9).ToString("F2"))B</span>
-                }
-                else
-                {
-                    <span class="muted-cell">—</span>
-                }
-            </div>
+            <div class="detail-metric-value">@(src.Value.HasValue ? "$" + (src.Value.Value / 1e9).ToString("F2") + "B" : "—")</div>
         </div>
         <div class="detail-metric-card">
             <div class="detail-metric-label">SHARE OF REVENUE</div>
-            <div class="detail-metric-value">
-                @if (Model.Percentage.HasValue)
-                {
-                    <span>@(Model.Percentage.Value.ToString("F1"))%</span>
-                }
-                else
-                {
-                    <span class="muted-cell">—</span>
-                }
-            </div>
+            <div class="detail-metric-value">@(src.Percentage.HasValue ? src.Percentage.Value.ToString("F1") + "%" : "—")</div>
         </div>
         <div class="detail-metric-card">
-            <div class="detail-metric-label">SOURCE TYPE</div>
-            <div class="detail-metric-value">@Model.SourceType</div>
+            <div class="detail-metric-label">PROOF FIELDS</div>
+            <div class="detail-metric-value">@Model.Reviews.Count()</div>
         </div>
         <div class="detail-metric-card">
             <div class="detail-metric-label">COMPANY</div>
-            <div class="detail-metric-value">
-                @if (Model.Company != null)
-                {
-                    <span>@Model.Company.Name</span>
-                }
-                else
-                {
-                    <span class="muted-cell">—</span>
-                }
-            </div>
+            <div class="detail-metric-value">@(src.Company?.Name ?? "—")</div>
         </div>
     </div>
 </section>
 
-@* ── Breakdown + Counterparty ── *@
-<div class="row g-2 mb-2 align-items-center">
-    <div class="col-12 col-md-6"><div class="detail-section-label mb-0">// SOURCE DATA</div></div>
-    <div class="col-12 col-md-6"><div class="detail-section-label mb-0">// COUNTERPARTY</div></div>
-</div>
-<div class="row g-3 mb-5 align-items-start">
-    <div class="col-12 col-md-6">
+@* ── Edit fields ── *@
+<div class="detail-section-label">// EDIT FIELDS</div>
+<div class="row g-3 mb-4">
+    <div class="col-12">
         <div class="detail-card">
-            <div class="detail-card-title">REVENUE STREAM</div>
-            <table class="terminal-table">
-                <tbody>
-                    <tr>
-                        <td class="tag-cell">Name</td>
-                        <td class="name-cell">@Model.Name</td>
-                    </tr>
-                    <tr>
-                        <td class="tag-cell">Type</td>
-                        <td class="name-cell">@Model.SourceType</td>
-                    </tr>
-                    <tr>
-                        <td class="tag-cell">Value</td>
-                        <td class="num-cell">
-                            @if (Model.Value.HasValue)
-                            {
-                                <span>$@(Model.Value.Value.ToString("N0"))</span>
-                            }
-                            else
-                            {
-                                <span class="muted-cell">—</span>
-                            }
-                        </td>
-                    </tr>
-                    <tr>
-                        <td class="tag-cell">Percentage</td>
-                        <td class="num-cell">
-                            @if (Model.Percentage.HasValue)
-                            {
-                                <span>@(Model.Percentage.Value.ToString("F2"))%</span>
-                            }
-                            else
-                            {
-                                <span class="muted-cell">—</span>
-                            }
-                        </td>
-                    </tr>
-                    <tr>
-                        <td class="tag-cell">Data Source</td>
-                        <td class="name-cell">@(Model.DataSource.HasValue ? Model.DataSource.Value.ToString() : "—")</td>
-                    </tr>
-                </tbody>
-            </table>
+            @await Html.PartialAsync("_FieldsForm", Model.Edit)
         </div>
     </div>
-    <div class="col-12 col-md-6">
+</div>
+
+@* ── Connected filings / proof (per field) ── *@
+<div class="detail-section-label">// CONNECTED FILINGS — PROOF PER FIELD</div>
+<div class="row g-3 mb-5">
+    <div class="col-12">
         <div class="detail-card">
-            <div class="detail-card-title">RELATED COMPANY</div>
-            @if (Model.RelatedCompany != null)
+            @if (!Model.Reviews.Any())
             {
-                <table class="terminal-table">
-                    <tbody>
-                        <tr>
-                            <td class="tag-cell">Name</td>
-                            <td class="name-cell">@Model.RelatedCompany.Name</td>
-                        </tr>
-                        <tr>
-                            <td class="tag-cell">Sector</td>
-                            <td class="tag-cell">@Model.RelatedCompany.Sector.ToString().Replace("_", " ")</td>
-                        </tr>
-                        <tr>
-                            <td class="tag-cell"></td>
-                            <td>
-                                <a asp-controller="Companies" asp-action="Details" asp-route-id="@Model.RelatedCompany.Id" class="btn-detail">VIEW COMPANY →</a>
-                            </td>
-                        </tr>
-                    </tbody>
-                </table>
+                <div class="detail-pending">
+                    NO PROOF ON RECORD —
+                    <a asp-controller="Extraction" asp-action="Index" asp-route-companyId="@src.CompanyId" class="btn-detail">ADD REFERENCES →</a>
+                </div>
             }
             else
             {
-                <div class="detail-pending">NO COUNTERPARTY LINKED</div>
+                <div class="mb-2">
+                    <button type="button" id="loadEdgarBtn" class="btn btn-secondary" data-company="@src.CompanyId">BROWSE EDGAR FILINGS</button>
+                    <span id="loadEdgarStatus" class="text-muted small"></span>
+                </div>
+                <table class="terminal-table">
+                    <thead>
+                        <tr>
+                            <th>Field</th>
+                            <th>Proof snapshot</th>
+                            <th>Filing</th>
+                            <th>Replace filing</th>
+                            <th></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var rev in Model.Reviews)
+                        {
+                            <tr>
+                                <td class="tag-cell">@rev.Field</td>
+                                <td class="name-cell" title="@rev.ReferenceSnapshot">“@Short(rev.ReferenceSnapshot)”</td>
+                                <td class="muted-cell">
+                                    @if (rev.Filing != null && rev.Filing.DeletedAt == null)
+                                    {
+                                        <a href="@rev.Filing.PrimaryDocUrl" target="_blank" rel="noopener">@rev.Filing.Form @rev.Filing.AccessionNumber</a>
+                                    }
+                                    else
+                                    {
+                                        <span class="muted-cell">—</span>
+                                    }
+                                </td>
+                                <td>
+                                    <form asp-action="SetReviewFiling" asp-route-id="@src.Id" asp-route-reviewId="@rev.Id" method="post" style="display:inline; white-space:nowrap;">
+                                        @Html.AntiForgeryToken()
+                                        <input type="hidden" name="filingAccession" class="f-accession"/>
+                                        <input type="hidden" name="filingForm" class="f-form"/>
+                                        <input type="hidden" name="filingDate" class="f-date"/>
+                                        <input type="hidden" name="filingUrl" class="f-url"/>
+                                        <select class="form-control filing-picker" style="display:inline; width:auto; max-width:280px;">
+                                            <option value="">— none —</option>
+                                            @foreach (var f in Model.CompanyFilings)
+                                            {
+                                                <option value="@f.AccessionNumber"
+                                                        data-form="@f.Form"
+                                                        data-date="@(f.FilingDate?.ToString("yyyy-MM-dd"))"
+                                                        data-url="@f.PrimaryDocUrl"
+                                                        selected="@(rev.FilingId == f.Id)">@f.Form @f.AccessionNumber</option>
+                                            }
+                                        </select>
+                                        <button type="submit" class="btn-detail">SET</button>
+                                    </form>
+                                </td>
+                                <td>
+                                    <form asp-action="DetachReview" asp-route-id="@src.Id" asp-route-reviewId="@rev.Id" method="post" style="display:inline"
+                                          onsubmit="return confirm('Detach this field\'s proof?');">
+                                        @Html.AntiForgeryToken()
+                                        <button type="submit" class="btn-detail">DETACH</button>
+                                    </form>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
             }
         </div>
     </div>
 </div>
+
+@section Scripts {
+    <partial name="_ValidationScriptsPartial"/>
+    <script>
+    (function () {
+        // Each picker's <select> is unnamed (display only); the chosen option's accession + metadata
+        // are mirrored into the form's hidden inputs so SET posts an upsertable filing.
+        function syncHidden(sel) {
+            var form = sel.closest('form');
+            var opt = sel.options[sel.selectedIndex];
+            form.querySelector('.f-accession').value = opt.value || '';
+            form.querySelector('.f-form').value = opt.dataset.form || '';
+            form.querySelector('.f-date').value = opt.dataset.date || '';
+            form.querySelector('.f-url').value = opt.dataset.url || '';
+        }
+        document.querySelectorAll('.filing-picker').forEach(function (sel) {
+            syncHidden(sel);
+            sel.addEventListener('change', function () { syncHidden(sel); });
+        });
+
+        // Browse the company's live EDGAR filings and add any new ones to every picker.
+        var btn = document.getElementById('loadEdgarBtn');
+        if (btn) btn.addEventListener('click', async function () {
+            var status = document.getElementById('loadEdgarStatus');
+            status.textContent = 'Loading EDGAR filings…';
+            try {
+                var res = await fetch('/api/stock/filings/' + btn.dataset.company);
+                if (!res.ok) { status.textContent = 'Failed (' + res.status + '): ' + (await res.text()); return; }
+                var filings = await res.json();
+                document.querySelectorAll('.filing-picker').forEach(function (sel) {
+                    var have = new Set(Array.from(sel.options).map(function (o) { return o.value; }));
+                    filings.forEach(function (f) {
+                        if (!f.accessionNumber || have.has(f.accessionNumber)) return;
+                        var o = document.createElement('option');
+                        o.value = f.accessionNumber;
+                        o.textContent = (f.form || '') + ' ' + (f.filingDate || '') + ' (' + f.accessionNumber + ')';
+                        o.dataset.form = f.form || '';
+                        o.dataset.date = f.filingDate || '';
+                        o.dataset.url = f.documentUrl || '';
+                        sel.appendChild(o);
+                    });
+                });
+                status.textContent = 'Loaded ' + filings.length + ' filings — pick one and SET.';
+            } catch (e) { status.textContent = 'Network error: ' + e.message; }
+        });
+    })();
+    </script>
+}

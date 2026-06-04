@@ -690,6 +690,35 @@
 | Route source | `[Route("revenue-sources")]` + `[Route("{id:long}/breakdown")]` |
 | View | Views/RevenueSources/Details.cshtml |
 | Parameters | id: long (route, constrained) |
+| Notes | Single-source management page: shows the source's editable fields (inline edit form posting to Edit) plus its per-field proof reviews with their connected filings, and lets the user detach a field's proof or replace which filing backs it. ViewModel: `RevenueSourceDetailViewModel` |
+
+---
+
+## /revenue-sources/{id}/reviews/{reviewId}/detach
+
+| Field | Value |
+|---|---|
+| Controller | RevenueSourcesController |
+| Action | DetachReview |
+| HTTP | POST |
+| Route source | `[Route("revenue-sources")]` + `[Route("{id:long}/reviews/{reviewId:long}/detach")]` |
+| View | — (soft-deletes one SourceFieldReview, redirects to breakdown Details) |
+| Parameters | id: long (route, constrained); reviewId: long (route, constrained) |
+| Notes | Detaches one field's proof by soft-deleting that SourceFieldReview for the source |
+
+---
+
+## /revenue-sources/{id}/reviews/{reviewId}/filing
+
+| Field | Value |
+|---|---|
+| Controller | RevenueSourcesController |
+| Action | SetReviewFiling |
+| HTTP | POST |
+| Route source | `[Route("revenue-sources")]` + `[Route("{id:long}/reviews/{reviewId:long}/filing")]` |
+| View | — (redirects to breakdown Details) |
+| Parameters | id: long (route, constrained); reviewId: long (route, constrained); filingId: long? (form/query) |
+| Notes | Sets/clears that review's FilingId (replace which filing backs the field; null clears it) and resets the phase-2 verdict |
 
 ---
 
@@ -702,7 +731,8 @@
 | HTTP | GET, POST |
 | Route source | `[Route("revenue-sources")]` + `[Route("{id:long}/edit")]` |
 | View | Views/RevenueSources/Edit.cshtml |
-| Parameters | id: long (route, constrained); form fields (POST) |
+| Parameters | id: long (route, constrained); form fields (POST); returnUrl: string? (query, POST) |
+| Notes | POST also accepts an optional `returnUrl` and redirects there if it is a local URL (so the breakdown page's inline edit returns to itself); otherwise redirects to Index |
 
 ---
 
@@ -797,6 +827,34 @@
 
 ---
 
+## /extraction
+
+| Field | Value |
+|---|---|
+| Controller | ExtractionController |
+| Action | Index |
+| HTTP | GET |
+| Route source | `[Route("extraction")]` + `[Route("")]` |
+| View | Views/Extraction/Index.cshtml |
+| Parameters | companyId: long? (query string, optional) |
+| Notes | Phase-1 split-screen revenue extraction UI — company autocomplete picker; left pane = RevenueSource cells, right pane = JSON from `POST /api/stock/refresh/{companyId}`; "Use as reference" writes per-cell SourceFieldReview rows |
+
+---
+
+## /extraction/reference
+
+| Field | Value |
+|---|---|
+| Controller | ExtractionController |
+| Action | Reference |
+| HTTP | POST |
+| Route source | `[Route("extraction")]` + `[Route("reference")]` |
+| View | — (JSON `ReferenceResult` record: RevenueSourceId, ReviewId, Field) |
+| Parameters | JSON body (ReferenceRequest) |
+| Notes | Ensures the RevenueSource row exists (create if new, DataSource=MANUAL) then upserts one SourceFieldReview per (RevenueSourceId, Field) with Mark=null; re-referencing resets the verdict. Responses: 200 OK; 400 (missing companyId/name/snapshot); 404 (source row id not found) |
+
+---
+
 ## /graph
 
 | Field | Value |
@@ -839,6 +897,76 @@
 
 ---
 
+## api/stock/refresh/{companyId}
+
+| Field | Value |
+|---|---|
+| Controller | StockController (Controllers/Api/) |
+| Action | Refresh |
+| HTTP | POST |
+| Route source | `[ApiController]` + `[Route("api/stock")]` + `[HttpPost("refresh/{companyId:long}")]` |
+| View | — (JSON `CompanyDto`) |
+| Parameters | companyId: long (route, constrained) |
+| Notes | Fetches SEC EDGAR data for the company and (re)persists EDGAR-tagged RevenueSource/CostSource/Event rows. Responses: 200 OK; 404 (no such company); 409 (company has no CIK / non-filer); 422 (CIK not an SEC filer); 503 (SEC unreachable/timeout) |
+
+---
+
+## api/stock/resolve/{ticker}
+
+| Field | Value |
+|---|---|
+| Controller | StockController (Controllers/Api/) |
+| Action | Resolve |
+| HTTP | GET |
+| Route source | `[ApiController]` + `[Route("api/stock")]` + `[HttpGet("resolve/{ticker}")]` |
+| View | — (JSON `{ ticker, cik }`) |
+| Parameters | ticker: string (route) |
+| Notes | Read-only ticker -> CIK lookup. Returns 200 OK or 404 if the ticker is unknown |
+
+---
+
+## api/stock/facts/{companyId}
+
+| Field | Value |
+|---|---|
+| Controller | StockController (Controllers/Api/) |
+| Action | Facts |
+| HTTP | GET |
+| Route source | `[ApiController]` + `[Route("api/stock")]` + `[HttpGet("facts/{companyId:long}")]` |
+| View | — (raw SEC XBRL companyfacts JSON, passed through as application/json) |
+| Parameters | companyId: long (route, constrained) |
+| Notes | Read-only proxy of SEC `/api/xbrl/companyfacts/CIK{cik}.json`; no persistence. Responses: 200 OK; 404 (no such company); 409 (company has no CIK); 422 (CIK not an SEC filer); 503 (SEC unreachable) |
+
+---
+
+## api/stock/filings/{companyId}
+
+| Field | Value |
+|---|---|
+| Controller | StockController (Controllers/Api/) |
+| Action | Filings |
+| HTTP | GET |
+| Route source | `[ApiController]` + `[Route("api/stock")]` + `[HttpGet("filings/{companyId:long}")]` |
+| View | — (JSON array of filing summaries: form, filingDate, reportDate, accessionNumber, primaryDocument, description, documentUrl) |
+| Parameters | companyId: long (route, constrained) |
+| Notes | Read-only; built from SEC submissions `filings.recent`; each row includes a ready-to-open sec.gov Archives documentUrl. Responses: 200 OK; 404; 409 (no CIK); 422 (no filings); 503 |
+
+---
+
+## api/stock/filing/{companyId}
+
+| Field | Value |
+|---|---|
+| Controller | StockController (Controllers/Api/) |
+| Action | Filing |
+| HTTP | GET |
+| Route source | `[ApiController]` + `[Route("api/stock")]` + `[HttpGet("filing/{companyId:long}")]` |
+| View | — (the filing's primary document text, returned as text/plain) |
+| Parameters | companyId: long (route, constrained); accession: string (query, required); doc: string (query, required) |
+| Notes | Read-only proxy of one filing document from sec.gov Archives so its text can be selected as proof in /extraction. Responses: 200 OK; 400 (missing accession/doc); 404 (no company / document not found); 409 (no CIK); 503 |
+
+---
+
 ## /Home/Error
 
 | Field | Value |
@@ -855,4 +983,4 @@
 
 ## Navigation (Views/Shared/_Layout.cshtml)
 
-Top nav links: Countries, Companies, Events, Trade Blocs, Graph, plus a "More" dropdown containing: Country Details, Country Advantages, Country Challenges, GDP Snapshots, Revenue Sources, Cost Sources.
+Top nav links: Countries, Companies, Events, Trade Blocs, Graph, plus a "More" dropdown containing: Country Details, Country Advantages, Country Challenges, GDP Snapshots, Revenue Sources, Cost Sources, Extraction.

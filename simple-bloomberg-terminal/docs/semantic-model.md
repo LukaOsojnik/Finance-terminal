@@ -16,6 +16,8 @@
 | GdpSnapshots | GdpSnapshot | Annual GDP data point for a Country |
 | RevenueSources | RevenueSource | Revenue line item for a Company |
 | CostSources | CostSource | Cost line item for a Company |
+| SourceFieldReviews | SourceFieldReview | Per-field provenance (incl. the filing link) + AI verdict for one cell of a revenue/cost source |
+| Filings | Filing | A SEC EDGAR filing used as proof for a cost/revenue source; identity is the EDGAR accession number |
 
 ---
 
@@ -121,6 +123,41 @@
 | DataSource | DataSource? | |
 | DeletedAt | DateTime? | Soft-delete timestamp |
 
+### SourceFieldReview
+| Property | Type | Notes |
+|---|---|---|
+| Id | long | PK |
+| CompanyId | long | FK → Companies (analyzed company, denormalized) |
+| Relation | RelationKind | COST / REVENUE discriminator |
+| RevenueSourceId | long? | FK → RevenueSources; set iff Relation==REVENUE |
+| CostSourceId | long? | FK → CostSources; set iff Relation==COST |
+| Field | ReviewableField | Which cell this row proves |
+| Endpoint | string | API endpoint that produced the proof |
+| ReferencePointer | string | JSON path / text offset the user selected |
+| ReferenceSnapshot | string | Literal proof text, frozen at reference time |
+| ReferencedValue | string? | Value snapshot at reference time → staleness detection |
+| FilingId | long? | FK → Filings; the filing this per-field proof was drawn from (null when proof came from Company Facts). Per-field, so one source cites several filings via its reviews. |
+| Mark | int? | null=unreviewed, 0=fail, 1=pass |
+| Rationale | string? | AI reason for the mark |
+| ReviewedAt | DateTime? | |
+| ReviewerModel | string? | Model id |
+| DeletedAt | DateTime? | Soft-delete timestamp |
+
+Constraints: check `CK_SourceFieldReview_OneSource` = `(RevenueSourceId IS NULL) <> (CostSourceId IS NULL)` (exactly one source FK set); unique indexes `(RevenueSourceId, Field)` and `(CostSourceId, Field)` — one current reference per cell (NULLs don't collide across relation types).
+
+### Filing
+| Property | Type | Notes |
+|---|---|---|
+| Id | long | PK |
+| CompanyId | long | FK → Companies |
+| AccessionNumber | string | EDGAR accession number; **unique** |
+| Form | string? | Filing form type (10-K, 8-K…) |
+| FilingDate | DateTime? | |
+| PrimaryDocUrl | string? | |
+| DeletedAt | DateTime? | Soft-delete timestamp |
+
+Constraints: unique index on `AccessionNumber` — EDGAR accession numbers are globally unique, so there is one Filing row per filing, shared by every SourceFieldReview that cites it (upsert-by-accession). The filing link is per-field on SourceFieldReview, so one source can cite multiple filings across its reviews. Migration: `20260603210530_AddFiling`; link moved to SourceFieldReview in `20260603213908_MoveFilingLinkToReview`.
+
 ---
 
 ## Relationships
@@ -144,6 +181,13 @@ Company ──────────────── RevenueSource      (1:N
 Company ──────────────── CostSource         (1:N, FK RelatedCompanyId — counterparty, nav: CostFromDependents)
 Company ◄──────────────► Event              (N:M, junction table)
 
+Company ──────────────── SourceFieldReview  (1:N, FK CompanyId, Restrict)
+RevenueSource ────────── SourceFieldReview  (1:N, FK RevenueSourceId nullable, Restrict)
+CostSource ───────────── SourceFieldReview  (1:N, FK CostSourceId nullable, Restrict)
+
+Company ──────────────── Filing             (1:N, FK CompanyId, Restrict)
+Filing ───────────────── SourceFieldReview  (1:N, FK FilingId nullable, Restrict)
+
 Event   ◄──────────────► TradeBloc          (N:M, junction table)
 ```
 
@@ -159,3 +203,5 @@ Event   ◄──────────────► TradeBloc          (N:M
 | SourceType | CUSTOMER, SEGMENT, REGION, PRODUCT |
 | CostBase | COGS, OPEX, TOTAL_COSTS |
 | DataSource | EDGAR, MANUAL, CLAUDE_ESTIMATED, OPENBB |
+| RelationKind | COST, REVENUE |
+| ReviewableField | VALUE, PERCENTAGE, NAME, RELATED_COMPANY, CLASSIFICATION |

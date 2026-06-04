@@ -10,6 +10,11 @@ public class CompanyDetailsViewModel
 
     public IEnumerable<Event> RelatedEvents { get; set; } = [];
 
+    // Active revenue/cost sources for this company (with RelatedCompany + Filing loaded), so the
+    // profile can list them and delete each (cascading to its filing cluster).
+    public IEnumerable<RevenueSource> RevenueSources { get; set; } = [];
+    public IEnumerable<CostSource> CostSources { get; set; } = [];
+
     // Sector enum formatted for display (underscores → spaces)
     public required string SectorLabel { get; set; }
 

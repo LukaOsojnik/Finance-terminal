@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using simple_bloomberg_terminal.Data;
 using simple_bloomberg_terminal.Models.Entities;
+using simple_bloomberg_terminal.Models.Enums;
 
 namespace simple_bloomberg_terminal.Repositories;
 
@@ -44,6 +45,16 @@ public class CostSourceRepository(AppDbContext db) : ICostSourceRepository
         var entity = db.CostSources.FirstOrDefault(c => c.Id == id);
         if (entity == null || entity.DeletedAt != null) return;
         entity.DeletedAt = DateTime.UtcNow;
+        db.SaveChanges();
+    }
+
+    public void ClearByCompanyAndDataSource(long companyId, DataSource source)
+    {
+        var rows = db.CostSources
+            .Where(c => c.CompanyId == companyId && c.DataSource == source && c.DeletedAt == null)
+            .ToList();
+        if (rows.Count == 0) return;
+        foreach (var c in rows) c.DeletedAt = DateTime.UtcNow;
         db.SaveChanges();
     }
 }

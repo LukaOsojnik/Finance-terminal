@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Localization;
 using Microsoft.EntityFrameworkCore;
 using simple_bloomberg_terminal.Data;
 using simple_bloomberg_terminal.Repositories;
+using simple_bloomberg_terminal.Services;
 
 var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddControllersWithViews();
@@ -29,6 +30,12 @@ builder.Services.AddScoped<ICountryChallengeRepository, CountryChallengeReposito
 builder.Services.AddScoped<IGdpSnapshotRepository, GdpSnapshotRepository>();
 builder.Services.AddScoped<IRevenueSourceRepository, RevenueSourceRepository>();
 builder.Services.AddScoped<ICostSourceRepository, CostSourceRepository>();
+builder.Services.AddScoped<ISourceFieldReviewRepository, SourceFieldReviewRepository>();
+builder.Services.AddScoped<IFilingRepository, FilingRepository>();
+
+// External stock data (SEC EDGAR): typed HttpClient + the one service with real logic.
+builder.Services.AddHttpClient<IStockApiClient, StockApiClient>();
+builder.Services.AddScoped<IStockService, StockService>();
 
 var app = builder.Build();
 

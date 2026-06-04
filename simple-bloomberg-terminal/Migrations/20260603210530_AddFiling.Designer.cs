@@ -3,6 +3,7 @@ using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using simple_bloomberg_terminal.Data;
 
@@ -11,9 +12,11 @@ using simple_bloomberg_terminal.Data;
 namespace simple_bloomberg_terminal.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260603210530_AddFiling")]
+    partial class AddFiling
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -148,6 +151,9 @@ namespace simple_bloomberg_terminal.Migrations
                     b.Property<DateTime?>("DeletedAt")
                         .HasColumnType("datetime(6)");
 
+                    b.Property<long?>("FilingId")
+                        .HasColumnType("bigint");
+
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasColumnType("longtext");
@@ -164,6 +170,8 @@ namespace simple_bloomberg_terminal.Migrations
                     b.HasKey("Id");
 
                     b.HasIndex("CompanyId");
+
+                    b.HasIndex("FilingId");
 
                     b.HasIndex("RelatedCompanyId");
 
@@ -412,6 +420,9 @@ namespace simple_bloomberg_terminal.Migrations
                     b.Property<DateTime?>("DeletedAt")
                         .HasColumnType("datetime(6)");
 
+                    b.Property<long?>("FilingId")
+                        .HasColumnType("bigint");
+
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasColumnType("longtext");
@@ -431,6 +442,8 @@ namespace simple_bloomberg_terminal.Migrations
                     b.HasKey("Id");
 
                     b.HasIndex("CompanyId");
+
+                    b.HasIndex("FilingId");
 
                     b.HasIndex("RelatedCompanyId");
 
@@ -460,9 +473,6 @@ namespace simple_bloomberg_terminal.Migrations
 
                     b.Property<int>("Field")
                         .HasColumnType("int");
-
-                    b.Property<long?>("FilingId")
-                        .HasColumnType("bigint");
 
                     b.Property<int?>("Mark")
                         .HasColumnType("int");
@@ -496,8 +506,6 @@ namespace simple_bloomberg_terminal.Migrations
                     b.HasKey("Id");
 
                     b.HasIndex("CompanyId");
-
-                    b.HasIndex("FilingId");
 
                     b.HasIndex("CostSourceId", "Field")
                         .IsUnique();
@@ -620,11 +628,18 @@ namespace simple_bloomberg_terminal.Migrations
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
+                    b.HasOne("simple_bloomberg_terminal.Models.Entities.Filing", "Filing")
+                        .WithMany()
+                        .HasForeignKey("FilingId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
                     b.HasOne("simple_bloomberg_terminal.Models.Entities.Company", "RelatedCompany")
                         .WithMany("CostFromDependents")
                         .HasForeignKey("RelatedCompanyId");
 
                     b.Navigation("Company");
+
+                    b.Navigation("Filing");
 
                     b.Navigation("RelatedCompany");
                 });
@@ -704,11 +719,18 @@ namespace simple_bloomberg_terminal.Migrations
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
+                    b.HasOne("simple_bloomberg_terminal.Models.Entities.Filing", "Filing")
+                        .WithMany()
+                        .HasForeignKey("FilingId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
                     b.HasOne("simple_bloomberg_terminal.Models.Entities.Company", "RelatedCompany")
                         .WithMany("RevenueFromDependents")
                         .HasForeignKey("RelatedCompanyId");
 
                     b.Navigation("Company");
+
+                    b.Navigation("Filing");
 
                     b.Navigation("RelatedCompany");
                 });
@@ -722,25 +744,18 @@ namespace simple_bloomberg_terminal.Migrations
                         .IsRequired();
 
                     b.HasOne("simple_bloomberg_terminal.Models.Entities.CostSource", "CostSource")
-                        .WithMany("Reviews")
+                        .WithMany()
                         .HasForeignKey("CostSourceId")
                         .OnDelete(DeleteBehavior.Restrict);
 
-                    b.HasOne("simple_bloomberg_terminal.Models.Entities.Filing", "Filing")
-                        .WithMany()
-                        .HasForeignKey("FilingId")
-                        .OnDelete(DeleteBehavior.Restrict);
-
                     b.HasOne("simple_bloomberg_terminal.Models.Entities.RevenueSource", "RevenueSource")
-                        .WithMany("Reviews")
+                        .WithMany()
                         .HasForeignKey("RevenueSourceId")
                         .OnDelete(DeleteBehavior.Restrict);
 
                     b.Navigation("Company");
 
                     b.Navigation("CostSource");
-
-                    b.Navigation("Filing");
 
                     b.Navigation("RevenueSource");
                 });
@@ -754,11 +769,6 @@ namespace simple_bloomberg_terminal.Migrations
                     b.Navigation("RevenueFromDependents");
 
                     b.Navigation("RevenueSources");
-                });
-
-            modelBuilder.Entity("simple_bloomberg_terminal.Models.Entities.CostSource", b =>
-                {
-                    b.Navigation("Reviews");
                 });
 
             modelBuilder.Entity("simple_bloomberg_terminal.Models.Entities.Country", b =>
@@ -781,11 +791,6 @@ namespace simple_bloomberg_terminal.Migrations
                     b.Navigation("Challenges");
 
                     b.Navigation("GdpHistory");
-                });
-
-            modelBuilder.Entity("simple_bloomberg_terminal.Models.Entities.RevenueSource", b =>
-                {
-                    b.Navigation("Reviews");
                 });
 #pragma warning restore 612, 618
         }

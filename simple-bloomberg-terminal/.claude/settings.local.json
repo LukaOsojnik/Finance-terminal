@@ -27,7 +27,8 @@
       "Bash(Select-Object FullName)",
       "Bash(Get-ChildItem -Path \"C:\\\\Users\\\\luka.osojnik\\\\Documents\\\\Coding\\\\simple-bloomberg-terminal\\\\simple-bloomberg-terminal\" -Depth 1)",
       "Bash(Select-Object FullName, Mode)",
-      "Bash(Get-ChildItem -Recurse -Depth 1 -Directory -Path \"C:\\\\Users\\\\luka.osojnik\\\\Documents\\\\Coding\\\\simple-bloomberg-terminal\\\\simple-bloomberg-terminal\")"
+      "Bash(Get-ChildItem -Recurse -Depth 1 -Directory -Path \"C:\\\\Users\\\\luka.osojnik\\\\Documents\\\\Coding\\\\simple-bloomberg-terminal\\\\simple-bloomberg-terminal\")",
+      "WebFetch(domain:tldrfiling.com)"
     ]
   },
   "outputStyle": "Learning"
