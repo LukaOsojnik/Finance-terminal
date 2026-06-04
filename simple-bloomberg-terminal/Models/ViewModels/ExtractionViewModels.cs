@@ -7,6 +7,16 @@ public class ExtractionIndexViewModel
 {
     public long? CompanyId { get; set; }
     public string? CompanyLabel { get; set; }
+
+    // When the page is opened to add proof for one existing source row, these prefill the left
+    // cells (and the JS binds the row) so the user browses/connects against its current values.
+    public long? RevenueSourceId { get; set; }
+    public SourceType? SourceType { get; set; }
+    public string? Name { get; set; }
+    public double? Value { get; set; }
+    public double? Percentage { get; set; }
+    public long? RelatedCompanyId { get; set; }
+    public string? RelatedCompanyLabel { get; set; }
 }
 
 /// <summary>

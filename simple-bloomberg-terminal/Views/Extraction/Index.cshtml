@@ -61,8 +61,8 @@
             <label class="form-label">Counterparty</label>
             @await Html.PartialAsync("_AutocompletePicker", new AutocompletePickerModel {
                 FieldName = "relatedCompanyId",
-                SelectedId = null,
-                SelectedLabel = "",
+                SelectedId = Model.RelatedCompanyId,
+                SelectedLabel = Model.RelatedCompanyLabel ?? "",
                 LookupUrl = Url.Action("Lookup", "Companies"),
                 Required = false,
                 Placeholder = "Type company name (optional)..."
@@ -84,17 +84,36 @@
         <div id="endpointLabel" class="text-muted small mb-1"></div>
         <ul id="filings" class="filings-list" hidden></ul>
         <pre id="response" class="extraction-json">Load a company, then open Company Facts or a filing.</pre>
+        <div id="responseHtml" class="extraction-doc" hidden></div>
     </div>
 </div>
 
 @section Scripts {
 <partial name="_ValidationScriptsPartial"/>
+@if (Model.RevenueSourceId is { } prefillId)
+{
+    <script type="application/json" id="prefillData">
+        @Html.Raw(System.Text.Json.JsonSerializer.Serialize(new {
+            id = prefillId,
+            sourceType = Model.SourceType?.ToString(),
+            name = Model.Name,
+            value = Model.Value,
+            percentage = Model.Percentage
+        }))
+    </script>
+}
 <style>
     .extraction-split { display:flex; gap:1rem; align-items:flex-start; }
     .extraction-pane { flex:1; min-width:0; border:1px solid var(--border, #333); padding:.75rem; }
     .extraction-json { max-height:70vh; overflow:auto; white-space:pre-wrap; word-break:break-word;
         background:#0c0c0c; color:#cfcfcf; padding:.5rem; font-size:.8rem; }
     .extraction-json::selection { background:var(--accent, #f60); color:#000; }
+    /* SEC filing rendered with its own inline formatting — light page inside the dark terminal. */
+    .extraction-doc { max-height:70vh; overflow:auto; background:#fff; color:#111;
+        padding:1rem; font-size:.85rem; }
+    .extraction-doc ::selection, .extraction-doc::selection { background:var(--accent, #f60); color:#000; }
+    .extraction-doc img { max-width:100%; height:auto; }
+    .extraction-doc table { border-collapse:collapse; }
     .filings-list { max-height:28vh; overflow:auto; list-style:none; padding:0; margin:0 0 .5rem;
         border:1px solid var(--border, #333); font-size:.8rem; }
     .filings-list li { padding:.3rem .5rem; cursor:pointer; border-bottom:1px solid #222; }
@@ -113,6 +132,7 @@
     const companyHidden = () => document.querySelector('input[name="companyId"]');
     const relatedHidden = () => document.querySelector('input[name="relatedCompanyId"]');
     const pre = document.getElementById('response');
+    const docPane = document.getElementById('responseHtml');
     const filingsList = document.getElementById('filings');
     const endpointLabel = document.getElementById('endpointLabel');
     const rowPicker = document.getElementById('rowPicker');
@@ -127,9 +147,39 @@
 
     function showText(text, endpoint) {
         filingsList.hidden = true;
+        docPane.hidden = true;          // text view: hide the formatted doc pane
+        pre.hidden = false;
         pre.textContent = text;
         currentEndpoint = endpoint;
         currentFiling = null;   // generic text view: no filing backs it (openFiling re-sets this)
+        endpointLabel.textContent = endpoint ? `source: ${endpoint}` : '';
+    }
+
+    // Show a filing's own HTML (SEC inline formatting) in the doc pane. Same-origin (proxied), so
+    // select-to-reference still reads the browser selection from these nodes.
+    function showHtml(html, baseUrl, endpoint, filing) {
+        const tmp = document.createElement('div');
+        tmp.innerHTML = html;
+        // Drop anything that could escape into the page or run; keep inline style attrs (SEC's
+        // table/font formatting lives there).
+        tmp.querySelectorAll('script,style,link,meta,noscript,base,title').forEach(e => e.remove());
+        // Resolve relative image/link URLs against the filing's real document URL.
+        if (baseUrl) {
+            tmp.querySelectorAll('img[src]').forEach(el => {
+                try { el.src = new URL(el.getAttribute('src'), baseUrl).href; } catch { }
+            });
+            tmp.querySelectorAll('a[href]').forEach(el => {
+                try { el.href = new URL(el.getAttribute('href'), baseUrl).href; } catch { }
+                el.target = '_blank'; el.rel = 'noopener';
+            });
+        }
+        filingsList.hidden = true;
+        pre.hidden = true;
+        docPane.hidden = false;
+        docPane.innerHTML = tmp.innerHTML;
+        docPane.scrollTop = 0;
+        currentEndpoint = endpoint;
+        currentFiling = filing;   // proof taken here links the source row to this filing
         endpointLabel.textContent = endpoint ? `source: ${endpoint}` : '';
     }
 
@@ -223,8 +273,7 @@
     $('filingsBtn').addEventListener('click', async () => {
         const id = companyId();
         if (!id) { alert('Pick a company first.'); return; }
-        endpointLabel.textContent = '';
-        pre.textContent = 'Loading filings…';
+        showText('Loading filings…', '');   // restore text pane if a formatted doc was open
         const res = await fetch(`/api/stock/filings/${id}`);
         if (!res.ok) { showText(`Filings failed (${res.status}): ${await res.text()}`, ''); return; }
         const filings = await res.json();
@@ -239,32 +288,18 @@
         pre.textContent = `${filings.length} filings — click one to open.`;
     });
 
-    // Inline-XBRL 10-K/10-Q docs are HTML. Use the browser's layout-aware innerText (block
-    // elements -> newlines) for readable paragraphs; collapse runs of blank lines to one gap.
-    function htmlToReadableText(html) {
-        const tmp = document.createElement('div');
-        tmp.innerHTML = html;
-        tmp.querySelectorAll('script,style,noscript').forEach(e => e.remove());
-        tmp.style.position = 'absolute';
-        tmp.style.left = '-99999px';
-        tmp.style.whiteSpace = 'normal';
-        document.body.appendChild(tmp);
-        const text = tmp.innerText || tmp.textContent || '';
-        document.body.removeChild(tmp);
-        return text.replace(/[ \t]+\n/g, '\n').replace(/\n{3,}/g, '\n\n').trim();
-    }
-
     async function openFiling(id, f) {
         if (!f.accessionNumber || !f.primaryDocument) { alert('Filing has no primary document.'); return; }
-        pre.textContent = 'Loading filing…';
+        showText('Loading filing…', '');
         const qs = `accession=${encodeURIComponent(f.accessionNumber)}&doc=${encodeURIComponent(f.primaryDocument)}`;
         const res = await fetch(`/api/stock/filing/${id}?${qs}`);
-        filingsList.hidden = true;
         if (!res.ok) { showText(`Filing failed (${res.status}): ${await res.text()}`, ''); return; }
         const raw = await res.text();
+        const endpoint = f.documentUrl || `GET /api/stock/filing/${id}?${qs}`;
         const isHtml = /\.html?$/i.test(f.primaryDocument) || /<html|<body|<div/i.test(raw.slice(0, 2000));
-        showText(isHtml ? htmlToReadableText(raw) : raw, f.documentUrl || `GET /api/stock/filing/${id}?${qs}`);
-        currentFiling = f;   // proof taken here links the source row to this filing
+        // HTML filings keep SEC's own formatting in the doc pane; plain-text docs stay in the pre.
+        if (isHtml) showHtml(raw, f.documentUrl, endpoint, f);
+        else { showText(raw, endpoint); currentFiling = f; }
     }
 
     // ---- capture the selected proof text within the response pane ----
@@ -332,6 +367,21 @@
             renderRef(field, { pointer: sel.pointer, snapshot: sel.text, endpoint: currentEndpoint });
         });
     });
+
+    // ---- Prefill: opened from a source's "Add references" — bind that row and show its proof ----
+    (function bootstrapPrefill() {
+        const island = document.getElementById('prefillData');
+        if (!island) return;
+        let row;
+        try { row = JSON.parse(island.textContent); } catch { return; }
+        edgarRows = [row];
+        const o = document.createElement('option');
+        o.value = row.id; o.textContent = `${row.name} (#${row.id})`;
+        rowPicker.appendChild(o);
+        rowPicker.value = row.id;
+        fillCells(row);          // sets cells + currentRowId + loads existing refs
+        loadFacts();             // open the right pane so the user can browse/select proof
+    })();
 })();
 </script>
 }

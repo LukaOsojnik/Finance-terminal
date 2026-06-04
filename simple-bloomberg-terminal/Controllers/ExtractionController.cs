@@ -35,10 +35,25 @@ public class ExtractionController : Controller
     }
 
     [HttpGet, Route("")]
-    public IActionResult Index(long? companyId)
+    public IActionResult Index(long? companyId, long? revenueSourceId)
     {
         var vm = new ExtractionIndexViewModel { CompanyId = companyId };
-        if (companyId is { } id)
+
+        // Opened from a source's Details "Add references": prefill that row's values so the user
+        // browses EDGAR against the existing source instead of a blank new row.
+        if (revenueSourceId is { } rowId && _revenue.GetById(rowId) is { } row)
+        {
+            vm.RevenueSourceId = row.Id;
+            vm.CompanyId = row.CompanyId;
+            vm.SourceType = row.SourceType;
+            vm.Name = row.Name;
+            vm.Value = row.Value;
+            vm.Percentage = row.Percentage;
+            vm.RelatedCompanyId = row.RelatedCompanyId;
+            vm.RelatedCompanyLabel = row.RelatedCompany?.Name;
+        }
+
+        if (vm.CompanyId is { } id)
             vm.CompanyLabel = _companies.GetById(id)?.Name;
 
         ViewBag.SourceTypes = Enum.GetValues<SourceType>()

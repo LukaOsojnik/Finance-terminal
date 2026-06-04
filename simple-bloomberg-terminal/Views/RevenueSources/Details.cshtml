@@ -68,27 +68,21 @@
 <div class="row g-3 mb-5">
     <div class="col-12">
         <div class="detail-card">
+            <div class="mb-2">
+                <a asp-controller="Extraction" asp-action="Index" asp-route-companyId="@src.CompanyId" asp-route-revenueSourceId="@src.Id" class="btn-detail">ADD REFERENCES →</a>
+            </div>
             @if (!Model.Reviews.Any())
             {
-                <div class="detail-pending">
-                    NO PROOF ON RECORD —
-                    <a asp-controller="Extraction" asp-action="Index" asp-route-companyId="@src.CompanyId" class="btn-detail">ADD REFERENCES →</a>
-                </div>
+                <div class="detail-pending">NO PROOF ON RECORD YET.</div>
             }
             else
             {
-                <div class="mb-2">
-                    <button type="button" id="loadEdgarBtn" class="btn btn-secondary" data-company="@src.CompanyId">BROWSE EDGAR FILINGS</button>
-                    <span id="loadEdgarStatus" class="text-muted small"></span>
-                </div>
                 <table class="terminal-table">
                     <thead>
                         <tr>
                             <th>Field</th>
                             <th>Proof snapshot</th>
                             <th>Filing</th>
-                            <th>Replace filing</th>
-                            <th></th>
                         </tr>
                     </thead>
                     <tbody>
@@ -107,34 +101,6 @@
                                         <span class="muted-cell">—</span>
                                     }
                                 </td>
-                                <td>
-                                    <form asp-action="SetReviewFiling" asp-route-id="@src.Id" asp-route-reviewId="@rev.Id" method="post" style="display:inline; white-space:nowrap;">
-                                        @Html.AntiForgeryToken()
-                                        <input type="hidden" name="filingAccession" class="f-accession"/>
-                                        <input type="hidden" name="filingForm" class="f-form"/>
-                                        <input type="hidden" name="filingDate" class="f-date"/>
-                                        <input type="hidden" name="filingUrl" class="f-url"/>
-                                        <select class="form-control filing-picker" style="display:inline; width:auto; max-width:280px;">
-                                            <option value="">— none —</option>
-                                            @foreach (var f in Model.CompanyFilings)
-                                            {
-                                                <option value="@f.AccessionNumber"
-                                                        data-form="@f.Form"
-                                                        data-date="@(f.FilingDate?.ToString("yyyy-MM-dd"))"
-                                                        data-url="@f.PrimaryDocUrl"
-                                                        selected="@(rev.FilingId == f.Id)">@f.Form @f.AccessionNumber</option>
-                                            }
-                                        </select>
-                                        <button type="submit" class="btn-detail">SET</button>
-                                    </form>
-                                </td>
-                                <td>
-                                    <form asp-action="DetachReview" asp-route-id="@src.Id" asp-route-reviewId="@rev.Id" method="post" style="display:inline"
-                                          onsubmit="return confirm('Detach this field\'s proof?');">
-                                        @Html.AntiForgeryToken()
-                                        <button type="submit" class="btn-detail">DETACH</button>
-                                    </form>
-                                </td>
                             </tr>
                         }
                     </tbody>
@@ -143,51 +109,3 @@
         </div>
     </div>
 </div>
-
-@section Scripts {
-    <partial name="_ValidationScriptsPartial"/>
-    <script>
-    (function () {
-        // Each picker's <select> is unnamed (display only); the chosen option's accession + metadata
-        // are mirrored into the form's hidden inputs so SET posts an upsertable filing.
-        function syncHidden(sel) {
-            var form = sel.closest('form');
-            var opt = sel.options[sel.selectedIndex];
-            form.querySelector('.f-accession').value = opt.value || '';
-            form.querySelector('.f-form').value = opt.dataset.form || '';
-            form.querySelector('.f-date').value = opt.dataset.date || '';
-            form.querySelector('.f-url').value = opt.dataset.url || '';
-        }
-        document.querySelectorAll('.filing-picker').forEach(function (sel) {
-            syncHidden(sel);
-            sel.addEventListener('change', function () { syncHidden(sel); });
-        });
-
-        // Browse the company's live EDGAR filings and add any new ones to every picker.
-        var btn = document.getElementById('loadEdgarBtn');
-        if (btn) btn.addEventListener('click', async function () {
-            var status = document.getElementById('loadEdgarStatus');
-            status.textContent = 'Loading EDGAR filings…';
-            try {
-                var res = await fetch('/api/stock/filings/' + btn.dataset.company);
-                if (!res.ok) { status.textContent = 'Failed (' + res.status + '): ' + (await res.text()); return; }
-                var filings = await res.json();
-                document.querySelectorAll('.filing-picker').forEach(function (sel) {
-                    var have = new Set(Array.from(sel.options).map(function (o) { return o.value; }));
-                    filings.forEach(function (f) {
-                        if (!f.accessionNumber || have.has(f.accessionNumber)) return;
-                        var o = document.createElement('option');
-                        o.value = f.accessionNumber;
-                        o.textContent = (f.form || '') + ' ' + (f.filingDate || '') + ' (' + f.accessionNumber + ')';
-                        o.dataset.form = f.form || '';
-                        o.dataset.date = f.filingDate || '';
-                        o.dataset.url = f.documentUrl || '';
-                        sel.appendChild(o);
-                    });
-                });
-                status.textContent = 'Loaded ' + filings.length + ' filings — pick one and SET.';
-            } catch (e) { status.textContent = 'Network error: ' + e.message; }
-        });
-    })();
-    </script>
-}
