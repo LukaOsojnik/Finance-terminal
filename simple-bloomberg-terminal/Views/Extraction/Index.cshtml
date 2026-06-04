@@ -1,14 +1,18 @@
 @model simple_bloomberg_terminal.Models.ViewModels.ExtractionIndexViewModel
 @{ ViewData["Title"] = "Extraction"; }
 
-<div class="page-header"><h2><span class="page-header-accent">//</span> Extraction — Revenue</h2></div>
+<div class="page-header">
+    <h2><span class="page-header-accent">//</span> Extraction — Revenue</h2>
+    <div class="page-subtitle">Bind source cells to EDGAR proof text · select in the right pane, freeze with “Use as reference”</div>
+</div>
 
 @Html.AntiForgeryToken()
 
-<div class="mb-3" style="max-width:520px;">
-    <label class="form-label">Company</label>
-    <div class="d-flex" style="gap:.5rem;">
-        <div style="flex:1;">
+<div class="extraction-split" id="extractionSplit">
+    <!-- LEFT: source cells bound to a RevenueSource row -->
+    <div class="extraction-pane" id="leftPane">
+        <div class="cell-row">
+            <label class="ext-field-label">Company</label>
             @await Html.PartialAsync("_AutocompletePicker", new AutocompletePickerModel {
                 FieldName = "companyId",
                 SelectedId = Model.CompanyId,
@@ -17,48 +21,43 @@
                 Required = false,
                 Placeholder = "Type company name..."
             })
+            <button type="button" id="loadBtn" class="ext-btn ext-btn-primary ext-btn-load">LOAD</button>
+            <div id="loadStatus" class="ext-status"></div>
         </div>
-        <button type="button" id="loadBtn" class="btn btn-primary">LOAD</button>
-    </div>
-    <div id="loadStatus" class="text-muted small mt-1"></div>
-</div>
 
-<div class="extraction-split">
-    <!-- LEFT: source cells bound to a RevenueSource row -->
-    <div class="extraction-pane">
-        <div class="d-flex justify-content-between align-items-center mb-2">
-            <strong>Source row</strong>
-            <select id="rowPicker" class="form-control" style="max-width:280px;">
+        <div class="extraction-pane-head">
+            <span class="extraction-pane-title">Source Row</span>
+            <select id="rowPicker" class="ext-select">
                 <option value="">— new row —</option>
             </select>
         </div>
 
         <div class="cell-row">
-            <label class="form-label">Classification</label>
+            <label class="ext-field-label">Classification</label>
             <select id="f_sourceType" asp-items="ViewBag.SourceTypes" class="form-control"></select>
-            <button type="button" class="btn btn-secondary ref-btn" data-field="CLASSIFICATION">Use as reference</button>
+            <button type="button" class="ext-btn ext-btn-ref ref-btn" data-field="CLASSIFICATION">Use as reference</button>
             <div class="ref-info" data-info="CLASSIFICATION"></div>
         </div>
         <div class="cell-row">
-            <label class="form-label">Name</label>
+            <label class="ext-field-label">Name</label>
             <input id="f_name" class="form-control"/>
-            <button type="button" class="btn btn-secondary ref-btn" data-field="NAME">Use as reference</button>
+            <button type="button" class="ext-btn ext-btn-ref ref-btn" data-field="NAME">Use as reference</button>
             <div class="ref-info" data-info="NAME"></div>
         </div>
         <div class="cell-row">
-            <label class="form-label">Value</label>
+            <label class="ext-field-label">Value</label>
             <input id="f_value" class="form-control" type="number" step="any"/>
-            <button type="button" class="btn btn-secondary ref-btn" data-field="VALUE">Use as reference</button>
+            <button type="button" class="ext-btn ext-btn-ref ref-btn" data-field="VALUE">Use as reference</button>
             <div class="ref-info" data-info="VALUE"></div>
         </div>
         <div class="cell-row">
-            <label class="form-label">% (0–100)</label>
+            <label class="ext-field-label">% (0–100)</label>
             <input id="f_percentage" class="form-control" type="number" step="0.1"/>
-            <button type="button" class="btn btn-secondary ref-btn" data-field="PERCENTAGE">Use as reference</button>
+            <button type="button" class="ext-btn ext-btn-ref ref-btn" data-field="PERCENTAGE">Use as reference</button>
             <div class="ref-info" data-info="PERCENTAGE"></div>
         </div>
         <div class="cell-row">
-            <label class="form-label">Counterparty</label>
+            <label class="ext-field-label">Counterparty</label>
             @await Html.PartialAsync("_AutocompletePicker", new AutocompletePickerModel {
                 FieldName = "relatedCompanyId",
                 SelectedId = Model.RelatedCompanyId,
@@ -67,24 +66,43 @@
                 Required = false,
                 Placeholder = "Type company name (optional)..."
             })
-            <button type="button" class="btn btn-secondary ref-btn" data-field="RELATED_COMPANY">Use as reference</button>
+            <button type="button" class="ext-btn ext-btn-ref ref-btn" data-field="RELATED_COMPANY">Use as reference</button>
             <div class="ref-info" data-info="RELATED_COMPANY"></div>
         </div>
     </div>
 
+    <!-- Drag to widen the filing/EDGAR pane -->
+    <div class="extraction-gutter" id="extGutter" title="Drag to resize"><span></span></div>
+
     <!-- RIGHT: the actual EDGAR response; select text here to back a cell -->
-    <div class="extraction-pane">
-        <div class="d-flex justify-content-between align-items-center mb-2">
-            <strong>EDGAR — select proof text</strong>
-            <div style="display:flex; gap:.25rem;">
-                <button type="button" id="factsBtn" class="btn btn-secondary">Company Facts</button>
-                <button type="button" id="filingsBtn" class="btn btn-secondary">Filings</button>
+    <div class="extraction-pane" id="rightPane">
+        <div class="extraction-pane-head">
+            <span class="extraction-pane-title">EDGAR — select proof text</span>
+            <div class="extraction-pane-actions">
+                <button type="button" id="factsBtn" class="ext-btn ext-btn-secondary">Company Facts</button>
+                <button type="button" id="filingsBtn" class="ext-btn ext-btn-secondary">Filings</button>
             </div>
         </div>
-        <div id="endpointLabel" class="text-muted small mb-1"></div>
-        <ul id="filings" class="filings-list" hidden></ul>
+        <div id="endpointLabel" class="ext-endpoint"></div>
         <pre id="response" class="extraction-json">Load a company, then open Company Facts or a filing.</pre>
         <div id="responseHtml" class="extraction-doc" hidden></div>
+    </div>
+</div>
+
+<!-- Wide filings browser: escapes the 1200px container so many filings show at once. -->
+<div id="filingsModal" class="ext-modal" hidden>
+    <div class="ext-modal-backdrop" data-close></div>
+    <div class="ext-modal-panel">
+        <div class="ext-modal-head">
+            <div class="ext-modal-titlewrap">
+                <span class="ext-modal-title">EDGAR Filings</span>
+                <span id="filingsCount" class="ext-modal-count"></span>
+            </div>
+            <input id="filingsFilter" class="form-control ext-modal-filter" placeholder="Filter form / date / description..."/>
+            <button type="button" class="ext-btn ext-btn-ghost" data-close>✕ CLOSE</button>
+        </div>
+        <div id="filingsGrid" class="ext-filings-grid"></div>
+        <div id="filingsEmpty" class="ext-modal-empty" hidden>No filings match.</div>
     </div>
 </div>
 
@@ -103,28 +121,152 @@
     </script>
 }
 <style>
-    .extraction-split { display:flex; gap:1rem; align-items:flex-start; }
-    .extraction-pane { flex:1; min-width:0; border:1px solid var(--border, #333); padding:.75rem; }
-    .extraction-json { max-height:70vh; overflow:auto; white-space:pre-wrap; word-break:break-word;
-        background:#0c0c0c; color:#cfcfcf; padding:.5rem; font-size:.8rem; }
-    .extraction-json::selection { background:var(--accent, #f60); color:#000; }
+    /* ── Company / load ── */
+    .ext-btn-load { display: block; margin-top: .4rem; }
+    .ext-field-label {
+        display: block; font-family: var(--font-display); font-size: .65rem; font-weight: 600;
+        letter-spacing: .16em; text-transform: uppercase; color: var(--muted); margin-bottom: .35rem;
+    }
+    .ext-status { font-family: var(--font-mono); font-size: .72rem; color: var(--text-secondary);
+        margin-top: .5rem; min-height: 1em; letter-spacing: .03em; }
+
+    /* ── Buttons (terminal-styled) ── */
+    .ext-btn {
+        font-family: var(--font-display); font-weight: 600; font-size: .72rem; letter-spacing: .1em;
+        text-transform: uppercase; border-radius: var(--radius-sm); padding: .45rem .9rem;
+        border: 1px solid transparent; cursor: pointer; white-space: nowrap;
+        transition: background var(--transition), color var(--transition), border-color var(--transition);
+    }
+    .ext-btn-primary { background: var(--accent); color: var(--bg-base); border-color: var(--accent); }
+    .ext-btn-primary:hover { box-shadow: var(--accent-glow); }
+    .ext-btn-secondary { background: transparent; color: var(--text-secondary); border-color: var(--border-subtle); }
+    .ext-btn-secondary:hover { color: var(--accent); border-color: var(--accent-dim); background: #00d4ff0d; }
+    .ext-btn-ref {
+        margin-top: .4rem; padding: .3rem .7rem; font-size: .66rem;
+        background: transparent; color: var(--accent); border-color: var(--accent-dim);
+    }
+    .ext-btn-ref:hover { background: #00d4ff14; }
+    .ext-btn-ghost { background: transparent; color: var(--text-secondary); border-color: var(--border-subtle); }
+    .ext-btn-ghost:hover { color: var(--red); border-color: #f8514955; }
+
+    .ext-select {
+        font-family: var(--font-mono); font-size: .78rem; max-width: 280px;
+        background: var(--bg-surface); color: var(--text-primary);
+        border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); padding: .35rem .5rem;
+    }
+
+    /* ── Panes ── */
+    .extraction-split { display: flex; gap: 0; align-items: stretch; }
+    .extraction-pane {
+        min-width: 0; background: var(--bg-card); border: 1px solid var(--border-subtle);
+        border-radius: var(--radius-md); padding: 1.1rem 1.25rem;
+    }
+    /* Left pane is pinned to a width (drag-adjustable); right pane fills the rest. */
+    #leftPane  { flex: 0 0 50%; }
+    #rightPane { flex: 1; }
+
+    /* Drag handle between the panes. */
+    .extraction-gutter {
+        flex: 0 0 1.25rem; align-self: stretch; cursor: col-resize;
+        display: flex; align-items: center; justify-content: center; touch-action: none;
+    }
+    .extraction-gutter span {
+        width: 2px; height: 38px; border-radius: 2px; background: var(--border-subtle);
+        transition: background var(--transition), box-shadow var(--transition);
+    }
+    .extraction-gutter:hover span,
+    .extraction-gutter.dragging span { background: var(--accent); box-shadow: var(--accent-glow); }
+    body.ext-resizing { cursor: col-resize; user-select: none; }
+    .extraction-pane-head {
+        display: flex; justify-content: space-between; align-items: center; gap: .75rem;
+        padding-bottom: .65rem; margin-bottom: .9rem; border-bottom: 1px solid var(--border-subtle);
+    }
+    .extraction-pane-title {
+        font-family: var(--font-display); font-size: .75rem; font-weight: 600; letter-spacing: .16em;
+        text-transform: uppercase; color: var(--text-secondary);
+    }
+    .extraction-pane-actions { display: flex; gap: .4rem; }
+
+    .cell-row { margin-bottom: .85rem; }
+    .ref-info { margin-top: .35rem; font-size: .74rem; line-height: 1.35; font-family: var(--font-mono); }
+    .ref-info .ref-ok { color: var(--green); font-weight: bold; }
+    .ref-info .ref-ptr { color: var(--muted); }
+    .ref-info .ref-snip { color: var(--text-secondary); font-style: italic; }
+
+    .ext-endpoint { font-family: var(--font-mono); font-size: .7rem; color: var(--muted);
+        letter-spacing: .04em; margin-bottom: .5rem; min-height: 1em; }
+
+    .extraction-json {
+        max-height: 70vh; overflow: auto; white-space: pre-wrap; word-break: break-word;
+        background: var(--bg-base); color: var(--text-code); padding: .75rem;
+        font-family: var(--font-mono); font-size: .78rem; line-height: 1.55;
+        border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); margin: 0;
+    }
+    .extraction-json::selection { background: var(--accent); color: var(--bg-base); }
     /* SEC filing rendered with its own inline formatting — light page inside the dark terminal. */
-    .extraction-doc { max-height:70vh; overflow:auto; background:#fff; color:#111;
-        padding:1rem; font-size:.85rem; }
-    .extraction-doc ::selection, .extraction-doc::selection { background:var(--accent, #f60); color:#000; }
-    .extraction-doc img { max-width:100%; height:auto; }
-    .extraction-doc table { border-collapse:collapse; }
-    .filings-list { max-height:28vh; overflow:auto; list-style:none; padding:0; margin:0 0 .5rem;
-        border:1px solid var(--border, #333); font-size:.8rem; }
-    .filings-list li { padding:.3rem .5rem; cursor:pointer; border-bottom:1px solid #222; }
-    .filings-list li:hover { background:#1a1a1a; }
-    .cell-row { margin-bottom:.6rem; }
-    .cell-row .form-label { display:block; margin-bottom:.15rem; }
-    .ref-btn { margin-top:.25rem; }
-    .ref-info { margin-top:.25rem; font-size:.78rem; line-height:1.3; }
-    .ref-info .ref-ok { color:var(--accent, #2e7d32); font-weight:bold; }
-    .ref-info .ref-ptr { color:#888; }
-    .ref-info .ref-snip { color:#cfcfcf; font-style:italic; }
+    .extraction-doc {
+        max-height: 70vh; overflow: auto; background: #fff; color: #111; padding: 1rem;
+        font-size: .85rem; border: 1px solid var(--border-subtle); border-radius: var(--radius-sm);
+    }
+    .extraction-doc ::selection, .extraction-doc::selection { background: var(--accent); color: var(--bg-base); }
+    .extraction-doc img { max-width: 100%; height: auto; }
+    .extraction-doc table { border-collapse: collapse; }
+
+    /* ── Wide filings overlay ── */
+    .ext-modal { position: fixed; inset: 0; z-index: 1050; display: flex; align-items: center; justify-content: center; }
+    .ext-modal-backdrop { position: absolute; inset: 0; background: rgba(4, 8, 13, .78); backdrop-filter: blur(2px); }
+    .ext-modal-panel {
+        position: relative; width: 92vw; max-width: 1500px; height: 85vh; display: flex; flex-direction: column;
+        background: var(--bg-surface); border: 1px solid var(--border-accent); border-radius: var(--radius-md);
+        box-shadow: var(--accent-glow), 0 18px 60px rgba(0,0,0,.6); overflow: hidden;
+    }
+    .ext-modal-head {
+        display: flex; align-items: center; gap: 1rem; padding: .85rem 1.1rem;
+        border-bottom: 1px solid var(--border-subtle); background: var(--bg-card);
+    }
+    .ext-modal-titlewrap { display: flex; align-items: baseline; gap: .6rem; flex-shrink: 0; }
+    .ext-modal-title {
+        font-family: var(--font-display); font-size: .9rem; font-weight: 700; letter-spacing: .14em;
+        text-transform: uppercase; color: var(--text-primary);
+    }
+    .ext-modal-count { font-family: var(--font-mono); font-size: .72rem; color: var(--accent); }
+    .ext-modal-filter {
+        flex: 1; max-width: 420px; font-family: var(--font-mono); font-size: .78rem;
+        background: var(--bg-base); color: var(--text-primary);
+        border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); padding: .35rem .6rem;
+    }
+    .ext-modal-head .ext-btn-ghost { margin-left: auto; }
+    .ext-modal-empty { padding: 2rem; text-align: center; font-family: var(--font-mono);
+        font-size: .8rem; color: var(--muted); }
+
+    .ext-filings-grid {
+        flex: 1; overflow-y: auto; padding: 1.1rem; display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: .75rem; align-content: start;
+    }
+    .ext-filing-card {
+        background: var(--bg-card); border: 1px solid var(--border-subtle); border-radius: var(--radius-sm);
+        padding: .7rem .85rem; cursor: pointer; text-align: left;
+        transition: border-color var(--transition), box-shadow var(--transition), transform var(--transition);
+        display: flex; flex-direction: column; gap: .4rem;
+    }
+    .ext-filing-card:hover { border-color: var(--accent-dim); box-shadow: var(--accent-glow); transform: translateY(-2px); }
+    .ext-filing-top { display: flex; align-items: center; justify-content: space-between; gap: .5rem; }
+    .ext-filing-form {
+        font-family: var(--font-display); font-weight: 700; font-size: .72rem; letter-spacing: .1em;
+        color: var(--accent); background: #00d4ff12; border: 1px solid var(--border-accent);
+        padding: .12rem .5rem; border-radius: var(--radius-sm);
+    }
+    .ext-filing-date { font-family: var(--font-mono); font-size: .72rem; color: var(--text-secondary); font-variant-numeric: tabular-nums; }
+    .ext-filing-desc { font-family: var(--font-mono); font-size: .73rem; color: var(--muted); line-height: 1.4;
+        overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+    .ext-filing-card.no-doc { opacity: .5; cursor: not-allowed; }
+    .ext-filing-card.no-doc:hover { border-color: var(--border-subtle); box-shadow: none; transform: none; }
+
+    @@media (max-width: 800px) {
+        .extraction-split { flex-direction: column; }
+        #leftPane { flex: 1 1 auto; }
+        .extraction-gutter { display: none; }
+    }
 </style>
 <script>
 (function () {
@@ -133,7 +275,6 @@
     const relatedHidden = () => document.querySelector('input[name="relatedCompanyId"]');
     const pre = document.getElementById('response');
     const docPane = document.getElementById('responseHtml');
-    const filingsList = document.getElementById('filings');
     const endpointLabel = document.getElementById('endpointLabel');
     const rowPicker = document.getElementById('rowPicker');
     let edgarRows = [];        // revenue rows pulled from the refresh response (left pre-fill)
@@ -145,8 +286,37 @@
     const numOrNull = v => v === '' || v == null ? null : Number(v);
     const companyId = () => companyHidden()?.value;
 
+    // ---- Drag the gutter to widen the filing pane (only left pane's width changes) ----
+    (function () {
+        const split = $('extractionSplit'), gutter = $('extGutter'), left = $('leftPane');
+        const MIN_LEFT = 150, MIN_RIGHT = 420;  // keep both panes usable
+        gutter.addEventListener('pointerdown', e => {
+            e.preventDefault();
+            gutter.setPointerCapture(e.pointerId);
+            gutter.classList.add('dragging');
+            document.body.classList.add('ext-resizing');
+            const onMove = ev => {
+                const rect = split.getBoundingClientRect();
+                let w = ev.clientX - rect.left;            // proposed left width
+                const max = rect.width - MIN_RIGHT - gutter.offsetWidth;
+                w = Math.max(MIN_LEFT, Math.min(w, max));
+                left.style.flexBasis = w + 'px';           // right pane reflows to fill
+            };
+            const onUp = ev => {
+                gutter.releasePointerCapture(e.pointerId);
+                gutter.classList.remove('dragging');
+                document.body.classList.remove('ext-resizing');
+                gutter.removeEventListener('pointermove', onMove);
+                gutter.removeEventListener('pointerup', onUp);
+            };
+            gutter.addEventListener('pointermove', onMove);
+            gutter.addEventListener('pointerup', onUp);
+        });
+        // Double-click the gutter to reset to an even split.
+        gutter.addEventListener('dblclick', () => { left.style.flexBasis = '50%'; });
+    })();
+
     function showText(text, endpoint) {
-        filingsList.hidden = true;
         docPane.hidden = true;          // text view: hide the formatted doc pane
         pre.hidden = false;
         pre.textContent = text;
@@ -169,11 +339,14 @@
                 try { el.src = new URL(el.getAttribute('src'), baseUrl).href; } catch { }
             });
             tmp.querySelectorAll('a[href]').forEach(el => {
-                try { el.href = new URL(el.getAttribute('href'), baseUrl).href; } catch { }
+                const raw = el.getAttribute('href') || '';
+                // Table-of-contents links (href="#anchor") stay in-page: leave them
+                // as a bare fragment so the click handler scrolls the doc pane.
+                if (raw.startsWith('#')) { el.setAttribute('href', raw); return; }
+                try { el.href = new URL(raw, baseUrl).href; } catch { }
                 el.target = '_blank'; el.rel = 'noopener';
             });
         }
-        filingsList.hidden = true;
         pre.hidden = true;
         docPane.hidden = false;
         docPane.innerHTML = tmp.innerHTML;
@@ -269,23 +442,56 @@
     }
     $('factsBtn').addEventListener('click', loadFacts);
 
-    // ---- right pane: Filings list -> open one document ----
+    // ---- Wide filings browser (overlay) ----
+    const filingsModal = $('filingsModal');
+    const filingsGrid = $('filingsGrid');
+    const filingsFilter = $('filingsFilter');
+    let allFilings = [];
+
+    function closeFilingsModal() { filingsModal.hidden = true; }
+    function openFilingsModal() { filingsModal.hidden = false; filingsFilter.value = ''; filingsFilter.focus(); }
+
+    function renderFilings(list) {
+        filingsGrid.innerHTML = '';
+        list.forEach(f => {
+            const card = document.createElement('button');
+            card.type = 'button';
+            const hasDoc = !!(f.accessionNumber && f.primaryDocument);
+            card.className = 'ext-filing-card' + (hasDoc ? '' : ' no-doc');
+            card.innerHTML =
+                `<div class="ext-filing-top">` +
+                    `<span class="ext-filing-form">${escapeHtml(f.form || '—')}</span>` +
+                    `<span class="ext-filing-date">${escapeHtml(f.filingDate || '')}</span>` +
+                `</div>` +
+                (f.description ? `<div class="ext-filing-desc">${escapeHtml(f.description)}</div>` : '');
+            if (hasDoc) card.addEventListener('click', () => { closeFilingsModal(); openFiling(companyId(), f); });
+            filingsGrid.appendChild(card);
+        });
+        $('filingsCount').textContent = `${list.length} shown`;
+        $('filingsEmpty').hidden = list.length > 0;
+    }
+
+    filingsFilter.addEventListener('input', () => {
+        const q = filingsFilter.value.trim().toLowerCase();
+        if (!q) { renderFilings(allFilings); return; }
+        renderFilings(allFilings.filter(f =>
+            `${f.form || ''} ${f.filingDate || ''} ${f.description || ''}`.toLowerCase().includes(q)));
+    });
+
+    filingsModal.querySelectorAll('[data-close]').forEach(el => el.addEventListener('click', closeFilingsModal));
+    document.addEventListener('keydown', e => { if (e.key === 'Escape' && !filingsModal.hidden) closeFilingsModal(); });
+
     $('filingsBtn').addEventListener('click', async () => {
         const id = companyId();
         if (!id) { alert('Pick a company first.'); return; }
-        showText('Loading filings…', '');   // restore text pane if a formatted doc was open
+        filingsGrid.innerHTML = '';
+        $('filingsCount').textContent = 'loading…';
+        $('filingsEmpty').hidden = true;
+        openFilingsModal();
         const res = await fetch(`/api/stock/filings/${id}`);
-        if (!res.ok) { showText(`Filings failed (${res.status}): ${await res.text()}`, ''); return; }
-        const filings = await res.json();
-        filingsList.innerHTML = '';
-        filings.forEach(f => {
-            const li = document.createElement('li');
-            li.textContent = `${f.form} — ${f.filingDate}${f.description ? ' · ' + f.description : ''}`;
-            li.addEventListener('click', () => openFiling(id, f));
-            filingsList.appendChild(li);
-        });
-        filingsList.hidden = false;
-        pre.textContent = `${filings.length} filings — click one to open.`;
+        if (!res.ok) { $('filingsCount').textContent = `failed (${res.status})`; return; }
+        allFilings = await res.json();
+        renderFilings(allFilings);
     });
 
     async function openFiling(id, f) {
