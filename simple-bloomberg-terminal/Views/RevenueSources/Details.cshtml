@@ -3,9 +3,12 @@
 @{
     var src = Model.Source;
     ViewData["Title"] = (src.Company?.Name ?? "Revenue Source") + " — " + src.Name;
-    // Inline edit form posts to Edit and returns here.
-    ViewData["ReturnUrl"] = Context.Request.Path;
-    ViewData["CancelUrl"] = Context.Request.Path;
+    // Inline edit form posts to Edit and returns to where the user came from
+    // (e.g. a company page via ?returnUrl=), falling back to this page.
+    var returnTo = Context.Request.Query["returnUrl"].FirstOrDefault();
+    if (string.IsNullOrEmpty(returnTo) || !Url.IsLocalUrl(returnTo)) returnTo = Context.Request.Path;
+    ViewData["ReturnUrl"] = returnTo;
+    ViewData["CancelUrl"] = returnTo;
 
     string Short(string? s, int n = 90)
     {

@@ -35,7 +35,7 @@ public class CostSourcesController : Controller
         return View(entity);
     }
 
-    [HttpGet, Route("create")]
+    [HttpGet, Route("create", Name = "CostSourcesCreate")]
     public IActionResult Create() { PopulateDropdowns(); return View(new CostSourceCreateModel()); }
 
     [HttpPost, Route("create"), ValidateAntiForgeryToken]

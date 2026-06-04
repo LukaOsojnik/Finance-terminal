@@ -28,7 +28,7 @@ public class CountryDetailsController : Controller
     public IActionResult ValidateCountry(long countryId) =>
         Json(_details.GetByCountryId(countryId) == null);
 
-    [HttpGet, Route("create")]
+    [HttpGet, Route("create", Name = "CountryDetailsCreate")]
     public IActionResult Create() => View(new CountryDetailsCreateModel());
 
     [HttpPost, Route("create"), ValidateAntiForgeryToken]
@@ -62,7 +62,7 @@ public class CountryDetailsController : Controller
         return RedirectToAction(nameof(Index));
     }
 
-    [HttpPost, Route("{countryId:long}/delete"), ValidateAntiForgeryToken]
+    [HttpPost, Route("{countryId:long}/delete", Name = "CountryDetailsDelete"), ValidateAntiForgeryToken]
     public IActionResult Delete(long countryId)
     {
         try { _details.SoftDelete(countryId); }

@@ -37,6 +37,18 @@ builder.Services.AddScoped<IFilingRepository, FilingRepository>();
 builder.Services.AddHttpClient<IStockApiClient, StockApiClient>();
 builder.Services.AddScoped<IStockService, StockService>();
 
+// Financial Modeling Prep: typed HttpClient feeding the New Company form (global fundamentals).
+builder.Services.AddHttpClient<IFmpApiClient, FmpApiClient>();
+// REST Countries: typed HttpClient to auto-create a Country row when FMP names one we lack.
+builder.Services.AddHttpClient<IRestCountriesClient, RestCountriesClient>();
+// Yahoo Finance: non-US financials fallback when FMP's income endpoint is premium-gated. Needs
+// a cookie container for the crumb handshake. Frankfurter: converts that revenue to USD.
+builder.Services.AddHttpClient<IYahooFinanceClient, YahooFinanceClient>()
+    .ConfigurePrimaryHttpMessageHandler(() =>
+        new HttpClientHandler { UseCookies = true, CookieContainer = new System.Net.CookieContainer() });
+// ExchangeRate-API: converts non-US revenue to USD (~160 currencies, no key).
+builder.Services.AddHttpClient<IExchangeRateApiClient, ExchangeRateApiClient>();
+
 var app = builder.Build();
 
 if (!app.Environment.IsDevelopment())

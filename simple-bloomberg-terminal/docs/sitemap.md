@@ -171,6 +171,20 @@
 
 ---
 
+## /companies/fetch
+
+| Field | Value |
+|---|---|
+| Controller | CompaniesController |
+| Action | Fetch |
+| HTTP | POST |
+| Route source | `[Route("companies")]` + `[Route("fetch")]` |
+| View | Views/Companies/Create.cshtml (returned as view name "Create") |
+| Parameters | symbol: string? (form) |
+| Notes | Prefills the New Company form from the Financial Modeling Prep API by ticker symbol, then returns the Create view with the mapped model for review before the user submits the normal `POST /companies/create`. Persists nothing itself |
+
+---
+
 ## /companies/{id}/profile
 
 | Field | Value |

@@ -96,7 +96,7 @@ public class RevenueSourcesController : Controller
         return RedirectToAction(nameof(Details), new { id });
     }
 
-    [HttpGet, Route("create")]
+    [HttpGet, Route("create", Name = "RevenueSourcesCreate")]
     public IActionResult Create() { PopulateDropdowns(); return View(new RevenueSourceCreateModel()); }
 
     [HttpPost, Route("create"), ValidateAntiForgeryToken]

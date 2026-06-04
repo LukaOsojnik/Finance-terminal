@@ -64,7 +64,7 @@ public class EventsController : Controller
         });
     }
 
-    [HttpGet, Route("create")]
+    [HttpGet, Route("create", Name = "EventsCreate")]
     public IActionResult Create()
     {
         PopulateDropdowns();
@@ -109,7 +109,7 @@ public class EventsController : Controller
         return RedirectToAction(nameof(Index));
     }
 
-    [HttpPost, Route("{id:long}/delete"), ValidateAntiForgeryToken]
+    [HttpPost, Route("{id:long}/delete", Name = "EventDelete"), ValidateAntiForgeryToken]
     public IActionResult Delete(long id)
     {
         try { _events.SoftDelete(id); }

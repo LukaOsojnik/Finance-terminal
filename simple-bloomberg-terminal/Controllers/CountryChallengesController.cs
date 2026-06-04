@@ -24,7 +24,7 @@ public class CountryChallengesController : Controller
     [HttpGet, Route("search")]
     public IActionResult Search(string? term) => PartialView("_TableBody", _repo.Search(term));
 
-    [HttpGet, Route("create")]
+    [HttpGet, Route("create", Name = "CountryChallengesCreate")]
     public IActionResult Create() => View(new CountryChallengeCreateModel());
 
     [HttpPost, Route("create"), ValidateAntiForgeryToken]
@@ -58,7 +58,7 @@ public class CountryChallengesController : Controller
         return RedirectToAction(nameof(Index));
     }
 
-    [HttpPost, Route("{id:long}/delete"), ValidateAntiForgeryToken]
+    [HttpPost, Route("{id:long}/delete", Name = "CountryChallengeDelete"), ValidateAntiForgeryToken]
     public IActionResult Delete(long id)
     {
         try { _repo.SoftDelete(id); }

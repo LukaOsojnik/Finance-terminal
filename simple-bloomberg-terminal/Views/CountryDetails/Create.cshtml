@@ -3,7 +3,7 @@
 
 <div class="page-header"><h2><span class="page-header-accent">//</span> New Country Details</h2></div>
 
-<form asp-action="Create" method="post" style="max-width:640px;">
+<form asp-route="CountryDetailsCreate" method="post" style="max-width:640px;">
     @Html.AntiForgeryToken()
     <div asp-validation-summary="ModelOnly" class="text-danger"></div>
 

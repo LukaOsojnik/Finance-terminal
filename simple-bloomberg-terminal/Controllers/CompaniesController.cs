@@ -4,6 +4,7 @@ using simple_bloomberg_terminal.Models.Entities;
 using simple_bloomberg_terminal.Models.Enums;
 using simple_bloomberg_terminal.Models.ViewModels;
 using simple_bloomberg_terminal.Repositories;
+using simple_bloomberg_terminal.Services;
 
 namespace simple_bloomberg_terminal.Controllers;
 
@@ -12,11 +13,21 @@ public class CompaniesController : Controller
 {
     private readonly ICompanyRepository _companies;
     private readonly ICountryRepository _countries;
+    private readonly IFmpApiClient _fmp;
+    private readonly IRestCountriesClient _restCountries;
+    private readonly IYahooFinanceClient _yahoo;
+    private readonly IExchangeRateApiClient _exchangeRate;
 
-    public CompaniesController(ICompanyRepository companies, ICountryRepository countries)
+    public CompaniesController(ICompanyRepository companies, ICountryRepository countries,
+        IFmpApiClient fmp, IRestCountriesClient restCountries,
+        IYahooFinanceClient yahoo, IExchangeRateApiClient exchangeRate)
     {
         _companies = companies;
         _countries = countries;
+        _fmp = fmp;
+        _restCountries = restCountries;
+        _yahoo = yahoo;
+        _exchangeRate = exchangeRate;
     }
 
     [HttpGet, Route("")]
@@ -52,11 +63,68 @@ public class CompaniesController : Controller
         return View(vm);
     }
 
-    [HttpGet, Route("create")]
+    // Named route: both this MVC controller and the API CompaniesController have a "Create"
+    // action, so a bare asp-action="Create" link is ambiguous and resolves to /api/Companies.
+    // The name lets the view target this GET form unambiguously.
+    [HttpGet, Route("create", Name = "CompaniesCreate")]
     public IActionResult Create()
     {
         PopulateDropdowns();
         return View(new CompanyCreateModel());
+    }
+
+    // Prefill the create form from FMP by ticker. Does not save — returns the Create view with
+    // the mapped model so the user reviews/edits before submitting the normal Create POST.
+    [HttpPost, Route("fetch"), ValidateAntiForgeryToken]
+    public async Task<IActionResult> Fetch(string? symbol)
+    {
+        PopulateDropdowns();
+
+        if (string.IsNullOrWhiteSpace(symbol))
+        {
+            ModelState.AddModelError("", "Enter a ticker symbol.");
+            return View("Create", new CompanyCreateModel());
+        }
+
+        var ticker = symbol.Trim();
+        FmpProfile? profile;
+        try
+        {
+            profile = await _fmp.GetProfileAsync(ticker);
+        }
+        catch (HttpRequestException)
+        {
+            ModelState.AddModelError("", "FMP is unreachable. Try again or enter the company manually.");
+            return View("Create", new CompanyCreateModel());
+        }
+
+        if (profile is null || string.IsNullOrWhiteSpace(profile.CompanyName))
+        {
+            ModelState.AddModelError("", $"No company found for ticker '{ticker}'.");
+            return View("Create", new CompanyCreateModel());
+        }
+
+        // Financials are a premium endpoint for some symbols (e.g. non-US return HTTP 402), so
+        // treat income as optional — keep the profile-driven fields and leave financials blank.
+        FmpIncome? income = null;
+        try { income = await _fmp.GetLatestIncomeAsync(ticker); }
+        catch (HttpRequestException) { /* income unavailable on this plan/symbol */ }
+
+        var model = FmpMapper.ToCreateModel(profile, income);
+
+        var country = await ResolveOrCreateCountry(profile.Country);
+        if (country != null)
+        {
+            model.CountryId = country.Id;
+            ViewBag.CountryLabel = country.Name;
+        }
+
+        if (income == null)
+            await ApplyYahooFallback(model, ticker);
+        else if (!string.Equals(income.ReportedCurrency, "USD", StringComparison.OrdinalIgnoreCase))
+            ViewBag.FetchNote = $"Revenue is reported in {income.ReportedCurrency}; left blank — enter the USD value manually.";
+
+        return View("Create", model);
     }
 
     [HttpPost, Route("create"), ValidateAntiForgeryToken]
@@ -101,12 +169,74 @@ public class CompaniesController : Controller
         return RedirectToAction(nameof(Index));
     }
 
-    [HttpPost, Route("{id:long}/delete"), ValidateAntiForgeryToken]
+    [HttpPost, Route("{id:long}/delete", Name = "CompanyDelete"), ValidateAntiForgeryToken]
     public IActionResult Delete(long id)
     {
         try { _companies.SoftDelete(id); }
         catch (InvalidOperationException ex) { TempData["Error"] = ex.Message; }
         return RedirectToAction(nameof(Index));
+    }
+
+    // FMP income was premium-gated (non-US). Pull revenue + gross margin from Yahoo Finance,
+    // converting revenue to USD via ExchangeRate-API. Margin is a ratio so it's filled regardless
+    // of currency; revenue is left blank only if the currency can't be converted at all.
+    private async Task ApplyYahooFallback(CompanyCreateModel model, string ticker)
+    {
+        var yf = await _yahoo.GetFinancialsAsync(ticker);
+        if (yf == null)
+        {
+            ViewBag.FetchNote = "Financials aren't available for this symbol — enter revenue and gross margin manually.";
+            return;
+        }
+
+        if (yf.GrossMargins is { } gm)
+            model.GrossMargin = Math.Round(gm, 2); // 2 dp to satisfy the form's step="0.01"
+
+        if (yf.Revenue is { } rev && !string.IsNullOrWhiteSpace(yf.Currency))
+        {
+            var rate = await _exchangeRate.GetUsdRateAsync(yf.Currency);
+            if (rate is { } r)
+                model.RevenueTotal = Math.Round(rev * r);
+            else
+                ViewBag.FetchNote = $"Revenue is in {yf.Currency} (no USD conversion rate available) — enter it manually.";
+        }
+
+        ViewBag.FetchNote ??= "Financials filled from Yahoo Finance (FMP is premium-gated for this symbol).";
+    }
+
+    // Find the Country matching FMP's ISO-2 code; if absent, look it up on REST Countries and
+    // create the row. Re-checks by cca2/cca3/name before inserting so a hand-entered country
+    // (which may use a different code format) isn't duplicated. Anything unresolved -> null
+    // (the user leaves it blank or picks one).
+    private async Task<Country?> ResolveOrCreateCountry(string? iso2)
+    {
+        if (string.IsNullOrWhiteSpace(iso2)) return null;
+
+        var existing = _countries.GetAll().ToList();
+        var match = existing.FirstOrDefault(c => string.Equals(c.Code, iso2, StringComparison.OrdinalIgnoreCase));
+        if (match != null) return match;
+
+        RestCountry? rc;
+        try { rc = await _restCountries.GetByCodeAsync(iso2); }
+        catch (Exception ex) when (ex is HttpRequestException or System.Text.Json.JsonException) { return null; }
+        if (rc == null) return null;
+
+        match = existing.FirstOrDefault(c =>
+            string.Equals(c.Code, rc.Cca2, StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(c.Code, rc.Cca3, StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(c.Name, rc.Name?.Common, StringComparison.OrdinalIgnoreCase));
+        if (match != null) return match;
+
+        var created = new Country(
+            rc.Cca2 ?? iso2,
+            rc.Name?.Common ?? iso2,
+            rc.Region ?? "",
+            rc.Currencies?.Keys.FirstOrDefault() ?? "")
+        {
+            Population = rc.Population
+        };
+        _countries.Add(created);
+        return created;
     }
 
     private void PopulateDropdowns()

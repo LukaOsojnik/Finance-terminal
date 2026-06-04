@@ -60,7 +60,9 @@ public class CountriesController : Controller
         return View(viewModel);
     }
 
-    [HttpGet, Route("create")]
+    // Named route to disambiguate from the API CountriesController's "Create" action (a bare
+    // asp-action="Create" link otherwise resolves to /api/Countries).
+    [HttpGet, Route("create", Name = "CountriesCreate")]
     public IActionResult Create() => View(new CountryCreateModel());
 
     [HttpPost, Route("create"), ValidateAntiForgeryToken]
@@ -101,7 +103,7 @@ public class CountriesController : Controller
         return RedirectToAction(nameof(Index));
     }
 
-    [HttpPost, Route("{id:long}/delete"), ValidateAntiForgeryToken]
+    [HttpPost, Route("{id:long}/delete", Name = "CountryDelete"), ValidateAntiForgeryToken]
     public IActionResult Delete(long id)
     {
         try { _countries.SoftDelete(id); }

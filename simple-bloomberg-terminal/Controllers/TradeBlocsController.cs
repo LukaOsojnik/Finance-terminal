@@ -31,7 +31,7 @@ public class TradeBlocsController : Controller
         return View(entity);
     }
 
-    [HttpGet, Route("create")]
+    [HttpGet, Route("create", Name = "TradeBlocsCreate")]
     public IActionResult Create() { PopulateDropdowns(); return View(new TradeBlocCreateModel()); }
 
     [HttpPost, Route("create"), ValidateAntiForgeryToken]
@@ -72,7 +72,7 @@ public class TradeBlocsController : Controller
         return RedirectToAction(nameof(Index));
     }
 
-    [HttpPost, Route("{id:long}/delete"), ValidateAntiForgeryToken]
+    [HttpPost, Route("{id:long}/delete", Name = "TradeBlocDelete"), ValidateAntiForgeryToken]
     public IActionResult Delete(long id)
     {
         try { _tradeBlocs.SoftDelete(id); }

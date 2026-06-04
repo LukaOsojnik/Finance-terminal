@@ -278,7 +278,7 @@
                                     }
                                 </td>
                                 <td style="white-space:nowrap;">
-                                    <a asp-controller="RevenueSources" asp-action="Details" asp-route-id="@r.Id" class="btn-detail">VIEW</a>
+                                    <a asp-controller="RevenueSources" asp-action="Details" asp-route-id="@r.Id" asp-route-returnUrl="@Context.Request.Path" class="btn-detail">VIEW</a>
                                     <form asp-route="RevenueSourceDelete" asp-route-id="@r.Id" asp-route-returnUrl="@Context.Request.Path" method="post" style="display:inline"
                                           onsubmit="return confirm('Delete this source, its proof, its filing, and every source sharing that filing?');">
                                         @Html.AntiForgeryToken()

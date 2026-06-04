@@ -25,7 +25,7 @@
         <td style="text-align:right; white-space:nowrap;">
             <a asp-action="Details" asp-route-id="@company.Id" class="btn-detail">VIEW</a>
             <a asp-action="Edit" asp-route-id="@company.Id" class="btn-detail">EDIT</a>
-            <form asp-action="Delete" asp-route-id="@company.Id" method="post" style="display:inline;" onsubmit="return confirm('Delete @company.Name?');">
+            <form asp-route="CompanyDelete" asp-route-id="@company.Id" method="post" style="display:inline;" onsubmit="return confirm('Delete @company.Name?');">
                 @Html.AntiForgeryToken()
                 <button type="submit" class="btn-detail" style="border:none; background:none; color:var(--red); cursor:pointer;">DEL</button>
             </form>

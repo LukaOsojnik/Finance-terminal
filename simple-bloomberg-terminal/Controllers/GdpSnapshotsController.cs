@@ -24,7 +24,7 @@ public class GdpSnapshotsController : Controller
     [HttpGet, Route("search")]
     public IActionResult Search(string? term) => PartialView("_TableBody", _repo.Search(term));
 
-    [HttpGet, Route("create")]
+    [HttpGet, Route("create", Name = "GdpSnapshotsCreate")]
     public IActionResult Create() => View(new GdpSnapshotCreateModel());
 
     [HttpPost, Route("create"), ValidateAntiForgeryToken]
@@ -59,7 +59,7 @@ public class GdpSnapshotsController : Controller
         return RedirectToAction(nameof(Index));
     }
 
-    [HttpPost, Route("{id:long}/delete"), ValidateAntiForgeryToken]
+    [HttpPost, Route("{id:long}/delete", Name = "GdpSnapshotDelete"), ValidateAntiForgeryToken]
     public IActionResult Delete(long id)
     {
         try { _repo.SoftDelete(id); }
