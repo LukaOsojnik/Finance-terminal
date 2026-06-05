@@ -850,22 +850,22 @@
 | HTTP | GET |
 | Route source | `[Route("extraction")]` + `[Route("")]` |
 | View | Views/Extraction/Index.cshtml |
-| Parameters | companyId: long? (query string, optional) |
-| Notes | Phase-1 split-screen revenue extraction UI — company autocomplete picker; left pane = RevenueSource cells, right pane = JSON from `POST /api/stock/refresh/{companyId}`; "Use as reference" writes per-cell SourceFieldReview rows |
+| Parameters | companyId: long? (query string, optional); revenueSourceId: long? (query string, optional — REVENUE deep-link prefill only); node: string? (query string, optional — `REVENUE`\|`COST`\|`RISK`, default `REVENUE`) |
+| Notes | Phase-1 split-screen extraction UI — company autocomplete picker plus a Node dropdown (Revenue/Cost/Risk) that drives which SEC Items are scanned (Revenue/Cost → Items 7,8; Risk → Items 1A,7A), the AI prompts, and which entity a save lands in (RevenueSource / CostSource / CompanyRisk). Left pane = source cells, right pane = JSON from `POST /api/stock/refresh/{companyId}`; "Use as reference" writes per-cell SourceFieldReview rows. `?revenueSourceId=` deep-links prefill an existing RevenueSource row (REVENUE node only) |
 
 ---
 
-## /extraction/references/{revenueSourceId}
+## /extraction/references/{sourceId}
 
 | Field | Value |
 |---|---|
 | Controller | ExtractionController |
 | Action | References |
 | HTTP | GET |
-| Route source | `[Route("extraction")]` + `[Route("references/{revenueSourceId:long}")]` |
+| Route source | `[Route("extraction")]` + `[Route("references/{sourceId:long}")]` |
 | View | — (JSON array of per-field references: field, snapshot, pointer, endpoint, mark, rationale, filing) |
-| Parameters | revenueSourceId: long (route, constrained) |
-| Notes | Existing references for a source row, so the extraction page can show each cell's pointer on load. Returns 404 when the source row id is not found |
+| Parameters | sourceId: long (route, constrained); node: string? (query string, optional — `REVENUE`\|`COST`\|`RISK`, default `REVENUE`; picks which source table/FK the id resolves against) |
+| Notes | Existing references for a source row, so the extraction page can show each cell's pointer on load. Returns 404 when the source row id is not found for the given node |
 
 ---
 
@@ -878,8 +878,8 @@
 | HTTP | POST |
 | Route source | `[Route("extraction")]` + `[Route("reference")]` |
 | View | — (JSON `ReferenceResult` record: RevenueSourceId, ReviewId, Field) |
-| Parameters | JSON body (ReferenceRequest) |
-| Notes | Ensures the RevenueSource row exists (create if new, DataSource=MANUAL) then upserts one SourceFieldReview per (RevenueSourceId, Field) with Mark=null; re-referencing resets the verdict. Responses: 200 OK; 400 (missing companyId/name/snapshot); 404 (source row id not found). Superseded in the UI by `POST /extraction/save` (endpoint still present but no longer called) |
+| Parameters | JSON body (ReferenceRequest) — now also carries `node` (`REVENUE`\|`COST`\|`RISK`, default `REVENUE`) and `note` (RISK rows) |
+| Notes | Ensures the node's source row exists (RevenueSource / CostSource / CompanyRisk; create if new, DataSource=MANUAL) then upserts one SourceFieldReview per (row, Field) with the matching RelationKind and Mark=null; re-referencing resets the verdict. Responses: 200 OK; 400 (missing companyId/name/snapshot, or invalid classification); 404 (source row id not found). Superseded in the UI by `POST /extraction/save` (endpoint still present but no longer called) |
 
 ---
 
@@ -892,8 +892,8 @@
 | HTTP | POST |
 | Route source | `[Route("extraction")]` + `[Route("save")]` |
 | View | — (JSON `{ revenueSourceId, proofs }`) |
-| Parameters | JSON body (SaveRequest): companyId, revenueSourceId?, sourceType, name, value, percentage, relatedCompanyId, proofs:[{field, endpoint, referencePointer, referenceSnapshot, referencedValue, filingAccessionNumber, filingForm, filingDate, filingUrl}] |
-| Notes | Current UI save path — saves the whole extraction form in one request: upserts the RevenueSource row from the field values, then upserts one SourceFieldReview per entry in Proofs. Responses: 200 OK; 400 (bad companyId / missing name / invalid sourceType); 404 (revenueSourceId given but row not found) |
+| Parameters | JSON body (SaveRequest): companyId, revenueSourceId?, node (`REVENUE`\|`COST`\|`RISK`, default `REVENUE`), sourceType, name, value, percentage, note, relatedCompanyId, proofs:[{field, endpoint, referencePointer, referenceSnapshot, referencedValue, filingAccessionNumber, filingForm, filingDate, filingUrl}] |
+| Notes | Current UI save path — saves the whole extraction form in one request: `node` selects which entity the row upserts into (RevenueSource / CostSource / CompanyRisk; `note` backs RISK rows) from the field values, then upserts one SourceFieldReview per entry in Proofs. Responses: 200 OK; 400 (bad companyId / missing name / invalid classification); 404 (revenueSourceId given but row not found) |
 
 ---
 
@@ -919,9 +919,9 @@
 | Action | AutoExtract |
 | HTTP | POST |
 | Route source | `[Route("extraction")]` + `[Route("auto-extract/{companyId:long}")]` |
-| View | — (JSON revenue-source suggestions for the human to confirm) |
-| Parameters | companyId: long (route, constrained); accession: string (query, required); doc: string (query, required) |
-| Notes | Mode B — AI (`IFilingExtractionService`) reads one SEC filing and proposes revenue rows + per-field proof for the human to confirm; persists nothing (the page fills the form and the existing save path freezes proof). Responses: 200 OK; 400 (missing accession/doc); 404 (no such company); 503 (Claude unreachable) |
+| View | — (JSON source suggestions for the human to confirm) |
+| Parameters | companyId: long (route, constrained); accession: string (query, required); doc: string (query, required); node: string? (query string, optional — `REVENUE`\|`COST`\|`RISK`, default `REVENUE`) |
+| Notes | Mode B — AI (`IFilingExtractionService`) reads one SEC filing and proposes rows + per-field proof for the active node (revenue / cost / company-risk) for the human to confirm; persists nothing (the page fills the form and the existing save path freezes proof). Responses: 200 OK; 400 (missing accession/doc); 404 (no such company); 503 (Claude unreachable) |
 
 ---
 
@@ -934,7 +934,7 @@
 | HTTP | POST |
 | Route source | `[Route("extraction")]` + `[Route("chat")]` |
 | View | — (streaming `application/x-ndjson` body of `{"t":"reasoning"\|"text"\|"error","c":"..."}` lines, not a normal JSON/view response) |
-| Parameters | req: ChatRequest (body) — { companyId, accession, doc, messages:[{role,content}] }; ct: CancellationToken |
+| Parameters | req: ChatRequest (body) — { companyId, accession, doc, node (`REVENUE`\|`COST`\|`RISK`, default `REVENUE`), messages:[{role,content}] }; ct: CancellationToken |
 | Notes | Mode B — streams a conversational extraction grounded on one open SEC filing; persists nothing (`​```save```​` blocks in the reply pre-fill the extraction form). Responses: 200 OK (NDJSON stream); 404 (no such company) |
 
 ---
@@ -948,8 +948,8 @@
 | HTTP | GET |
 | Route source | `[Route("extraction")]` + `[Route("headings/{companyId:long}")]` |
 | View | — (JSON list of sub-headings: `[{ id, title, section, chars }]`) |
-| Parameters | companyId: long (route, constrained); accession: string (query, required); doc: string (query, required) |
-| Notes | Mode B — returns the bold sub-headings found inside Items 7/8/1A of the filing so the "Pick Sections" UI can let the user choose which sections to scan. Responses: 200 OK; 400 (missing accession/doc); 404 (no such company); 503 (SEC unreachable) |
+| Parameters | companyId: long (route, constrained); accession: string (query, required); doc: string (query, required); node: string? (query string, optional — `REVENUE`\|`COST`\|`RISK`, default `REVENUE`) |
+| Notes | Mode B — returns the bold sub-headings found inside the node's SEC Items (Revenue/Cost → Items 7,8; Risk → Items 1A,7A) of the filing so the "Pick Sections" UI can let the user choose which sections to scan. Responses: 200 OK; 400 (missing accession/doc); 404 (no such company); 503 (SEC unreachable) |
 
 ---
 
@@ -962,7 +962,7 @@
 | HTTP | POST |
 | Route source | `[Route("extraction")]` + `[Route("scan-headings/{companyId:long}")]` |
 | View | — (JSON `{ findings }` — candidate count) |
-| Parameters | companyId: long (route, constrained); accession: string (query, required); doc: string (query, required); body: int[] (picked heading ids) |
+| Parameters | companyId: long (route, constrained); accession: string (query, required); doc: string (query, required); node: string? (query string, optional — `REVENUE`\|`COST`\|`RISK`, default `REVENUE`); body: int[] (picked heading ids) |
 | Notes | Mode B — spawns one parallel worker per picked heading, scans only those paragraphs, and stores the result as the AI Chat's grounding digest; persists nothing to the DB. Responses: 200 OK; 400 (missing accession/doc or empty selection); 404 (no such company); 503 (DeepSeek/SEC unreachable) |
 
 ---

@@ -363,3 +363,61 @@
         </div>
     </div>
 </div>
+
+@* ── Risks ── *@
+<div class="detail-section-label">// RISKS</div>
+<div class="row g-3 mb-5">
+    <div class="col-12">
+        <div class="detail-card">
+            @if (!Model.CompanyRisks.Any())
+            {
+                <div class="detail-pending">NO RISKS ON RECORD</div>
+            }
+            else
+            {
+                <table class="terminal-table">
+                    <thead>
+                        <tr>
+                            <th>Name</th>
+                            <th>Scope</th>
+                            <th>Note</th>
+                            <th>Source</th>
+                            <th>Proof filing</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var risk in Model.CompanyRisks)
+                        {
+                            <tr>
+                                <td class="name-cell">@risk.Name</td>
+                                <td class="tag-cell">@risk.Scope.ToString().Replace("_", " ")</td>
+                                <td class="muted-cell">@(string.IsNullOrWhiteSpace(risk.Note) ? "—" : risk.Note)</td>
+                                <td class="tag-cell">@(risk.DataSource?.ToString() ?? "—")</td>
+                                <td class="muted-cell">
+                                    @{
+                                        var riskFilings = risk.Reviews
+                                            .Where(rv => rv.DeletedAt == null && rv.Filing != null && rv.Filing.DeletedAt == null)
+                                            .Select(rv => rv.Filing!)
+                                            .DistinctBy(f => f.Id)
+                                            .ToList();
+                                    }
+                                    @if (riskFilings.Count == 0)
+                                    {
+                                        <span class="muted-cell">—</span>
+                                    }
+                                    else
+                                    {
+                                        @foreach (var f in riskFilings)
+                                        {
+                                            <div><a href="@f.PrimaryDocUrl" target="_blank" rel="noopener">@f.Form @f.AccessionNumber</a></div>
+                                        }
+                                    }
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            }
+        </div>
+    </div>
+</div>

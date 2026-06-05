@@ -16,7 +16,8 @@
 | GdpSnapshots | GdpSnapshot | Annual GDP data point for a Country |
 | RevenueSources | RevenueSource | Revenue line item for a Company |
 | CostSources | CostSource | Cost line item for a Company |
-| SourceFieldReviews | SourceFieldReview | Per-field provenance (incl. the filing link) + AI verdict for one cell of a revenue/cost source |
+| CompanyRisks | CompanyRisk | Disclosed risk for a Company (SEC Item 1A/7A); Name + Scope + Note, no money figures |
+| SourceFieldReviews | SourceFieldReview | Per-field provenance (incl. the filing link) + AI verdict for one cell of a revenue/cost/risk source |
 | Filings | Filing | A SEC EDGAR filing used as proof for a cost/revenue source; identity is the EDGAR accession number |
 
 ---
@@ -123,14 +124,28 @@
 | DataSource | DataSource? | |
 | DeletedAt | DateTime? | Soft-delete timestamp |
 
+### CompanyRisk
+| Property | Type | Notes |
+|---|---|---|
+| Id | long | PK |
+| CompanyId | long | FK → Companies (owner) |
+| Scope | RiskScope | MACROECONOMIC, INDUSTRY, BUSINESS, LEGAL_REGULATORY, FINANCIAL, GENERAL |
+| Name | string | |
+| Note | string? | Free-text detail |
+| DataSource | DataSource? | |
+| DeletedAt | DateTime? | Soft-delete timestamp |
+
+Disclosed risk extracted from SEC Item 1A risk factors / Item 7A market risk. Mirrors RevenueSource/CostSource but has no money/percentage/counterparty — just Name + Scope + Note. Per-cell proof lives in SourceFieldReview (Relation = RISK).
+
 ### SourceFieldReview
 | Property | Type | Notes |
 |---|---|---|
 | Id | long | PK |
 | CompanyId | long | FK → Companies (analyzed company, denormalized) |
-| Relation | RelationKind | COST / REVENUE discriminator |
+| Relation | RelationKind | COST / REVENUE / RISK discriminator |
 | RevenueSourceId | long? | FK → RevenueSources; set iff Relation==REVENUE |
 | CostSourceId | long? | FK → CostSources; set iff Relation==COST |
+| CompanyRiskId | long? | FK → CompanyRisks; set iff Relation==RISK |
 | Field | ReviewableField | Which cell this row proves |
 | Endpoint | string | API endpoint that produced the proof |
 | ReferencePointer | string | JSON path / text offset the user selected |
@@ -143,7 +158,7 @@
 | ReviewerModel | string? | Model id |
 | DeletedAt | DateTime? | Soft-delete timestamp |
 
-Constraints: check `CK_SourceFieldReview_OneSource` = `(RevenueSourceId IS NULL) <> (CostSourceId IS NULL)` (exactly one source FK set); unique indexes `(RevenueSourceId, Field)` and `(CostSourceId, Field)` — one current reference per cell (NULLs don't collide across relation types).
+Constraints: check `CK_SourceFieldReview_OneSource` enforces exactly one of RevenueSourceId / CostSourceId / CompanyRiskId is set; unique indexes `(RevenueSourceId, Field)`, `(CostSourceId, Field)`, and `(CompanyRiskId, Field)` — one current reference per cell (NULLs don't collide across relation types).
 
 ### Filing
 | Property | Type | Notes |
@@ -177,6 +192,7 @@ Note: Country.Advantages / Country.Challenges / Country.GdpHistory nav props exi
 
 Company ──────────────── RevenueSource      (1:N, FK CompanyId — owner)
 Company ──────────────── CostSource         (1:N, FK CompanyId — owner)
+Company ──────────────── CompanyRisk        (1:N, FK CompanyId — owner)
 Company ──────────────── RevenueSource      (1:N, FK RelatedCompanyId — counterparty, nav: RevenueFromDependents)
 Company ──────────────── CostSource         (1:N, FK RelatedCompanyId — counterparty, nav: CostFromDependents)
 Company ◄──────────────► Event              (N:M, junction table)
@@ -184,6 +200,7 @@ Company ◄──────────────► Event              (N:M
 Company ──────────────── SourceFieldReview  (1:N, FK CompanyId, Restrict)
 RevenueSource ────────── SourceFieldReview  (1:N, FK RevenueSourceId nullable, Restrict)
 CostSource ───────────── SourceFieldReview  (1:N, FK CostSourceId nullable, Restrict)
+CompanyRisk ──────────── SourceFieldReview  (1:N, FK CompanyRiskId nullable, Restrict)
 
 Company ──────────────── Filing             (1:N, FK CompanyId, Restrict)
 Filing ───────────────── SourceFieldReview  (1:N, FK FilingId nullable, Restrict)
@@ -203,5 +220,6 @@ Event   ◄──────────────► TradeBloc          (N:M
 | SourceType | CUSTOMER, SEGMENT, REGION, PRODUCT |
 | CostBase | COGS, OPEX, TOTAL_COSTS |
 | DataSource | EDGAR, MANUAL, CLAUDE_ESTIMATED, OPENBB |
-| RelationKind | COST, REVENUE |
-| ReviewableField | VALUE, PERCENTAGE, NAME, RELATED_COMPANY, CLASSIFICATION |
+| RelationKind | COST, REVENUE, RISK |
+| ReviewableField | VALUE, PERCENTAGE, NAME, RELATED_COMPANY, CLASSIFICATION, NOTE |
+| RiskScope | MACROECONOMIC, INDUSTRY, BUSINESS, LEGAL_REGULATORY, FINANCIAL, GENERAL |

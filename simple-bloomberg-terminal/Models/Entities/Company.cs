@@ -35,6 +35,9 @@ public class Company
     [InverseProperty("Company")]
     public virtual ICollection<CostSource> CostSources { get; set; } = [];
 
+    [InverseProperty("Company")]
+    public virtual ICollection<CompanyRisk> CompanyRisks { get; set; } = [];
+
     [InverseProperty("RelatedCompany")]
     public virtual ICollection<RevenueSource> RevenueFromDependents { get; set; } = [];
 

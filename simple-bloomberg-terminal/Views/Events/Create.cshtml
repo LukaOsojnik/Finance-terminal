@@ -5,61 +5,61 @@
     var countries = (List<Country>)ViewBag.Countries;
     var companies = (List<Company>)ViewBag.Companies;
     var blocs = (List<TradeBloc>)ViewBag.TradeBlocs;
+
+    var companiesByCountry = companies
+        .GroupBy(c => c.CountryId)
+        .ToDictionary(g => g.Key, g => g.Select(c => new MultiSelectOption { Id = c.Id, Label = c.Name }).ToList());
+
+    var linkModel = new EventLinkPanelModel {
+        SelectedCountryIds = Model.SelectedCountryIds,
+        SelectedCompanyIds = Model.SelectedCompanyIds,
+        Countries = countries.Select(c => new EventLinkCountry {
+            Id = c.Id,
+            Name = c.Name,
+            Companies = companiesByCountry.TryGetValue(c.Id, out var list) ? list : new()
+        }).ToList()
+    };
 }
 
 <div class="page-header"><h2><span class="page-header-accent">//</span> New Event</h2></div>
 
-<form asp-route="EventsCreate" method="post" style="max-width:720px;">
+<form asp-route="EventsCreate" method="post">
     @Html.AntiForgeryToken()
     <div asp-validation-summary="ModelOnly" class="text-danger"></div>
 
-    <div class="mb-3"><label asp-for="Title" class="form-label"></label><input asp-for="Title" class="form-control"/><span asp-validation-for="Title" class="text-danger"></span></div>
-    <div class="mb-3"><label asp-for="Type" class="form-label"></label><select asp-for="Type" asp-items="ViewBag.EventTypes" class="form-control"></select><span asp-validation-for="Type" class="text-danger"></span></div>
-    <div class="mb-3">
-        <label asp-for="Date" class="form-label"></label>
-        <partial name="_DateTimePicker" model="@(new DateTimePickerModel { FieldName = "Date", Required = true, ShowTime = true, ErrorMessage = "Date is required." })"/>
-        <span asp-validation-for="Date" class="text-danger"></span>
+    <div class="event-form-layout">
+        <div class="event-form-main">
+            <div class="mb-3"><label asp-for="Title" class="form-label"></label><input asp-for="Title" class="form-control"/><span asp-validation-for="Title" class="text-danger"></span></div>
+            <div class="mb-3"><label asp-for="Type" class="form-label"></label><select asp-for="Type" asp-items="ViewBag.EventTypes" class="form-control"></select><span asp-validation-for="Type" class="text-danger"></span></div>
+            <div class="mb-3">
+                <label asp-for="Date" class="form-label"></label>
+                <partial name="_DateTimePicker" model="@(new DateTimePickerModel { FieldName = "Date", Required = true, ShowTime = true, ErrorMessage = "Date is required." })"/>
+                <span asp-validation-for="Date" class="text-danger"></span>
+            </div>
+            <div class="mb-3">
+                <label asp-for="EndDate" class="form-label"></label>
+                <partial name="_DateTimePicker" model="@(new DateTimePickerModel { FieldName = "EndDate", ShowTime = true, CustomValidationAttributes = new() { ["data-val-dategte"] = "End date must be on or after start date.", ["data-val-dategte-other"] = "Date" } })"/>
+                <span asp-validation-for="EndDate" class="text-danger"></span>
+            </div>
+            <div class="mb-3"><label asp-for="Description" class="form-label"></label><textarea asp-for="Description" class="form-control" rows="3"></textarea><span asp-validation-for="Description" class="text-danger"></span></div>
+            <div class="mb-3"><label asp-for="ImpactScore" class="form-label"></label><input asp-for="ImpactScore" class="form-control" type="number" step="0.1"/><span asp-validation-for="ImpactScore" class="text-danger"></span></div>
+
+            <partial name="_MultiSelectPicker" model="@(new MultiSelectPickerModel {
+                FieldName = "SelectedTradeBlocIds",
+                Legend = "Linked Trade Blocs",
+                Placeholder = "Type to filter trade blocs...",
+                Options = blocs.Select(b => new MultiSelectOption { Id = b.Id, Label = b.Name }).ToList(),
+                SelectedIds = Model.SelectedTradeBlocIds
+            })"/>
+
+            <button type="submit" class="btn btn-primary">CREATE</button>
+            <a asp-action="Index" class="btn btn-secondary">CANCEL</a>
+        </div>
+
+        <aside class="event-form-side">
+            <partial name="_EventLinkPanel" model="linkModel"/>
+        </aside>
     </div>
-    <div class="mb-3">
-        <label asp-for="EndDate" class="form-label"></label>
-        <partial name="_DateTimePicker" model="@(new DateTimePickerModel { FieldName = "EndDate", ShowTime = true, CustomValidationAttributes = new() { ["data-val-dategte"] = "End date must be on or after start date.", ["data-val-dategte-other"] = "Date" } })"/>
-        <span asp-validation-for="EndDate" class="text-danger"></span>
-    </div>
-    <div class="mb-3"><label asp-for="Description" class="form-label"></label><textarea asp-for="Description" class="form-control" rows="3"></textarea><span asp-validation-for="Description" class="text-danger"></span></div>
-    <div class="mb-3"><label asp-for="ImpactScore" class="form-label"></label><input asp-for="ImpactScore" class="form-control" type="number" step="0.1"/><span asp-validation-for="ImpactScore" class="text-danger"></span></div>
-
-    <fieldset class="mb-3">
-        <legend class="form-label">Linked Countries</legend>
-        <div style="max-height:200px; overflow:auto; border:1px solid #444; padding:0.5rem;">
-            @foreach (var c in countries)
-            {
-                <label style="display:block;"><input type="checkbox" name="SelectedCountryIds" value="@c.Id"/> @c.Name</label>
-            }
-        </div>
-    </fieldset>
-
-    <fieldset class="mb-3">
-        <legend class="form-label">Linked Companies</legend>
-        <div style="max-height:200px; overflow:auto; border:1px solid #444; padding:0.5rem;">
-            @foreach (var c in companies)
-            {
-                <label style="display:block;"><input type="checkbox" name="SelectedCompanyIds" value="@c.Id"/> @c.Name</label>
-            }
-        </div>
-    </fieldset>
-
-    <fieldset class="mb-3">
-        <legend class="form-label">Linked Trade Blocs</legend>
-        <div style="max-height:200px; overflow:auto; border:1px solid #444; padding:0.5rem;">
-            @foreach (var b in blocs)
-            {
-                <label style="display:block;"><input type="checkbox" name="SelectedTradeBlocIds" value="@b.Id"/> @b.Name</label>
-            }
-        </div>
-    </fieldset>
-
-    <button type="submit" class="btn btn-primary">CREATE</button>
-    <a asp-action="Index" class="btn btn-secondary">CANCEL</a>
 </form>
 
 @section Scripts { <partial name="_ValidationScriptsPartial"/> }

@@ -90,6 +90,206 @@ document.querySelectorAll('.autocomplete').forEach(box => {
     input.addEventListener('blur', () => setTimeout(() => { list.hidden = true; }, 150));
 });
 
+// Multi-select picker wiring (events: link countries / companies / trade blocs).
+// Convention (see Views/Shared/_MultiSelectPicker.cshtml):
+//   <fieldset class="multiselect" data-field="SelectedCompanyIds"
+//             data-parent-field="SelectedCountryIds" data-empty-placeholder="...">
+//     <div class="multiselect-control">
+//       <div class="multiselect-chips"></div>
+//       <input class="multiselect-input">
+//     </div>
+//     <ul class="multiselect-options"><li data-id data-label data-parent class="is-selected?">...</li></ul>
+//   </fieldset>
+// Selected state lives on the <li> (.is-selected); JS derives chips + hidden inputs from it.
+// When data-parent-field is set, options are gated by the selection in that parent picker.
+const msRegistry = {};
+
+document.querySelectorAll('.multiselect').forEach(box => {
+    const field    = box.dataset.field;
+    const control  = box.querySelector('.multiselect-control');
+    const chips    = box.querySelector('.multiselect-chips');
+    const input    = box.querySelector('.multiselect-input');
+    const list     = box.querySelector('.multiselect-options');
+    if (!field || !control || !chips || !input || !list) return;
+
+    const parentField   = box.dataset.parentField || null;
+    const basePlaceholder  = input.placeholder;
+    const emptyPlaceholder = box.dataset.emptyPlaceholder || basePlaceholder;
+
+    const options = [...list.children];
+    let activeIdx = -1;
+    let allowedParents = parentField ? new Set() : null; // null = no gating
+    const changeListeners = [];
+
+    const selectedLis = () => options.filter(li => li.classList.contains('is-selected'));
+    const visible     = () => options.filter(li => !li.hidden);
+    const notify      = () => changeListeners.forEach(cb => cb());
+
+    const isAllowed = li => !parentField || allowedParents.has(li.dataset.parent);
+
+    const renderChips = () => {
+        chips.innerHTML = '';
+        selectedLis().forEach(li => {
+            const chip = document.createElement('span');
+            chip.className = 'ms-chip';
+            chip.innerHTML =
+                `${li.dataset.label}<button type="button" class="ms-chip-x" aria-label="Remove">×</button>` +
+                `<input type="hidden" name="${field}" value="${li.dataset.id}"/>`;
+            chip.querySelector('.ms-chip-x').addEventListener('click', () => {
+                li.classList.remove('is-selected');
+                renderChips();
+                filter();
+                notify();
+            });
+            chips.appendChild(chip);
+        });
+    };
+
+    const highlight = i => {
+        const vis = visible();
+        vis.forEach(li => li.classList.remove('active'));
+        if (i >= 0 && vis[i]) vis[i].classList.add('active');
+        activeIdx = i;
+    };
+
+    const filter = () => {
+        const term = input.value.trim().toLowerCase();
+        options.forEach(li => {
+            const match = !li.classList.contains('is-selected') &&
+                          isAllowed(li) &&
+                          li.dataset.label.toLowerCase().includes(term);
+            li.hidden = !match;
+        });
+        list.hidden = visible().length === 0;
+        if (parentField) {
+            const locked = allowedParents.size === 0;
+            input.disabled = locked;
+            input.placeholder = locked ? emptyPlaceholder : basePlaceholder;
+        }
+        highlight(-1);
+    };
+
+    const pick = li => {
+        li.classList.add('is-selected');
+        input.value = '';
+        renderChips();
+        filter();
+        notify();
+        input.focus();
+    };
+
+    // Called by a parent picker when its selection changes.
+    // prune=false on the initial load so saved selections (Edit) survive even if
+    // their parent isn't linked; user-driven changes prune normally.
+    const setAllowedParents = (ids, prune = true) => {
+        allowedParents = new Set(ids);
+        if (prune) {
+            let pruned = false;
+            selectedLis().forEach(li => { if (!isAllowed(li)) { li.classList.remove('is-selected'); pruned = true; } });
+            if (pruned) { renderChips(); notify(); }
+        }
+        filter();
+    };
+
+    control.addEventListener('mousedown', e => {
+        if (!input.disabled && (e.target === control || e.target === chips)) input.focus();
+    });
+    input.addEventListener('focus', filter);
+    input.addEventListener('input', filter);
+    input.addEventListener('keydown', e => {
+        const vis = visible();
+        if (e.key === 'ArrowDown') { highlight(Math.min(activeIdx + 1, vis.length - 1)); e.preventDefault(); }
+        else if (e.key === 'ArrowUp') { highlight(Math.max(activeIdx - 1, 0)); e.preventDefault(); }
+        else if (e.key === 'Enter') {
+            if (vis[activeIdx]) pick(vis[activeIdx]);
+            else if (vis.length === 1) pick(vis[0]);
+            e.preventDefault();
+        }
+        else if (e.key === 'Backspace' && input.value === '') {
+            const sel = selectedLis();
+            if (sel.length) { sel[sel.length - 1].classList.remove('is-selected'); renderChips(); filter(); notify(); }
+        }
+        else if (e.key === 'Escape') { list.hidden = true; }
+    });
+    list.addEventListener('mousedown', e => {
+        const li = e.target.closest('li');
+        if (li) { e.preventDefault(); pick(li); }
+    });
+    input.addEventListener('blur', () => setTimeout(() => { list.hidden = true; }, 150));
+
+    msRegistry[field] = {
+        parentField,
+        onChange: cb => changeListeners.push(cb),
+        selectedIds: () => selectedLis().map(li => li.dataset.id),
+        setAllowedParents,
+    };
+    renderChips();
+});
+
+// Wire each child picker to its parent: sync on parent change + once on load.
+Object.values(msRegistry).forEach(child => {
+    if (!child.parentField) return;
+    const parent = msRegistry[child.parentField];
+    if (!parent) return;
+    parent.onChange(() => child.setAllowedParents(parent.selectedIds()));
+    child.setAllowedParents(parent.selectedIds(), false); // initial: gate dropdown, keep saved chips
+});
+
+// Event link panel: countries column + company flyout (see _EventLinkPanel.cshtml).
+// Checkboxes carry the form names and post on their own; JS handles flyout + chips.
+document.querySelectorAll('[data-link-panel]').forEach(panel => {
+    const countryRows  = [...panel.querySelectorAll('.link-country')];
+    const companyLists  = [...panel.querySelectorAll('.link-company-list')];
+    const head         = panel.querySelector('[data-company-head]');
+    const placeholder  = panel.querySelector('[data-company-placeholder]');
+    const chipsBox     = panel.querySelector('.link-chips');
+
+    const openCountry = id => {
+        countryRows.forEach(r => r.classList.toggle('active', r.dataset.countryId === id));
+        companyLists.forEach(l => l.hidden = l.dataset.forCountry !== id);
+        if (placeholder) placeholder.hidden = true;
+        const row = countryRows.find(r => r.dataset.countryId === id);
+        if (head) head.textContent = row
+            ? 'Companies · ' + row.querySelector('.link-country-name').textContent
+            : 'Companies';
+    };
+
+    panel.querySelectorAll('.link-country-open').forEach(btn => {
+        btn.addEventListener('click', () => openCountry(btn.closest('.link-country').dataset.countryId));
+    });
+
+    const renderChips = () => {
+        const checks = [...panel.querySelectorAll('.link-country-cb:checked, .link-company-cb:checked')];
+        chipsBox.innerHTML = '';
+        if (!checks.length) {
+            chipsBox.innerHTML = '<span class="link-chips-empty">Nothing linked yet</span>';
+            return;
+        }
+        checks.forEach(cb => {
+            const chip = document.createElement('span');
+            chip.className = 'ms-chip' + (cb.classList.contains('link-country-cb') ? ' ms-chip-country' : '');
+            chip.innerHTML = `${cb.dataset.label}<button type="button" class="ms-chip-x" aria-label="Remove">×</button>`;
+            chip.querySelector('.ms-chip-x').addEventListener('click', () => {
+                cb.checked = false;
+                cb.dispatchEvent(new Event('change', { bubbles: true }));
+            });
+            chipsBox.appendChild(chip);
+        });
+    };
+
+    panel.addEventListener('change', e => {
+        const cb = e.target;
+        if (!cb.matches('.link-country-cb, .link-company-cb')) return;
+        // keep the row highlight in sync with the checkbox
+        cb.closest('.link-country, .link-company')?.classList.toggle('checked', cb.checked);
+        // convenience: checking a country opens its companies
+        if (cb.matches('.link-country-cb') && cb.checked) openCountry(cb.value);
+        renderChips();
+    });
+
+    renderChips();
+});
+
 // ── Live Data Ticker ──
 (function () {
     const track = document.getElementById('ticker-track');

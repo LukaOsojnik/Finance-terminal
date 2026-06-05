@@ -6,5 +6,7 @@ public enum ReviewableField
     PERCENTAGE,
     NAME,
     RELATED_COMPANY,
-    CLASSIFICATION
+    CLASSIFICATION,
+    // Risk-node free-text note backing a CompanyRisk row (CLASSIFICATION doubles as its Scope cell).
+    NOTE
 }

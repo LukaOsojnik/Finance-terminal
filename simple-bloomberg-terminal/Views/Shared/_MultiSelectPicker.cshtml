@@ -1,0 +1,23 @@
+@model simple_bloomberg_terminal.Models.ViewModels.Shared.MultiSelectPickerModel
+@{
+    var selected = new HashSet<long>(Model.SelectedIds);
+}
+@* Searchable multi-select. JS (site.js) builds chips + hidden inputs from .is-selected options.
+   When ParentField is set, options are gated by the selection in that parent picker. *@
+<fieldset class="mb-3 multiselect" data-field="@Model.FieldName"
+          data-parent-field="@Model.ParentField"
+          data-empty-placeholder="@Model.ParentEmptyPlaceholder">
+    <legend class="form-label">@Model.Legend</legend>
+    <div class="multiselect-control">
+        <div class="multiselect-chips"></div>
+        <input type="text" class="multiselect-input" placeholder="@Model.Placeholder" autocomplete="off"/>
+    </div>
+    <ul class="multiselect-options" hidden>
+        @foreach (var opt in Model.Options)
+        {
+            <li data-id="@opt.Id" data-label="@opt.Label"
+                data-parent="@(opt.ParentId?.ToString())"
+                class="@(selected.Contains(opt.Id) ? "is-selected" : null)">@opt.Label</li>
+        }
+    </ul>
+</fieldset>

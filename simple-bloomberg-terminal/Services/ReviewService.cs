@@ -20,7 +20,7 @@ public class ReviewService : IReviewService
 
     private const string System =
         "You are a financial analyst-reviewer. You are given ONE extracted cell from a company's " +
-        "revenue/cost data and the verbatim proof text it was drawn from (an SEC filing or XBRL fact). " +
+        "revenue, cost or risk data and the verbatim proof text it was drawn from (an SEC filing or XBRL fact). " +
         "Judge only whether the proof supports the claimed value for that one field. Arithmetic, unit " +
         "scaling (thousands/millions), and clear inference are allowed; an unrelated or contradicting " +
         "snapshot fails. Reply with JSON only, no prose, no code fences: " +
@@ -68,16 +68,36 @@ public class ReviewService : IReviewService
     private static string? ClaimedValue(SourceFieldReview review)
     {
         if (!string.IsNullOrWhiteSpace(review.ReferencedValue)) return review.ReferencedValue;
-        var row = review.RevenueSource;
-        if (row is null) return null;
-        return review.Field switch
-        {
-            ReviewableField.VALUE          => row.Value?.ToString(),
-            ReviewableField.PERCENTAGE     => row.Percentage?.ToString(),
-            ReviewableField.NAME           => row.Name,
-            ReviewableField.CLASSIFICATION => row.SourceType.ToString(),
-            _                              => null   // RELATED_COMPANY name isn't loaded here
-        };
+
+        // Read the live cell from whichever source row this review belongs to. RELATED_COMPANY's
+        // name isn't loaded here, so it falls through to null (and is judged off ReferencedValue).
+        if (review.RevenueSource is { } rev)
+            return review.Field switch
+            {
+                ReviewableField.VALUE          => rev.Value?.ToString(),
+                ReviewableField.PERCENTAGE     => rev.Percentage?.ToString(),
+                ReviewableField.NAME           => rev.Name,
+                ReviewableField.CLASSIFICATION => rev.SourceType.ToString(),
+                _                              => null
+            };
+        if (review.CostSource is { } cost)
+            return review.Field switch
+            {
+                ReviewableField.VALUE          => cost.Value?.ToString(),
+                ReviewableField.PERCENTAGE     => cost.Percentage?.ToString(),
+                ReviewableField.NAME           => cost.Name,
+                ReviewableField.CLASSIFICATION => cost.CostBase.ToString(),
+                _                              => null
+            };
+        if (review.CompanyRisk is { } risk)
+            return review.Field switch
+            {
+                ReviewableField.NAME           => risk.Name,
+                ReviewableField.CLASSIFICATION => risk.Scope.ToString(),
+                ReviewableField.NOTE           => risk.Note,
+                _                              => null
+            };
+        return null;
     }
 
     // The model is asked for bare JSON, but tolerate ```json fences / stray prose just in case.

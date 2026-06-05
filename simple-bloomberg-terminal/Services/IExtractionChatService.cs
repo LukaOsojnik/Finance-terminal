@@ -1,3 +1,4 @@
+using simple_bloomberg_terminal.Models.Enums;
 using simple_bloomberg_terminal.Models.ViewModels;
 
 namespace simple_bloomberg_terminal.Services;
@@ -12,6 +13,6 @@ namespace simple_bloomberg_terminal.Services;
 public interface IExtractionChatService
 {
     IAsyncEnumerable<ChatDelta> StreamReplyAsync(
-        long companyId, string accession, string doc,
+        long companyId, string accession, string doc, ExtractionNode node,
         IReadOnlyList<ChatMessage> history, CancellationToken ct = default);
 }

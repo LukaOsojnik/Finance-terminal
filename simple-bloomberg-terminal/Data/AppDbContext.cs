@@ -13,6 +13,7 @@ public class AppDbContext : DbContext
     public DbSet<TradeBloc> TradeBlocs { get; set; }
     public DbSet<RevenueSource> RevenueSources { get; set; }
     public DbSet<CostSource> CostSources { get; set; }
+    public DbSet<CompanyRisk> CompanyRisks { get; set; }
     public DbSet<CountryDetails> CountryDetails { get; set; }
     public DbSet<CountryAdvantage> CountryAdvantages { get; set; }
     public DbSet<CountryChallenge> CountryChallenges { get; set; }
@@ -46,6 +47,11 @@ public class AppDbContext : DbContext
                 .HasForeignKey(r => r.CostSourceId)
                 .OnDelete(DeleteBehavior.Restrict);
 
+            e.HasOne(r => r.CompanyRisk)
+                .WithMany(cr => cr.Reviews)
+                .HasForeignKey(r => r.CompanyRiskId)
+                .OnDelete(DeleteBehavior.Restrict);
+
             // The filing this per-field proof was drawn from (one source -> many filings via its
             // reviews). Restrict so a referenced filing can't be hard-deleted from under a review.
             e.HasOne(r => r.Filing)
@@ -57,10 +63,13 @@ public class AppDbContext : DbContext
             // cost rows (null RevenueSourceId) and revenue rows (null CostSourceId) don't collide
             e.HasIndex(r => new { r.RevenueSourceId, r.Field }).IsUnique();
             e.HasIndex(r => new { r.CostSourceId, r.Field }).IsUnique();
+            e.HasIndex(r => new { r.CompanyRiskId, r.Field }).IsUnique();
 
+            // Exactly one of the three source FKs is set (the others NULL). Booleans are 0/1 in
+            // MySQL, so the non-null count must sum to exactly 1.
             e.ToTable(t => t.HasCheckConstraint(
                 "CK_SourceFieldReview_OneSource",
-                "(RevenueSourceId IS NULL) <> (CostSourceId IS NULL)"));
+                "((RevenueSourceId IS NOT NULL) + (CostSourceId IS NOT NULL) + (CompanyRiskId IS NOT NULL)) = 1"));
         });
 
         modelBuilder.Entity<Filing>(e =>

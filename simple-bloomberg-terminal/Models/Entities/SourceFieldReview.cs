@@ -13,6 +13,7 @@ public class SourceFieldReview
     public RelationKind Relation { get; set; }
     public long? RevenueSourceId { get; set; }
     public long? CostSourceId { get; set; }
+    public long? CompanyRiskId { get; set; }
     public ReviewableField Field { get; set; }
 
     public string Endpoint { get; set; } = string.Empty;
@@ -39,6 +40,9 @@ public class SourceFieldReview
 
     [ForeignKey("CostSourceId")]
     public virtual CostSource? CostSource { get; set; }
+
+    [ForeignKey("CompanyRiskId")]
+    public virtual CompanyRisk? CompanyRisk { get; set; }
 
     [ForeignKey("FilingId")]
     public virtual Filing? Filing { get; set; }

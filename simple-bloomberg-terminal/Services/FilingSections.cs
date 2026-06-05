@@ -1,6 +1,7 @@
 using System.Text;
 using System.Text.RegularExpressions;
 using HtmlAgilityPack;
+using simple_bloomberg_terminal.Models.Enums;
 
 namespace simple_bloomberg_terminal.Services;
 
@@ -17,20 +18,24 @@ public record FilingHeading(string Section, string Title, string Body);
 /// </summary>
 public static class FilingSections
 {
-    // Items worth reading for revenue/cost & counterparty signal (pipeline doc scope). Ordered by
-    // priority: the revenue breakdown lives in Item 7 (MD&A) and Item 8 (segment notes), so they
-    // come before the much longer Item 1A (risk factors) — otherwise 1A starves them downstream.
-    private static readonly string[] TargetItems = ["7", "8", "1A"];
+    // Which SEC Items each extraction node reads. Revenue/cost breakdowns live in Item 7 (MD&A) and
+    // Item 8 (segment notes); risks live in Item 1A (risk factors) + Item 7A (market risk). Ordered
+    // by priority so the first item isn't starved of chunk slots downstream.
+    public static string[] ItemsFor(ExtractionNode node) => node switch
+    {
+        ExtractionNode.RISK => ["1A", "7A"],
+        _                   => ["7", "8"],   // REVENUE and COST share the financial-detail Items
+    };
 
     private const int MaxChunkChars = 4000;        // ~1k tokens/chunk — many small, cheap calls
     private const int MaxChunksPerSection = 12;    // keep one giant section from hogging every slot
-    private const int MaxChunks = 36;              // overall safety cap (3 sections × 12)
+    private const int MaxChunks = 36;              // overall safety cap (≈3 sections × 12)
 
-    public static List<FilingChunk> Build(string raw)
+    public static List<FilingChunk> Build(string raw, string[] items)
     {
         var text = ToText(raw);
         var chunks = new List<FilingChunk>();
-        foreach (var item in TargetItems)
+        foreach (var item in items)
         {
             var body = SectionBody(text, item);
             if (body is null) continue;
@@ -134,7 +139,7 @@ public static class FilingSections
     /// length. The user picks from these; one worker then reads one heading's body. Plain-text
     /// filings (no markup to detect bold) return an empty list — the caller falls back to auto-scan.
     /// </summary>
-    public static List<FilingHeading> BuildHeadings(string raw)
+    public static List<FilingHeading> BuildHeadings(string raw, string[] items)
     {
         if (!Regex.IsMatch(raw[..Math.Min(raw.Length, 2000)], "<html|<body|<div|<p|<table", RegexOptions.IgnoreCase))
             return [];
@@ -170,7 +175,7 @@ public static class FilingSections
             {
                 Flush();
                 var num = item.Groups[1].Value.ToUpperInvariant();
-                section = Array.IndexOf(TargetItems, num) >= 0 ? $"Item {num}" : null;
+                section = Array.IndexOf(items, num) >= 0 ? $"Item {num}" : null;
                 continue;
             }
 

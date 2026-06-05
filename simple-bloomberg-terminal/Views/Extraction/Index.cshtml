@@ -2,8 +2,8 @@
 @{ ViewData["Title"] = "Extraction"; }
 
 <div class="page-header">
-    <h2><span class="page-header-accent">//</span> Extraction — Revenue</h2>
-    <div class="page-subtitle">Bind source cells to EDGAR proof text · select in the right pane, freeze with “Use as reference”</div>
+    <h2><span class="page-header-accent">//</span> Extraction — <span id="nodeTitle">Revenue</span></h2>
+    <div class="page-subtitle">Bind cells to EDGAR proof text · pick the node, select in the right pane, freeze with “Use as reference”</div>
 </div>
 
 @Html.AntiForgeryToken()
@@ -11,6 +11,10 @@
 <div class="extraction-split" id="extractionSplit">
     <!-- LEFT: source cells bound to a RevenueSource row -->
     <div class="extraction-pane" id="leftPane">
+        <div class="cell-row">
+            <label class="ext-field-label">Node</label>
+            <select id="nodeSelect" asp-items="ViewBag.Nodes" class="ext-select"></select>
+        </div>
         <div class="cell-row">
             <label class="ext-field-label">Company</label>
             @await Html.PartialAsync("_AutocompletePicker", new AutocompletePickerModel {
@@ -49,7 +53,7 @@
         </div>
 
         <div class="cell-row">
-            <label class="ext-field-label">Classification</label>
+            <label class="ext-field-label" id="classLabel">Classification</label>
             <select id="f_sourceType" asp-items="ViewBag.SourceTypes" class="form-control"></select>
             <div class="ref-info" data-info="CLASSIFICATION"></div>
         </div>
@@ -58,17 +62,17 @@
             <input id="f_name" class="form-control"/>
             <div class="ref-info" data-info="NAME"></div>
         </div>
-        <div class="cell-row">
+        <div class="cell-row" id="valueRow">
             <label class="ext-field-label">Value</label>
             <input id="f_value" class="form-control" type="number" step="any"/>
             <div class="ref-info" data-info="VALUE"></div>
         </div>
-        <div class="cell-row">
+        <div class="cell-row" id="pctRow">
             <label class="ext-field-label">% (0–100)</label>
             <input id="f_percentage" class="form-control" type="number" step="0.1"/>
             <div class="ref-info" data-info="PERCENTAGE"></div>
         </div>
-        <div class="cell-row">
+        <div class="cell-row" id="counterpartyRow">
             <label class="ext-field-label">Counterparty</label>
             @await Html.PartialAsync("_AutocompletePicker", new AutocompletePickerModel {
                 FieldName = "relatedCompanyId",
@@ -79,6 +83,12 @@
                 Placeholder = "Type company name (optional)..."
             })
             <div class="ref-info" data-info="RELATED_COMPANY"></div>
+        </div>
+        <!-- RISK node only: free-text note describing the risk. -->
+        <div class="cell-row" id="noteRow" hidden>
+            <label class="ext-field-label">Note</label>
+            <textarea id="f_note" class="form-control" rows="3" placeholder="Short description of the risk..."></textarea>
+            <div class="ref-info" data-info="NOTE"></div>
         </div>
 
         <!-- The one save: writes the row + every field that carries proof, in a single request. -->
@@ -142,12 +152,18 @@
             <button type="button" class="ext-btn ext-btn-ghost" data-close>✕ CLOSE</button>
         </div>
         <div id="headingsList" class="ext-headings-list"></div>
-        <div id="headingsEmpty" class="ext-modal-empty" hidden>No bold headings found in Items 7/8/1A. Use AI Chat for a full scan.</div>
+        <div id="headingsEmpty" class="ext-modal-empty" hidden>No bold headings found in this node’s sections. Use AI Chat for a full scan.</div>
     </div>
 </div>
 
 @section Scripts {
 <partial name="_ValidationScriptsPartial"/>
+<script type="application/json" id="nodeConfig">
+    @Html.Raw(System.Text.Json.JsonSerializer.Serialize(new {
+        initial = Model.Node.ToString(),
+        classes = ViewBag.ClassOptions
+    }))
+</script>
 @if (Model.RevenueSourceId is { } prefillId)
 {
     <script type="application/json" id="prefillData">
@@ -441,6 +457,38 @@
     const numOrNull = v => v === '' || v == null ? null : Number(v);
     const companyId = () => companyHidden()?.value;
 
+    // ---- Node (Revenue / Cost / Risk): drives form fields, EDGAR section filter and AI prompts ----
+    const nodeCfg = (() => {
+        try { return JSON.parse($('nodeConfig').textContent); }
+        catch { return { initial: 'REVENUE', classes: {} }; }
+    })();
+    let node = nodeCfg.initial || 'REVENUE';
+    const NODE_LABEL = { REVENUE: 'Revenue', COST: 'Cost', RISK: 'Risk' };
+    const isRisk = () => node === 'RISK';
+
+    // Repopulate the classification dropdown with the active node's enum values.
+    function rebuildClassOptions() {
+        const opts = (nodeCfg.classes && nodeCfg.classes[node]) || [];
+        const sel = $('f_sourceType');
+        sel.innerHTML = '';
+        opts.forEach(v => {
+            const o = document.createElement('option');
+            o.value = v; o.textContent = v; sel.appendChild(o);
+        });
+    }
+
+    // Reflect the current node in the page chrome: title, label, which cells show, load-button text.
+    function applyNode() {
+        $('nodeTitle').textContent = NODE_LABEL[node] || node;
+        $('classLabel').textContent = isRisk() ? 'Scope' : 'Classification';
+        rebuildClassOptions();
+        $('valueRow').hidden = isRisk();
+        $('pctRow').hidden = isRisk();
+        $('counterpartyRow').hidden = isRisk();
+        $('noteRow').hidden = !isRisk();
+        $('loadBtn').textContent = isRisk() ? 'LOAD COMPANY' : 'LOAD EDGAR ROWS';
+    }
+
     // ---- Drag the gutter to widen the filing pane (only left pane's width changes) ----
     (function () {
         const split = $('extractionSplit'), gutter = $('extGutter'), left = $('leftPane');
@@ -583,17 +631,20 @@
         clearRefs();
         if (!rowId) return;
         try {
-            const res = await fetch(`/extraction/references/${rowId}`);
+            const res = await fetch(`/extraction/references/${rowId}?node=${node}`);
             if (!res.ok) return;
             (await res.json()).forEach(r => renderRef(r.field, r));
         } catch { /* non-fatal */ }
     }
 
     function fillCells(r) {
-        $('f_sourceType').value = r ? r.sourceType : $('f_sourceType').options[0].value;
+        // The classification field is named differently per node in the DTO (sourceType/costBase/scope).
+        const cls = r ? (r.sourceType ?? r.costBase ?? r.scope) : null;
+        $('f_sourceType').value = cls != null ? cls : ($('f_sourceType').options[0]?.value ?? '');
         $('f_name').value = r ? (r.name ?? '') : '';
         $('f_value').value = r && r.value != null ? r.value : '';
         $('f_percentage').value = r && r.percentage != null ? r.percentage : '';
+        $('f_note').value = r && r.note != null ? r.note : '';
         currentRowId = r ? r.id : null;
         aiProof = {};            // a different row's cells aren't backed by the last AI suggestion
         loadExistingRefs(currentRowId);
@@ -610,8 +661,12 @@
             if (!res.ok) { status.textContent = `Refresh failed (${res.status}): ${await res.text()}`; return; }
             const dto = await res.json();
 
+            // Risk has no structured EDGAR rows — its rows come from the filing via AI, not refresh.
+            const src = node === 'COST' ? (dto.costSources || [])
+                      : node === 'RISK' ? []
+                      : (dto.revenueSources || []);
             const byKey = new Map();
-            (dto.revenueSources || []).filter(r => r.dataSource === 'EDGAR')
+            src.filter(r => r.dataSource === 'EDGAR')
                 .forEach(r => byKey.set(r.name, r)); // later (higher-id) wins
             edgarRows = [...byKey.values()];
             rowPicker.innerHTML = '<option value="">— new row —</option>';
@@ -622,7 +677,9 @@
             });
             if (edgarRows.length) { rowPicker.value = edgarRows[0].id; fillCells(edgarRows[0]); }
             else fillCells(null);
-            status.textContent = `Pre-filled ${edgarRows.length} EDGAR row(s).`;
+            status.textContent = isRisk()
+                ? 'Loaded. Open a filing and use AI Chat to extract risks.'
+                : `Pre-filled ${edgarRows.length} EDGAR row(s).`;
         } catch (e) { status.textContent = 'Network error: ' + e.message; return; }
         loadFacts();
     });
@@ -630,6 +687,19 @@
     rowPicker.addEventListener('change', () => {
         const r = edgarRows.find(x => String(x.id) === rowPicker.value);
         fillCells(r || null);
+    });
+
+    // Initialise the node UI, then react to the dropdown: switching node resets the row + cells and
+    // drops any open chat (a new node grounds on different sections).
+    $('nodeSelect').value = node;
+    applyNode();
+    $('nodeSelect').addEventListener('change', () => {
+        node = $('nodeSelect').value;
+        edgarRows = [];
+        rowPicker.innerHTML = '<option value="">— new row —</option>';
+        applyNode();
+        fillCells(null);
+        chatHistory = []; aiChatLog.innerHTML = ''; aiSaveList.innerHTML = ''; chatFiling = null;
     });
 
     // ---- right pane: Company Facts ----
@@ -730,6 +800,7 @@
             case 'PERCENTAGE': return $('f_percentage').value || null;
             case 'NAME': return $('f_name').value || null;
             case 'CLASSIFICATION': return $('f_sourceType').value || null;
+            case 'NOTE': return $('f_note').value || null;
             case 'RELATED_COMPANY': {
                 const inp = relatedHidden()?.closest('.autocomplete')?.querySelector('.autocomplete-input');
                 return inp ? (inp.value || null) : null;
@@ -765,10 +836,12 @@
         const body = {
             companyId: id,
             revenueSourceId: currentRowId,
-            sourceType: $('f_sourceType').value,
+            node,
+            sourceType: $('f_sourceType').value,   // generic classification (SourceType/CostBase/RiskScope)
             name: $('f_name').value,
             value: numOrNull($('f_value').value),
             percentage: numOrNull($('f_percentage').value),
+            note: $('f_note').value || null,
             relatedCompanyId: relatedHidden()?.value ? Number(relatedHidden().value) : null,
             proofs
         };
@@ -797,6 +870,7 @@
         $('f_name').value = s.name || '';
         $('f_value').value = s.value != null ? s.value : '';
         $('f_percentage').value = s.percentage != null ? s.percentage : '';
+        $('f_note').value = s.note != null ? s.note : '';
         // Counterparty needs a DB id (name resolution stays manual) — surface the name as a hint.
         const relInput = relatedHidden()?.closest('.autocomplete')?.querySelector('.autocomplete-input');
         if (relInput && s.relatedCompany) relInput.value = s.relatedCompany;
@@ -805,7 +879,7 @@
         aiProof = {};
         const p = s.proof || {};
         const map = { NAME: p.name, VALUE: p.value, PERCENTAGE: p.percentage,
-                      CLASSIFICATION: p.classification, RELATED_COMPANY: p.relatedCompany };
+                      CLASSIFICATION: p.classification, RELATED_COMPANY: p.relatedCompany, NOTE: p.note };
         clearRefs();
         Object.entries(map).forEach(([field, snap]) => {
             if (snap && snap.trim()) {
@@ -823,11 +897,13 @@
             value: j.value != null && j.value !== '' ? Number(j.value) : null,
             percentage: j.percentage != null && j.percentage !== '' ? Number(j.percentage) : null,
             relatedCompany: j.related_company || j.relatedCompany || null,
+            note: j.note ?? null,
             section: 'AI chat',
             proof: {
                 name: j.proof?.name ?? null, value: j.proof?.value ?? null,
                 percentage: j.proof?.percentage ?? null, classification: j.proof?.classification ?? null,
-                relatedCompany: j.proof?.related_company ?? j.proof?.relatedCompany ?? null
+                relatedCompany: j.proof?.related_company ?? j.proof?.relatedCompany ?? null,
+                note: j.proof?.note ?? null
             }
         };
     }
@@ -865,6 +941,7 @@
             if (s.value != null) bits.push('$' + Number(s.value).toLocaleString());
             if (s.percentage != null) bits.push(s.percentage + '%');
             if (s.relatedCompany) bits.push('↔ ' + s.relatedCompany);
+            if (s.note) bits.push('“' + shortText(s.note, 50) + '”');
             card.innerHTML =
                 `<div class="ai-suggest-name">＋ ${escapeHtml(s.name)}</div>` +
                 `<div class="ai-suggest-meta"><span class="as-tag">${escapeHtml(s.classification || '—')}</span>` +
@@ -894,6 +971,7 @@
                     companyId: Number(id),
                     accession: currentFiling.accessionNumber,
                     doc: currentFiling.primaryDocument,
+                    node,
                     messages: chatHistory
                 })
             });
@@ -940,8 +1018,12 @@
         }
         $('aiChatCtx').textContent = currentFiling.form ? `· ${currentFiling.form} ${currentFiling.filingDate || ''}` : '';
         aiChatText.focus();
-        if (!chatHistory.length)
-            sendChat('List the most interesting revenue and cost sources in this filing, with values or percentages where stated, then ask me which I want to save.');
+        const seed = {
+            COST: 'List the most significant cost sources and key suppliers in this filing, with values or percentages where stated, then ask me which I want to save.',
+            RISK: 'List the most significant risks disclosed in this filing, grouped by scope (macroeconomic, industry, business, legal/regulatory, financial, general), then ask me which I want to save.',
+            REVENUE: 'List the most interesting revenue sources in this filing, with values or percentages where stated, then ask me which I want to save.'
+        };
+        if (!chatHistory.length) sendChat(seed[node] || seed.REVENUE);
     }
     $('aiChatBtn').addEventListener('click', () => openChat(false));
 
@@ -989,7 +1071,7 @@
         }
         headingsList.innerHTML = ''; $('headingsCount').textContent = 'loading…'; $('headingsEmpty').hidden = true;
         headingsModal.hidden = false; headingsFilter.value = '';
-        const qs = `accession=${encodeURIComponent(currentFiling.accessionNumber)}&doc=${encodeURIComponent(currentFiling.primaryDocument)}`;
+        const qs = `accession=${encodeURIComponent(currentFiling.accessionNumber)}&doc=${encodeURIComponent(currentFiling.primaryDocument)}&node=${node}`;
         try {
             const res = await fetch(`/extraction/headings/${id}?${qs}`);
             if (!res.ok) { $('headingsCount').textContent = `failed (${res.status})`; return; }
@@ -1004,7 +1086,7 @@
         if (!ids.length) { alert('Tick at least one heading.'); return; }
         const btn = $('headingsScanBtn'), label = btn.textContent;
         btn.disabled = true; btn.textContent = `Scanning ${ids.length}…`;
-        const qs = `accession=${encodeURIComponent(currentFiling.accessionNumber)}&doc=${encodeURIComponent(currentFiling.primaryDocument)}`;
+        const qs = `accession=${encodeURIComponent(currentFiling.accessionNumber)}&doc=${encodeURIComponent(currentFiling.primaryDocument)}&node=${node}`;
         try {
             const res = await fetch(`/extraction/scan-headings/${id}?${qs}`, {
                 method: 'POST',

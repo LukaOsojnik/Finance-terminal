@@ -8,6 +8,10 @@ public class ExtractionIndexViewModel
     public long? CompanyId { get; set; }
     public string? CompanyLabel { get; set; }
 
+    // Which graph node the page is building (REVENUE / COST / RISK). Drives the form fields, the
+    // EDGAR-section filter and the AI prompts. Defaults to revenue (the original page).
+    public ExtractionNode Node { get; set; } = ExtractionNode.REVENUE;
+
     // When the page is opened to add proof for one existing source row, these prefill the left
     // cells (and the JS binds the row) so the user browses/connects against its current values.
     public long? RevenueSourceId { get; set; }
@@ -28,13 +32,19 @@ public class ReferenceRequest
     public long CompanyId { get; set; }
     public long? RevenueSourceId { get; set; }   // null => create a new source row on save
 
+    // Which node this row belongs to (REVENUE / COST / RISK), as the enum name. Decides the target
+    // entity and the RelationKind stamped on the proof.
+    public string Node { get; set; } = "REVENUE";
+
     // Left-cell values (written back to the source row, source of truth for the numbers).
     // Enums arrive as their string names from the browser (System.Text.Json web defaults bind
     // enums as numbers, so the controller parses these by name) — see ExtractionController.
+    // SourceType is the generic classification string: SourceType / CostBase / RiskScope per node.
     public string SourceType { get; set; } = string.Empty;
     public string Name { get; set; } = string.Empty;
     public double? Value { get; set; }
     public double? Percentage { get; set; }
+    public string? Note { get; set; }            // RISK node only (free-text)
     public long? RelatedCompanyId { get; set; }
 
     // The proof.
@@ -64,11 +74,12 @@ public record ReferenceResult(long RevenueSourceId, long ReviewId, string Field)
 /// </summary>
 public record ExtractionSuggestion(
     string Name, string? Classification, double? Value, double? Percentage,
-    string? RelatedCompany, string Section, ExtractionProof Proof);
+    string? RelatedCompany, string Section, ExtractionProof Proof, string? Note = null);
 
 /// <summary>Per-field verbatim proof text the model lifted from the chunk it read.</summary>
 public record ExtractionProof(
-    string? Name, string? Value, string? Percentage, string? Classification, string? RelatedCompany);
+    string? Name, string? Value, string? Percentage, string? Classification, string? RelatedCompany,
+    string? Note = null);
 
 /// <summary>One selectable bold sub-heading shown in the "pick sections" list. <c>Id</c> indexes the
 /// cached heading list so a later scan can map the user's ticks back to the paragraphs to read.</summary>
@@ -82,11 +93,13 @@ public record HeadingInfo(int Id, string Title, string Section, int Chars);
 public class SaveRequest
 {
     public long CompanyId { get; set; }
-    public long? RevenueSourceId { get; set; }   // null => create a new row
-    public string SourceType { get; set; } = string.Empty;
+    public long? RevenueSourceId { get; set; }   // bound row id for the active node; null => new row
+    public string Node { get; set; } = "REVENUE";
+    public string SourceType { get; set; } = string.Empty;   // classification per node (Source/Cost/Scope)
     public string Name { get; set; } = string.Empty;
     public double? Value { get; set; }
     public double? Percentage { get; set; }
+    public string? Note { get; set; }            // RISK node only (free-text)
     public long? RelatedCompanyId { get; set; }
 
     public List<ProofInput> Proofs { get; set; } = [];
@@ -115,5 +128,6 @@ public class ChatRequest
     public long CompanyId { get; set; }
     public string Accession { get; set; } = string.Empty;
     public string Doc { get; set; } = string.Empty;
+    public string Node { get; set; } = "REVENUE";
     public List<ChatMessage> Messages { get; set; } = [];
 }

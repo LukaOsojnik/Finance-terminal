@@ -1,0 +1,56 @@
+@model simple_bloomberg_terminal.Models.ViewModels.Shared.EventLinkPanelModel
+@{
+    var selCountries = new HashSet<long>(Model.SelectedCountryIds);
+    var selCompanies = new HashSet<long>(Model.SelectedCompanyIds);
+}
+@* Country/company linker. Checkboxes carry the form names, so selections post
+   without JS; JS only drives the flyout + chips summary (see site.js). *@
+<div class="link-panel" data-link-panel>
+    <div class="link-panel-summary">
+        <span class="link-summary-label">Linked</span>
+        <div class="link-chips"></div>
+    </div>
+
+    <div class="link-columns">
+        <div class="link-col link-col-countries">
+            <div class="link-col-head">Countries</div>
+            <ul class="link-list">
+                @foreach (var c in Model.Countries)
+                {
+                    <li class="link-country @(selCountries.Contains(c.Id) ? "checked" : null)" data-country-id="@c.Id">
+                        <input type="checkbox" class="link-country-cb" name="SelectedCountryIds"
+                               value="@c.Id" data-label="@c.Name" @(selCountries.Contains(c.Id) ? "checked" : null)/>
+                        <button type="button" class="link-country-open">
+                            <span class="link-country-name">@c.Name</span>
+                            <span class="link-arrow">▶</span>
+                        </button>
+                    </li>
+                }
+            </ul>
+        </div>
+
+        <div class="link-col link-col-companies">
+            <div class="link-col-head" data-company-head>Companies</div>
+            <div class="link-company-placeholder" data-company-placeholder>Select a country to view its companies</div>
+            @foreach (var c in Model.Countries)
+            {
+                <ul class="link-list link-company-list" data-for-country="@c.Id" hidden>
+                    @if (c.Companies.Count == 0)
+                    {
+                        <li class="link-empty">No companies for @c.Name</li>
+                    }
+                    @foreach (var co in c.Companies)
+                    {
+                        <li class="link-company @(selCompanies.Contains(co.Id) ? "checked" : null)">
+                            <label class="link-check">
+                                <input type="checkbox" class="link-company-cb" name="SelectedCompanyIds"
+                                       value="@co.Id" data-label="@co.Label" @(selCompanies.Contains(co.Id) ? "checked" : null)/>
+                                <span>@co.Label</span>
+                            </label>
+                        </li>
+                    }
+                </ul>
+            }
+        </div>
+    </div>
+</div>

@@ -11,6 +11,7 @@ public class SourceFieldReviewRepository(AppDbContext db) : ISourceFieldReviewRe
             .Include(r => r.Company)
             .Include(r => r.RevenueSource)
             .Include(r => r.CostSource)
+            .Include(r => r.CompanyRisk)
             .Include(r => r.Filing)
             .Where(r => r.CompanyId == companyId && r.DeletedAt == null)
             .ToList();
@@ -20,6 +21,7 @@ public class SourceFieldReviewRepository(AppDbContext db) : ISourceFieldReviewRe
             .Include(r => r.Company)
             .Include(r => r.RevenueSource)
             .Include(r => r.CostSource)
+            .Include(r => r.CompanyRisk)
             .Include(r => r.Filing)
             .Where(r => r.Mark == null && r.DeletedAt == null)
             .ToList();
@@ -29,6 +31,7 @@ public class SourceFieldReviewRepository(AppDbContext db) : ISourceFieldReviewRe
             .Include(r => r.Company)
             .Include(r => r.RevenueSource)
             .Include(r => r.CostSource)
+            .Include(r => r.CompanyRisk)
             .Include(r => r.Filing)
             .FirstOrDefault(r => r.Id == id && r.DeletedAt == null);
 

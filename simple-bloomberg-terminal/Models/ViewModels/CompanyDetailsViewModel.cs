@@ -14,6 +14,7 @@ public class CompanyDetailsViewModel
     // profile can list them and delete each (cascading to its filing cluster).
     public IEnumerable<RevenueSource> RevenueSources { get; set; } = [];
     public IEnumerable<CostSource> CostSources { get; set; } = [];
+    public IEnumerable<CompanyRisk> CompanyRisks { get; set; } = [];
 
     // Sector enum formatted for display (underscores → spaces)
     public required string SectorLabel { get; set; }

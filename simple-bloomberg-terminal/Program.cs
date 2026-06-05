@@ -30,6 +30,7 @@ builder.Services.AddScoped<ICountryChallengeRepository, CountryChallengeReposito
 builder.Services.AddScoped<IGdpSnapshotRepository, GdpSnapshotRepository>();
 builder.Services.AddScoped<IRevenueSourceRepository, RevenueSourceRepository>();
 builder.Services.AddScoped<ICostSourceRepository, CostSourceRepository>();
+builder.Services.AddScoped<ICompanyRiskRepository, CompanyRiskRepository>();
 builder.Services.AddScoped<ISourceFieldReviewRepository, SourceFieldReviewRepository>();
 builder.Services.AddScoped<IFilingRepository, FilingRepository>();
 

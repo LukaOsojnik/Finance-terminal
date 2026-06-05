@@ -55,6 +55,7 @@ public class CompaniesController : Controller
             RelatedEvents = company.Events.Where(e => e.DeletedAt == null),
             RevenueSources = company.RevenueSources.Where(r => r.DeletedAt == null),
             CostSources = company.CostSources.Where(c => c.DeletedAt == null),
+            CompanyRisks = company.CompanyRisks.Where(r => r.DeletedAt == null),
             SectorLabel = company.Sector.ToString().Replace("_", " "),
             IndustryLabel = company.Industry.HasValue
                 ? company.Industry.Value.ToString().Replace("_", " ")
