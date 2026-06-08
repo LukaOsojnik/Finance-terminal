@@ -24,10 +24,15 @@ public class ExtractionController : Controller
     private readonly ICompanyRiskRepository _risks;
     private readonly ISourceFieldReviewRepository _reviews;
     private readonly ICompanyRepository _companies;
+    private readonly ICountryRepository _countries;
     private readonly IFilingRepository _filings;
     private readonly IReviewService _reviewer;
     private readonly IFilingExtractionService _extractor;
     private readonly IExtractionChatService _chat;
+    private readonly ICounterpartyDiscovery _discovery;
+    private readonly IFmpApiClient _fmp;
+    private readonly IYahooFinanceClient _yahoo;
+    private readonly IExchangeRateApiClient _exchangeRate;
 
     public ExtractionController(
         IRevenueSourceRepository revenue,
@@ -35,20 +40,30 @@ public class ExtractionController : Controller
         ICompanyRiskRepository risks,
         ISourceFieldReviewRepository reviews,
         ICompanyRepository companies,
+        ICountryRepository countries,
         IFilingRepository filings,
         IReviewService reviewer,
         IFilingExtractionService extractor,
-        IExtractionChatService chat)
+        IExtractionChatService chat,
+        ICounterpartyDiscovery discovery,
+        IFmpApiClient fmp,
+        IYahooFinanceClient yahoo,
+        IExchangeRateApiClient exchangeRate)
     {
         _revenue = revenue;
         _cost = cost;
         _risks = risks;
         _reviews = reviews;
         _companies = companies;
+        _countries = countries;
         _filings = filings;
         _reviewer = reviewer;
         _extractor = extractor;
         _chat = chat;
+        _discovery = discovery;
+        _fmp = fmp;
+        _yahoo = yahoo;
+        _exchangeRate = exchangeRate;
     }
 
     private static ExtractionNode ParseNode(string? node) =>
@@ -334,14 +349,14 @@ public class ExtractionController : Controller
     // Mode B — AI reads one filing and proposes revenue rows + per-field proof for the human to
     // confirm. Persists nothing; the page fills the form and the existing save path freezes proof.
     [HttpPost, Route("auto-extract/{companyId:long}")]
-    public async Task<IActionResult> AutoExtract(long companyId, [FromQuery] string accession, [FromQuery] string doc, [FromQuery] string? node)
+    public async Task<IActionResult> AutoExtract(long companyId, [FromQuery] string accession, [FromQuery] string doc, [FromQuery] string? node, [FromQuery] string? form)
     {
         if (_companies.GetById(companyId) is null) return NotFound();
         if (string.IsNullOrWhiteSpace(accession) || string.IsNullOrWhiteSpace(doc))
             return BadRequest("accession and doc are required.");
         try
         {
-            var suggestions = await _extractor.ExtractAsync(companyId, accession, doc, ParseNode(node));
+            var suggestions = await _extractor.ExtractAsync(companyId, accession, doc, ParseNode(node), form);
             return Json(suggestions);
         }
         catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
@@ -350,37 +365,19 @@ public class ExtractionController : Controller
         }
     }
 
-    // Mode B (curated) — bold sub-headings inside Items 7/8/1A for the user to pick from.
-    [HttpGet, Route("headings/{companyId:long}")]
-    public async Task<IActionResult> Headings(long companyId, [FromQuery] string accession, [FromQuery] string doc, [FromQuery] string? node)
+    // Mode B (auto) — triage every bold heading by title, scan the AI-chosen ones in parallel, and
+    // stash the result as the chat's grounding. Replaces the hand-pick flow. Returns scanned + found.
+    [HttpPost, Route("scan-auto/{companyId:long}")]
+    public async Task<IActionResult> ScanAuto(
+        long companyId, [FromQuery] string accession, [FromQuery] string doc, [FromQuery] string? node, [FromQuery] string? form)
     {
         if (_companies.GetById(companyId) is null) return NotFound();
         if (string.IsNullOrWhiteSpace(accession) || string.IsNullOrWhiteSpace(doc))
             return BadRequest("accession and doc are required.");
         try
         {
-            return Json(await _extractor.GetHeadingsAsync(companyId, accession, doc, ParseNode(node)));
-        }
-        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
-        {
-            return StatusCode(StatusCodes.Status503ServiceUnavailable, "SEC unreachable.");
-        }
-    }
-
-    // Mode B (curated) — spawn one worker per picked heading, scan only those paragraphs, and stash
-    // the result as the chat's grounding. Returns the candidate count.
-    [HttpPost, Route("scan-headings/{companyId:long}")]
-    public async Task<IActionResult> ScanHeadings(
-        long companyId, [FromQuery] string accession, [FromQuery] string doc, [FromQuery] string? node, [FromBody] int[] headingIds)
-    {
-        if (_companies.GetById(companyId) is null) return NotFound();
-        if (string.IsNullOrWhiteSpace(accession) || string.IsNullOrWhiteSpace(doc))
-            return BadRequest("accession and doc are required.");
-        if (headingIds is null || headingIds.Length == 0) return BadRequest("Select at least one section.");
-        try
-        {
-            var found = await _extractor.ScanSelectedHeadingsAsync(companyId, accession, doc, ParseNode(node), headingIds);
-            return Json(new { findings = found });
+            var result = await _extractor.ScanAutoAsync(companyId, accession, doc, ParseNode(node), form);
+            return Json(result);
         }
         catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
         {
@@ -403,7 +400,7 @@ public class ExtractionController : Controller
 
         try
         {
-            await foreach (var d in _chat.StreamReplyAsync(req.CompanyId, req.Accession, req.Doc, ParseNode(req.Node), req.Messages, ct))
+            await foreach (var d in _chat.StreamReplyAsync(req.CompanyId, req.Accession, req.Doc, ParseNode(req.Node), req.Messages, req.Form, ct))
             {
                 await Response.WriteAsync(JsonSerializer.Serialize(new { t = d.Kind, c = d.Text }) + "\n", ct);
                 await Response.Body.FlushAsync(ct);
@@ -413,6 +410,193 @@ public class ExtractionController : Controller
         {
             await Response.WriteAsync(JsonSerializer.Serialize(new { t = "error", c = "DeepSeek unreachable." }) + "\n", ct);
         }
+    }
+
+    // Web discovery — ask Perplexity sonar for the named counterparties behind the company's revenue
+    // (Side=CUSTOMER) or cost (Side=SUPPLIER) segments. Runs Perplexity-style: a planner decomposes the
+    // request into focused sub-queries, each its own grounded search. Streams NDJSON lines as it goes
+    // ({"t":"plan"|"searching"|"result"|"error", …}) so the page renders a live feed. Persists nothing;
+    // the user confirms each found counterparty via LinkCounterparty.
+    [HttpPost, Route("discover-related")]
+    public async Task DiscoverRelated([FromBody] DiscoverCounterpartiesRequest req, CancellationToken ct)
+    {
+        Response.ContentType = "application/x-ndjson; charset=utf-8";
+        if (req is null || req.CompanyId <= 0 || _companies.GetById(req.CompanyId) is null)
+        {
+            Response.StatusCode = StatusCodes.Status404NotFound;
+            return;
+        }
+
+        var side = string.Equals(req.Side, "SUPPLIER", StringComparison.OrdinalIgnoreCase) ? "SUPPLIER" : "CUSTOMER";
+        // Empty segments is allowed: the planner then identifies the company's segments itself (so
+        // discovery works on a company that has no sources on record yet).
+        var segments = (req.Segments ?? [])
+            .Where(s => !string.IsNullOrWhiteSpace(s))
+            .Select(s => s.Trim())
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        // Web options (camelCase) so the streamed items match what the page reads (s.name, s.sourceUrl…).
+        var json = new JsonSerializerOptions(JsonSerializerDefaults.Web);
+        try
+        {
+            await foreach (var e in _discovery.DiscoverAsync(req.CompanyId, side, segments, req.Valued, ct))
+            {
+                object line = e.Type switch
+                {
+                    "plan" => new { t = "plan", queries = e.Queries },
+                    "searching" => new { t = "searching", query = e.Query },
+                    "result" => new { t = "result", query = e.Query, items = e.Items, sources = e.Sources, error = e.Error },
+                    _ => new { t = e.Type }
+                };
+                await Response.WriteAsync(JsonSerializer.Serialize(line, json) + "\n", ct);
+                await Response.Body.FlushAsync(ct);
+            }
+        }
+        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
+        {
+            await Response.WriteAsync(JsonSerializer.Serialize(new { t = "error", c = "Web search unreachable." }) + "\n", ct);
+        }
+    }
+
+    // Confirm one discovered counterparty: resolve (or create) its Company row, then create a revenue
+    // source (CUSTOMER) or cost source (SUPPLIER) on the inspected company pointing at it — feeding the
+    // graph's RELATED COMPANIES hub via RelatedCompanyId. Value is null (web gives no figure); the row
+    // exists to carry the relationship.
+    [HttpPost, Route("link-counterparty")]
+    public async Task<IActionResult> LinkCounterparty([FromBody] LinkCounterpartyRequest req)
+    {
+        if (req is null || req.CompanyId <= 0) return BadRequest("CompanyId required.");
+        if (string.IsNullOrWhiteSpace(req.Name)) return BadRequest("Counterparty name required.");
+        var owner = _companies.GetById(req.CompanyId);
+        if (owner is null) return NotFound();
+
+        var counterpartyId = req.ExistingCompanyId ?? await GetOrCreateCompanyAsync(req, owner);
+
+        // CUSTOMER buys from us -> revenue source; SUPPLIER sells to us -> cost source.
+        var node = string.Equals(req.Side, "SUPPLIER", StringComparison.OrdinalIgnoreCase)
+            ? ExtractionNode.COST
+            : ExtractionNode.REVENUE;
+        var rowId = UpsertRowByNode(node, req.CompanyId, null, req.Classification, req.Name,
+            value: req.Value, percentage: null, note: null, relatedCompanyId: counterpartyId);
+        if (rowId is null) return BadRequest("Could not create the link (check the classification value).");
+
+        // Save sonar's citation as proof on the new row's counterparty cell, so the web source the
+        // relationship came from is recorded (and shown on the company's Details page).
+        if (!string.IsNullOrWhiteSpace(req.SourceUrl))
+            UpsertReviewByNode(node, req.CompanyId, rowId.Value, ReviewableField.RELATED_COMPANY,
+                endpoint: "Perplexity sonar", pointer: req.SourceUrl,
+                snapshot: string.IsNullOrWhiteSpace(req.Note) ? req.SourceUrl : req.Note,
+                referencedValue: req.Name, filingId: null);
+
+        // The relationship is symmetric but stored as two one-sided rows: owner gets a row pointing at
+        // the counterparty (above); the counterparty needs the mirror row pointing back at owner, or its
+        // Details page shows nothing. Owner's revenue (counterparty is its CUSTOMER) -> counterparty's
+        // cost (owner is its supplier, COGS); owner's cost (counterparty is its supplier) ->
+        // counterparty's revenue (owner is its CUSTOMER).
+        EnsureReciprocal(node, counterpartyId, req.CompanyId, owner.Name, req.Value);
+
+        return Json(new { sourceId = rowId.Value, counterpartyId, node = node.ToString() });
+    }
+
+    // Create the mirror source on the counterparty pointing back at owner, unless one already exists
+    // (re-linking the same pair must not pile duplicates). Mirror node is the opposite of owner's:
+    // REVENUE<->COST, with the natural default classification for that side (CUSTOMER / COGS).
+    private void EnsureReciprocal(ExtractionNode node, long counterpartyId, long ownerId, string ownerName, double? value)
+    {
+        var (mirror, classification) = node == ExtractionNode.COST
+            ? (ExtractionNode.REVENUE, nameof(SourceType.CUSTOMER))
+            : (ExtractionNode.COST, nameof(CostBase.COGS));
+
+        var exists = mirror == ExtractionNode.COST
+            ? _cost.GetAll().Any(c => c.CompanyId == counterpartyId && c.RelatedCompanyId == ownerId)
+            : _revenue.GetAll().Any(r => r.CompanyId == counterpartyId && r.RelatedCompanyId == ownerId);
+        if (exists) return;
+
+        UpsertRowByNode(mirror, counterpartyId, null, classification, ownerName,
+            value: value, percentage: null, note: null, relatedCompanyId: ownerId);
+    }
+
+    // Reuse an existing company (fuzzy name match) or create one. When a ticker is known we run the
+    // same FMP-by-ticker pipeline the New Company form uses (real profile: sector/industry/CIK/revenue);
+    // otherwise fall back to a minimal company seeded from sonar's country/sector or the owner's.
+    private async Task<long> GetOrCreateCompanyAsync(LinkCounterpartyRequest req, Company owner)
+    {
+        if (_companies.MatchByName(req.Name) is { } existing) return existing.Id;
+
+        if (!string.IsNullOrWhiteSpace(req.Ticker))
+        {
+            FmpProfile? profile = null;
+            try { profile = await _fmp.GetProfileAsync(req.Ticker.Trim()); }
+            catch (HttpRequestException) { /* FMP down or symbol unknown -> stub below */ }
+
+            if (profile is { CompanyName.Length: > 0 })
+            {
+                // sonar's name may differ from FMP's canonical one — re-check before inserting.
+                if (_companies.MatchByName(profile.CompanyName) is { } byFmp) return byFmp.Id;
+
+                FmpIncome? income = null;
+                try { income = await _fmp.GetLatestIncomeAsync(req.Ticker.Trim()); }
+                catch (HttpRequestException) { /* financials optional */ }
+
+                var model = FmpMapper.ToCreateModel(profile, income);
+
+                // FMP income is premium-gated (non-US -> 402), so it's often null. Mirror the New
+                // Company form and backfill revenue + gross margin from Yahoo Finance.
+                if (income == null)
+                    await FillFinancialsFromYahoo(model, req.Ticker.Trim());
+                var entity = new Company(model.Name, ResolveCountryId(profile.Country, owner), model.Sector)
+                {
+                    Cik = model.Cik,
+                    Industry = model.Industry,
+                    RevenueTotal = model.RevenueTotal,
+                    GrossMargin = model.GrossMargin,
+                    AsOf = model.AsOf,
+                    Notes = model.Notes
+                };
+                _companies.Add(entity);
+                return entity.Id;
+            }
+        }
+
+        // No ticker / FMP miss: minimal company so the link still works.
+        var sec = ParseSector(req.Sector) ?? owner.Sector;
+        var stub = new Company(req.Name, ResolveCountryId(req.CountryCode, owner), sec);
+        _companies.Add(stub);
+        return stub.Id;
+    }
+
+    // Backfill revenue (USD) + gross margin from Yahoo Finance when FMP income is unavailable.
+    // Margin is a currency-agnostic ratio so it's filled regardless; revenue is converted to USD
+    // via ExchangeRate-API and left blank if no rate is available. Best-effort: Yahoo miss -> blanks.
+    private async Task FillFinancialsFromYahoo(CompanyCreateModel model, string ticker)
+    {
+        var yf = await _yahoo.GetFinancialsAsync(ticker);
+        if (yf == null) return;
+
+        if (yf.GrossMargins is { } gm)
+            model.GrossMargin = Math.Round(gm, 2); // 2 dp to match the form's step="0.01"
+
+        if (yf.Revenue is { } rev && !string.IsNullOrWhiteSpace(yf.Currency))
+        {
+            var rate = await _exchangeRate.GetUsdRateAsync(yf.Currency);
+            if (rate is { } r)
+                model.RevenueTotal = Math.Round(rev * r);
+        }
+    }
+
+    // Match an ISO-2 code against existing countries; fall back to the inspecting company's country
+    // (always valid). Avoids creating a half-populated Country row for a counterparty.
+    private long ResolveCountryId(string? iso2, Company owner) =>
+        !string.IsNullOrWhiteSpace(iso2) &&
+        _countries.GetAll().FirstOrDefault(c => string.Equals(c.Code, iso2, StringComparison.OrdinalIgnoreCase)) is { } m
+            ? m.Id : owner.CountryId;
+
+    // sonar returns GICS display form ("Information Technology"); the enum uses "INFORMATION_TECHNOLOGY".
+    private static Sector? ParseSector(string? sector)
+    {
+        var normalized = sector?.Trim().ToUpperInvariant().Replace(' ', '_');
+        return Enum.TryParse<Sector>(normalized, true, out var s) ? s : null;
     }
 
     // Upsert the proof filing by accession (globally unique) and return its id. Returns null when

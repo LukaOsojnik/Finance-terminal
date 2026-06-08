@@ -290,6 +290,223 @@ document.querySelectorAll('[data-link-panel]').forEach(panel => {
     renderChips();
 });
 
+// Inline row delete: POST the form via fetch and drop its <tr> instead of reloading the page.
+// Convention: <form class="js-row-delete" data-confirm="...">…</form> inside a table row.
+// Delegated on document so it survives the search AJAX swapping out #table-body.
+document.addEventListener('submit', async e => {
+    const form = e.target.closest('.js-row-delete');
+    if (!form) return;
+    e.preventDefault();
+
+    const msg = form.dataset.confirm;
+    if (msg && !(await uiConfirm(msg, { danger: true }))) return;
+
+    const row = form.closest('tr');
+    const btn = form.querySelector('button');
+    if (btn) btn.disabled = true;
+
+    fetch(form.action, { method: 'POST', body: new FormData(form) })
+        .then(async r => {
+            // A blocked company delete (409) with linked sources opens the modal so the user can
+            // clear those sources from here; the company then deletes automatically.
+            if (r.status === 409 && form.dataset.companyId) {
+                openLinkedModal(form, row);
+                return;
+            }
+            // Surface the server's message instead of a generic error so the user knows why.
+            if (!r.ok) throw (await r.text()) || 'Delete failed — refresh and try again.';
+            if (row) row.remove();
+        })
+        .catch(err => {
+            if (btn) btn.disabled = false;
+            uiAlert(typeof err === 'string' ? err : 'Delete failed — refresh and try again.');
+        });
+});
+
+// Generic confirm dialog for full-page POST delete forms (non-AJAX).
+// Convention: <form class="js-confirm" data-confirm="Delete X?">…</form>.
+// On confirm we call form.submit() (native submit bypasses this listener — no recursion).
+document.addEventListener('submit', async e => {
+    const form = e.target.closest('.js-confirm');
+    if (!form) return;
+    e.preventDefault();
+    if (await uiConfirm(form.dataset.confirm, { danger: true })) form.submit();
+});
+
+// ── Generic confirm / alert dialogs (window.uiConfirm / window.uiAlert) ──
+// Reuses the linked-sources modal styling. Builds one reusable overlay lazily and
+// appends it to <body>, so it works on every page without per-view markup.
+(function () {
+    const esc = s => String(s ?? '').replace(/[&<>"']/g, c =>
+        ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+
+    let overlay, titleEl, msgEl, footerEl, current = null;
+
+    function build() {
+        overlay = document.createElement('div');
+        overlay.className = 'modal-overlay';
+        overlay.hidden = true;
+        overlay.innerHTML = `
+            <div class="modal-box" role="dialog" aria-modal="true" style="max-width:440px;">
+                <div class="modal-header">
+                    <h3 data-ui-title></h3>
+                    <button type="button" class="modal-close" data-modal-close aria-label="Close">&times;</button>
+                </div>
+                <p class="modal-intro" data-ui-message></p>
+                <div class="modal-footer" data-ui-footer></div>
+            </div>`;
+        document.body.appendChild(overlay);
+        titleEl = overlay.querySelector('[data-ui-title]');
+        msgEl = overlay.querySelector('[data-ui-message]');
+        footerEl = overlay.querySelector('[data-ui-footer]');
+
+        overlay.addEventListener('click', e => {
+            if (e.target === overlay || e.target.closest('[data-modal-close]')) resolve(false);
+        });
+        document.addEventListener('keydown', e => {
+            if (overlay.hidden || !current) return;
+            if (e.key === 'Escape') resolve(false);
+            else if (e.key === 'Enter') resolve(true);
+        });
+    }
+
+    function resolve(ok) {
+        if (!current) return;
+        overlay.hidden = true;
+        const c = current;
+        current = null;
+        c(ok);
+    }
+
+    function openDialog(message, opts, kind) {
+        if (!overlay) build();
+        return new Promise(done => {
+            // Resolve any dialog already open before showing this one.
+            if (current) resolve(false);
+            current = ok => done(kind === 'confirm' ? !!ok : undefined);
+
+            titleEl.textContent = opts.title || (kind === 'confirm' ? 'Confirm' : 'Notice');
+            msgEl.innerHTML = esc(message);
+
+            if (kind === 'confirm') {
+                const cancel = opts.cancelLabel || 'Cancel';
+                const confirm = opts.confirmLabel || 'Confirm';
+                footerEl.innerHTML = `
+                    <button type="button" class="btn btn-secondary" data-modal-close>${esc(cancel)}</button>
+                    <button type="button" class="btn btn-primary" data-ui-ok ${opts.danger ? 'style="color:var(--red);"' : ''}>${esc(confirm)}</button>`;
+            } else {
+                footerEl.innerHTML = `<button type="button" class="btn btn-primary" data-ui-ok>${esc(opts.okLabel || 'OK')}</button>`;
+            }
+            footerEl.querySelector('[data-ui-ok]').onclick = () => resolve(true);
+
+            overlay.hidden = false;
+            footerEl.querySelector('[data-ui-ok]').focus();
+        });
+    }
+
+    window.uiConfirm = (message, opts = {}) => openDialog(message, opts, 'confirm');
+    window.uiAlert = (message, opts = {}) => openDialog(message, opts, 'alert');
+})();
+
+// ── Linked-sources modal (clears revenue/cost sources blocking a company delete) ──
+(function () {
+    const overlay = document.getElementById('linked-modal');
+    if (!overlay) return;
+    const body = document.getElementById('linked-modal-body');
+    const title = document.getElementById('linked-modal-title');
+
+    // Context for the company whose delete is blocked: its delete form + table row + button.
+    let ctx = null;
+
+    const fmtValue = v => v == null ? '' :
+        v >= 1e9 ? `$${(v / 1e9).toFixed(2)}B` :
+        v >= 1e6 ? `$${(v / 1e6).toFixed(1)}M` : `$${Number(v).toLocaleString()}`;
+
+    const esc = s => String(s ?? '').replace(/[&<>"']/g, c =>
+        ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+
+    function rowHtml(s) {
+        // "owned" rows belong to this company and point at `other`; "inverse" rows are owned by
+        // `other` and point back here — so the relevant counterparty is `other` either way.
+        const rel = s.other ? (s.direction === 'inverse' ? `owned by ${esc(s.other)}` : `→ ${esc(s.other)}`) : '';
+        const meta = [esc(s.type), rel, fmtValue(s.value)].filter(Boolean).join(' · ');
+        return `<div class="linked-row" data-kind="${s.kind}" data-id="${s.id}">
+            <span class="linked-kind ${s.kind}">${s.kind === 'revenue' ? 'REV' : 'COST'}</span>
+            <div class="linked-row-main">
+                <div class="linked-row-name">${esc(s.name)}</div>
+                <div class="linked-row-meta">${meta}</div>
+            </div>
+            <button type="button" class="btn-detail" data-del-source style="color:var(--red);">DEL</button>
+        </div>`;
+    }
+
+    function render(data) {
+        const owned = data.owned || [];
+        const inverse = data.inverse || [];
+        if (!owned.length && !inverse.length) { finalize(); return; }
+        let html = '';
+        if (owned.length) html += `<div class="linked-group-label">This company's sources (block deletion)</div>` + owned.map(rowHtml).join('');
+        if (inverse.length) html += `<div class="linked-group-label">Referenced by other companies</div>` + inverse.map(rowHtml).join('');
+        body.innerHTML = html;
+    }
+
+    function openLinkedModalImpl(form, row) {
+        ctx = { id: form.dataset.companyId, form, row, btn: form.querySelector('button') };
+        title.textContent = `Linked sources — ${form.dataset.companyName || 'company'}`;
+        body.innerHTML = `<div class="modal-empty" style="color:var(--muted);">Loading…</div>`;
+        overlay.hidden = false;
+        fetch(`/companies/${ctx.id}/linked-sources`)
+            .then(r => r.ok ? r.json() : Promise.reject())
+            .then(render)
+            .catch(() => { body.innerHTML = `<div class="modal-empty" style="color:var(--red);">Failed to load linked sources.</div>`; });
+    }
+    // Expose to the delete handler above.
+    window.openLinkedModal = openLinkedModalImpl;
+
+    // Delete a single source row, then auto-delete the company once none remain.
+    function deleteSource(rowEl) {
+        const kind = rowEl.dataset.kind, id = rowEl.dataset.id;
+        const url = kind === 'revenue' ? `/api/RevenueSources/${id}` : `/api/CostSources/${id}`;
+        const btn = rowEl.querySelector('[data-del-source]');
+        if (btn) btn.disabled = true;
+        fetch(url, { method: 'DELETE' })
+            .then(r => {
+                if (!r.ok) throw 0;
+                rowEl.remove();
+                if (!body.querySelector('.linked-row')) finalize();
+            })
+            .catch(() => { if (btn) btn.disabled = false; uiAlert('Could not delete that source — try again.'); });
+    }
+
+    // All blocking + inverse sources gone: delete the company via its original form, drop its row.
+    function finalize() {
+        body.innerHTML = `<div class="modal-empty">All sources cleared — deleting company…</div>`;
+        fetch(ctx.form.action, { method: 'POST', body: new FormData(ctx.form) })
+            .then(r => {
+                if (!r.ok) throw 0;
+                if (ctx.row) ctx.row.remove();
+                close();
+            })
+            .catch(() => { body.innerHTML = `<div class="modal-empty" style="color:var(--red);">Company delete failed — refresh and try again.</div>`; });
+    }
+
+    function close() {
+        overlay.hidden = true;
+        if (ctx && ctx.btn) ctx.btn.disabled = false;
+        ctx = null;
+        body.innerHTML = '';
+    }
+
+    body.addEventListener('click', e => {
+        const rowEl = e.target.closest('[data-del-source]') && e.target.closest('.linked-row');
+        if (rowEl) deleteSource(rowEl);
+    });
+    overlay.addEventListener('click', e => {
+        if (e.target === overlay || e.target.closest('[data-modal-close]')) close();
+    });
+    document.addEventListener('keydown', e => { if (e.key === 'Escape' && !overlay.hidden) close(); });
+})();
+
 // ── Live Data Ticker ──
 (function () {
     const track = document.getElementById('ticker-track');

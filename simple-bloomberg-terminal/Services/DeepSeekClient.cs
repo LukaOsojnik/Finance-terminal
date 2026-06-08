@@ -46,7 +46,7 @@ public class DeepSeekClient : IDeepSeekClient
 
     public async IAsyncEnumerable<ChatDelta> StreamAsync(
         string model, IReadOnlyList<DeepSeekMessage> messages,
-        int maxTokens = 2048, [EnumeratorCancellation] CancellationToken ct = default)
+        int? maxTokens = null, [EnumeratorCancellation] CancellationToken ct = default)
     {
         var req = new DeepSeekRequest(model, messages.ToList(), maxTokens, Stream: true);
         using var httpReq = new HttpRequestMessage(HttpMethod.Post, "/chat/completions")

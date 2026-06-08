@@ -50,6 +50,26 @@ public static class FilingSections
         return chunks;
     }
 
+    /// <summary>
+    /// Sequential, document-order chunks of one Item's full body — used for Item 8, whose financial
+    /// tables are detached from their bold headings (so heading-based chunking mislabels and truncates
+    /// them). Reuses the same Item-detection + paragraph packing as <see cref="Build"/>, but with a
+    /// generous chunk budget so the dense statements/notes aren't cut short. Tables stay whole (a single
+    /// table is one paragraph) unless one exceeds <see cref="MaxChunkChars"/>, which is then clipped.
+    /// </summary>
+    public static List<FilingChunk> BuildSection(string raw, string item, int maxChunks = 40)
+    {
+        var body = SectionBody(ToText(raw), item);
+        if (body is null) return [];
+        var chunks = new List<FilingChunk>();
+        foreach (var chunk in Paragraphs(body))
+        {
+            chunks.Add(new FilingChunk($"Item {item}", chunk));
+            if (chunks.Count >= maxChunks) break;
+        }
+        return chunks;
+    }
+
     // Strip HTML to readable text, preserving paragraph/row boundaries as newlines (InnerText alone
     // merges words across tags). Plain-text filings pass through the same whitespace normalisation.
     private static string ToText(string raw)
@@ -84,8 +104,9 @@ public static class FilingSections
     // the most text before the next Item heading — that is the section, not the contents-page line.
     private static string? SectionBody(string text, string item)
     {
-        // All "Item <n>" headings with their position, in document order.
-        var headings = Regex.Matches(text, @"(?im)^\s*Item\s+(\d+[A-Z]?)\b")
+        // All "Item <n>" headings with their position, in document order. Leading markdown markers
+        // (#, *, _, >) are tolerated so a sec2md heading like "# Item 1A." is found, not just plain text.
+        var headings = Regex.Matches(text, @"(?im)^[#>*_\s]*Item\s+(\d+[A-Z]?)\b")
             .Select(m => (Num: m.Groups[1].Value.ToUpperInvariant(), Start: m.Index, End: m.Index + m.Length))
             .OrderBy(h => h.Start)
             .ToList();
@@ -104,7 +125,8 @@ public static class FilingSections
     }
 
     // Pack paragraphs (blank-line separated) into <= MaxChunkChars chunks without splitting a
-    // paragraph. A single oversized paragraph becomes its own (clipped) chunk.
+    // paragraph. A single oversized paragraph is clipped — UNLESS it's a table, which is emitted whole
+    // (clipping a financial statement mid-table would drop rows of figures).
     private static IEnumerable<string> Paragraphs(string body)
     {
         var paras = Regex.Split(body, "\n\\s*\n").Select(p => p.Trim()).Where(p => p.Length > 0);
@@ -116,11 +138,25 @@ public static class FilingSections
                 yield return current.ToString();
                 current.Clear();
             }
-            if (para.Length > MaxChunkChars) { yield return para[..MaxChunkChars]; continue; }
+            if (para.Length > MaxChunkChars)
+            {
+                yield return LooksLikeTable(para) ? para : para[..MaxChunkChars];
+                continue;
+            }
             if (current.Length > 0) current.Append("\n\n");
             current.Append(para);
         }
         if (current.Length > 0) yield return current.ToString();
+    }
+
+    // A paragraph is a table when several of its lines are markdown rows (start with '|') — used so an
+    // oversized financial statement is kept whole rather than clipped.
+    private static bool LooksLikeTable(string para)
+    {
+        int rows = 0;
+        foreach (var line in para.Split('\n'))
+            if (line.TrimStart().StartsWith('|') && ++rows >= 3) return true;
+        return false;
     }
 
     // ── Heading-level view: bold sub-headings inside Items 7/8/1A + the paragraphs under each ──
@@ -141,8 +177,10 @@ public static class FilingSections
     /// </summary>
     public static List<FilingHeading> BuildHeadings(string raw, string[] items)
     {
+        // sec2md feeds us markdown (no HTML markup to detect) — parse its headings line-by-line.
+        // Raw SEC HTML (the sidecar-down fallback) still goes through the DOM bold-detection below.
         if (!Regex.IsMatch(raw[..Math.Min(raw.Length, 2000)], "<html|<body|<div|<p|<table", RegexOptions.IgnoreCase))
-            return [];
+            return BuildHeadingsFromMarkdown(raw, items);
 
         var doc = new HtmlDocument();
         doc.LoadHtml(raw);
@@ -175,7 +213,12 @@ public static class FilingSections
             {
                 Flush();
                 var num = item.Groups[1].Value.ToUpperInvariant();
-                section = Array.IndexOf(items, num) >= 0 ? $"Item {num}" : null;
+                if (Array.IndexOf(items, num) >= 0)
+                {
+                    section = $"Item {num}";
+                    title = text;   // capture the lead-in before the first sub-heading (e.g. Item 8 tables)
+                }
+                else section = null;
                 continue;
             }
 
@@ -200,6 +243,85 @@ public static class FilingSections
             .Take(MaxHeadings)
             .ToList();
     }
+
+    // Markdown sibling of BuildHeadings, for the sec2md path. A sub-heading is a markdown ATX heading
+    // line ("## Title") or a wholly-bold line ("**Title**"); body = the lines under it until the next
+    // heading. Same Item-scoping and dedupe as the HTML path — much simpler since markdown is flat text.
+    private static List<FilingHeading> BuildHeadingsFromMarkdown(string raw, string[] items)
+    {
+        var result = new List<FilingHeading>();
+        string? section = null;            // current Item (null when outside the target items)
+        string? title = null;
+        var body = new StringBuilder();
+
+        void Flush()
+        {
+            if (title is not null && section is not null && body.Length > 0)
+                result.Add(new FilingHeading(section, title, body.ToString().Trim()));
+            title = null;
+            body.Clear();
+        }
+
+        foreach (var rawLine in raw.Replace("\r", "").Split('\n'))
+        {
+            var line = rawLine.Trim();
+            if (line.Length == 0) continue;
+
+            // An "Item N" line (any heading/bold prefix) is a section boundary, not a sub-heading.
+            var item = Regex.Match(line, @"^[#>*_\s]*Item\s+(\d+[A-Z]?)\b", RegexOptions.IgnoreCase);
+            if (item.Success)
+            {
+                Flush();
+                var num = item.Groups[1].Value.ToUpperInvariant();
+                if (Array.IndexOf(items, num) >= 0)
+                {
+                    section = $"Item {num}";
+                    // Seed the Item's own title so the lead-in before the first sub-heading is
+                    // captured (e.g. Item 8's financial-statement tables, which otherwise fall in
+                    // the gap between the Item line and the first bold sub-heading and get dropped).
+                    title = StripInline(line);
+                }
+                else section = null;
+                continue;
+            }
+
+            if (section is null) continue;   // outside the revenue-relevant items
+
+            var heading = MarkdownHeadingText(line);
+            if (heading is not null && heading.Length <= HeadingMaxChars && heading.Any(char.IsLetter))
+            {
+                Flush();
+                title = heading;
+            }
+            else if (title is not null && body.Length < HeadingBodyMaxChars)
+            {
+                body.Append(line).Append('\n');
+            }
+        }
+        Flush();
+
+        // Dedupe (a TOC and the body can both yield a heading); keep the one with the longer body.
+        return result
+            .GroupBy(h => $"{h.Section}|{h.Title}")
+            .Select(g => g.OrderByDescending(h => h.Body.Length).First())
+            .Take(MaxHeadings)
+            .ToList();
+    }
+
+    // The heading text if this markdown line is a heading — an ATX line ("#…# Title") or a line that
+    // is entirely bold ("**Title**") — else null. Inline markers are stripped so triage sees a clean title.
+    private static string? MarkdownHeadingText(string line)
+    {
+        var atx = Regex.Match(line, @"^#{1,6}\s+(.+?)\s*#*$");
+        if (atx.Success) return StripInline(atx.Groups[1].Value);
+
+        var bold = Regex.Match(line, @"^\*\*(.+?)\*\*$");
+        if (bold.Success && !bold.Groups[1].Value.Contains("**")) return StripInline(bold.Groups[1].Value);
+
+        return null;
+    }
+
+    private static string StripInline(string s) => Regex.Replace(s, @"[*_`]", "").Trim();
 
     private sealed class LineAcc
     {

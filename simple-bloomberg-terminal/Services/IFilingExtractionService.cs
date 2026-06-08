@@ -12,20 +12,20 @@ namespace simple_bloomberg_terminal.Services;
 public interface IFilingExtractionService
 {
     Task<IReadOnlyList<ExtractionSuggestion>> ExtractAsync(
-        long companyId, string accession, string doc, ExtractionNode node, CancellationToken ct = default);
+        long companyId, string accession, string doc, ExtractionNode node, string? filingType = null,
+        CancellationToken ct = default);
 
     /// <summary>The chat's grounding digest for a filing+node — cached; built by the all-sections
     /// auto-scan on a miss, or pre-populated by <see cref="ScanSelectedHeadingsAsync"/>.</summary>
     Task<string> GetOrScanDigestAsync(
-        long companyId, string accession, string doc, ExtractionNode node, CancellationToken ct = default);
+        long companyId, string accession, string doc, ExtractionNode node, string? filingType = null,
+        CancellationToken ct = default);
 
-    /// <summary>Bold sub-headings inside the node's target Items for the user to pick from.</summary>
-    Task<IReadOnlyList<HeadingInfo>> GetHeadingsAsync(
-        long companyId, string accession, string doc, ExtractionNode node, CancellationToken ct = default);
-
-    /// <summary>Scan only the user-picked headings (one worker each) and overwrite the chat grounding
-    /// with the curated digest. Returns the candidate count.</summary>
-    Task<int> ScanSelectedHeadingsAsync(
-        long companyId, string accession, string doc, ExtractionNode node,
-        IReadOnlyList<int> headingIds, CancellationToken ct = default);
+    /// <summary>Triage every bold heading by title, scan the AI-chosen ones in parallel (one worker
+    /// each) and overwrite the chat grounding with the digest. No user picking. Returns how many
+    /// sections were scanned and how many candidates were found. <paramref name="filingType"/> (the
+    /// SEC form, e.g. 10-K) is passed to the sec2md sidecar.</summary>
+    Task<AutoScanResult> ScanAutoAsync(
+        long companyId, string accession, string doc, ExtractionNode node, string? filingType = null,
+        CancellationToken ct = default);
 }

@@ -170,12 +170,36 @@ public class CompaniesController : Controller
         return RedirectToAction(nameof(Index));
     }
 
+    // Returns status codes (not a redirect) because the row-delete is driven by fetch in site.js;
+    // a redirect would resolve to a 200 page and the JS would treat a blocked delete as success.
     [HttpPost, Route("{id:long}/delete", Name = "CompanyDelete"), ValidateAntiForgeryToken]
     public IActionResult Delete(long id)
     {
         try { _companies.SoftDelete(id); }
-        catch (InvalidOperationException ex) { TempData["Error"] = ex.Message; }
-        return RedirectToAction(nameof(Index));
+        catch (InvalidOperationException ex) { return Conflict(ex.Message); }
+        return Ok();
+    }
+
+    // Feeds the "linked sources" popup shown when a delete is blocked. Returns both directions:
+    // "owned" = this company's own sources (these block deletion); "inverse" = sources owned by
+    // OTHER companies that point at this one. Both are soft-deleted via the source APIs from the UI.
+    [HttpGet, Route("{id:long}/linked-sources")]
+    public IActionResult LinkedSources(long id)
+    {
+        var c = _companies.GetWithGraphRelations(id);
+        if (c == null) return NotFound();
+
+        var owned = c.RevenueSources.Where(r => r.DeletedAt == null)
+                .Select(r => new { kind = "revenue", direction = "owned", id = r.Id, name = r.Name, type = r.SourceType.ToString(), value = r.Value, other = r.RelatedCompany?.Name })
+            .Concat(c.CostSources.Where(s => s.DeletedAt == null)
+                .Select(s => new { kind = "cost", direction = "owned", id = s.Id, name = s.Name, type = s.CostBase.ToString(), value = s.Value, other = s.RelatedCompany?.Name }));
+
+        var inverse = c.RevenueFromDependents.Where(r => r.DeletedAt == null)
+                .Select(r => new { kind = "revenue", direction = "inverse", id = r.Id, name = r.Name, type = r.SourceType.ToString(), value = r.Value, other = r.Company?.Name })
+            .Concat(c.CostFromDependents.Where(s => s.DeletedAt == null)
+                .Select(s => new { kind = "cost", direction = "inverse", id = s.Id, name = s.Name, type = s.CostBase.ToString(), value = s.Value, other = s.Company?.Name }));
+
+        return Json(new { owned, inverse });
     }
 
     // FMP income was premium-gated (non-US). Pull revenue + gross margin from Yahoo Finance,

@@ -228,13 +228,23 @@
 <div class="row g-3 mb-4">
     <div class="col-12">
         <div class="detail-card">
+            <div class="detail-card-title" style="display:flex;justify-content:space-between;align-items:center;">
+                <span>CUSTOMERS BY SEGMENT (PERPLEXITY SONAR)</span>
+                <span style="display:flex;gap:.5rem;">
+                    <button type="button" class="btn-detail js-discover" data-company="@co.Id" data-side="CUSTOMER"
+                            data-table="revTable" data-results="revDiscoverResults">DISCOVER CUSTOMERS →</button>
+                    <button type="button" class="btn-detail js-discover" data-company="@co.Id" data-side="CUSTOMER" data-valued="true"
+                            data-table="revTable" data-results="revDiscoverResults">BIGGEST CUSTOMERS ($) →</button>
+                </span>
+            </div>
+            <div id="revDiscoverResults" class="js-discover-results muted-cell" style="margin-top:.5rem;"></div>
             @if (!Model.RevenueSources.Any())
             {
                 <div class="detail-pending">NO REVENUE SOURCES ON RECORD</div>
             }
             else
             {
-                <table class="terminal-table">
+                <table class="terminal-table" id="revTable">
                     <thead>
                         <tr>
                             <th>Name</th>
@@ -250,7 +260,9 @@
                     <tbody>
                         @foreach (var r in Model.RevenueSources)
                         {
-                            <tr>
+                            @* A real segment to search by: not an EDGAR period-total, not itself a linked counterparty.
+                               When null, Razor omits the attribute so discovery falls back to company-wide mode. *@
+                            <tr data-segment="@(r.RelatedCompanyId == null && r.DataSource != DataSource.EDGAR ? r.Name : null)">
                                 <td class="name-cell">@r.Name</td>
                                 <td class="tag-cell">@r.SourceType</td>
                                 <td class="num-cell">@(r.Value.HasValue ? "$" + (r.Value.Value / 1e9).ToString("F2") + "B" : "—")</td>
@@ -264,8 +276,13 @@
                                             .Select(rv => rv.Filing!)
                                             .DistinctBy(f => f.Id)
                                             .ToList();
+                                        var revWebRefs = r.Reviews
+                                            .Where(rv => rv.DeletedAt == null && rv.Filing == null && rv.ReferencePointer.StartsWith("http"))
+                                            .Select(rv => rv.ReferencePointer)
+                                            .Distinct()
+                                            .ToList();
                                     }
-                                    @if (revFilings.Count == 0)
+                                    @if (revFilings.Count == 0 && revWebRefs.Count == 0)
                                     {
                                         <span class="muted-cell">—</span>
                                     }
@@ -275,12 +292,16 @@
                                         {
                                             <div><a href="@f.PrimaryDocUrl" target="_blank" rel="noopener">@f.Form @f.AccessionNumber</a></div>
                                         }
+                                        @foreach (var url in revWebRefs)
+                                        {
+                                            <div><a href="@url" target="_blank" rel="noopener">web ↗</a></div>
+                                        }
                                     }
                                 </td>
                                 <td style="white-space:nowrap;">
                                     <a asp-controller="RevenueSources" asp-action="Details" asp-route-id="@r.Id" asp-route-returnUrl="@Context.Request.Path" class="btn-detail">VIEW</a>
                                     <form asp-route="RevenueSourceDelete" asp-route-id="@r.Id" asp-route-returnUrl="@Context.Request.Path" method="post" style="display:inline"
-                                          onsubmit="return confirm('Delete this source, its proof, its filing, and every source sharing that filing?');">
+                                          class="js-row-delete" data-confirm="Delete this source, its proof, its filing, and every source sharing that filing?">
                                         @Html.AntiForgeryToken()
                                         <button type="submit" class="btn-detail">DELETE</button>
                                     </form>
@@ -299,13 +320,23 @@
 <div class="row g-3 mb-5">
     <div class="col-12">
         <div class="detail-card">
+            <div class="detail-card-title" style="display:flex;justify-content:space-between;align-items:center;">
+                <span>SUPPLIERS BY SEGMENT (PERPLEXITY SONAR)</span>
+                <span style="display:flex;gap:.5rem;">
+                    <button type="button" class="btn-detail js-discover" data-company="@co.Id" data-side="SUPPLIER"
+                            data-table="costTable" data-results="costDiscoverResults">DISCOVER SUPPLIERS →</button>
+                    <button type="button" class="btn-detail js-discover" data-company="@co.Id" data-side="SUPPLIER" data-valued="true"
+                            data-table="costTable" data-results="costDiscoverResults">BIGGEST SUPPLIERS ($) →</button>
+                </span>
+            </div>
+            <div id="costDiscoverResults" class="js-discover-results muted-cell" style="margin-top:.5rem;"></div>
             @if (!Model.CostSources.Any())
             {
                 <div class="detail-pending">NO COST SOURCES ON RECORD</div>
             }
             else
             {
-                <table class="terminal-table">
+                <table class="terminal-table" id="costTable">
                     <thead>
                         <tr>
                             <th>Name</th>
@@ -321,7 +352,8 @@
                     <tbody>
                         @foreach (var c in Model.CostSources)
                         {
-                            <tr>
+                            @* A real segment to search by: not an EDGAR period-total, not itself a linked counterparty. *@
+                            <tr data-segment="@(c.RelatedCompanyId == null && c.DataSource != DataSource.EDGAR ? c.Name : null)">
                                 <td class="name-cell">@c.Name</td>
                                 <td class="tag-cell">@c.CostBase</td>
                                 <td class="num-cell">@(c.Value.HasValue ? "$" + (c.Value.Value / 1e9).ToString("F2") + "B" : "—")</td>
@@ -335,8 +367,13 @@
                                             .Select(rv => rv.Filing!)
                                             .DistinctBy(f => f.Id)
                                             .ToList();
+                                        var costWebRefs = c.Reviews
+                                            .Where(rv => rv.DeletedAt == null && rv.Filing == null && rv.ReferencePointer.StartsWith("http"))
+                                            .Select(rv => rv.ReferencePointer)
+                                            .Distinct()
+                                            .ToList();
                                     }
-                                    @if (costFilings.Count == 0)
+                                    @if (costFilings.Count == 0 && costWebRefs.Count == 0)
                                     {
                                         <span class="muted-cell">—</span>
                                     }
@@ -346,11 +383,15 @@
                                         {
                                             <div><a href="@f.PrimaryDocUrl" target="_blank" rel="noopener">@f.Form @f.AccessionNumber</a></div>
                                         }
+                                        @foreach (var url in costWebRefs)
+                                        {
+                                            <div><a href="@url" target="_blank" rel="noopener">web ↗</a></div>
+                                        }
                                     }
                                 </td>
                                 <td>
                                     <form asp-route="CostSourceDelete" asp-route-id="@c.Id" asp-route-returnUrl="@Context.Request.Path" method="post" style="display:inline"
-                                          onsubmit="return confirm('Delete this source, its proof, its filing, and every source sharing that filing?');">
+                                          class="js-row-delete" data-confirm="Delete this source, its proof, its filing, and every source sharing that filing?">
                                         @Html.AntiForgeryToken()
                                         <button type="submit" class="btn-detail">DELETE</button>
                                     </form>
@@ -421,3 +462,241 @@
         </div>
     </div>
 </div>
+
+<style>
+    /* Rotating glyph for an in-flight discovery search row (the ⟳ while a query is live). */
+    @@keyframes disc-spin { to { transform: rotate(360deg); } }
+    .disc-spin { display: inline-block; animation: disc-spin .8s linear infinite; }
+
+    /* Collapsible query rows: hide the native disclosure triangle, use our own chevron that rotates
+       to point up when the row is expanded (like a citations expander). */
+    .disc-row > summary { list-style: none; }
+    .disc-row > summary::-webkit-details-marker { display: none; }
+    .disc-chev { transition: transform .15s ease; opacity: .7; }
+    .disc-row[open] > summary .disc-chev { transform: rotate(180deg); }
+</style>
+
+@section Scripts {
+<script>
+(function () {
+    // One handler for both section buttons: collect the section's segment names from its table, ask
+    // sonar for the named counterparties per segment, render grouped, and link on confirm.
+    document.querySelectorAll('.js-discover').forEach(btn => {
+        btn.addEventListener('click', () => run(btn));
+    });
+
+    async function run(btn) {
+        const companyId = Number(btn.dataset.company);
+        const side = btn.dataset.side;                 // CUSTOMER (revenue) | SUPPLIER (cost)
+        const valued = btn.dataset.valued === 'true';  // true => biggest counterparties + contract value
+        const table = document.getElementById(btn.dataset.table);
+        const out = document.getElementById(btn.dataset.results);
+
+        const segments = table
+            ? [...table.querySelectorAll('tr[data-segment]')].map(tr => tr.dataset.segment).filter(Boolean)
+            : [];
+
+        btn.disabled = true;
+        const label = btn.textContent;
+
+        // Live feed (top) + grouped results (below), both filled as the NDJSON stream arrives — the
+        // planner emits its sub-queries first, then a searching/result pair per query (Perplexity-style).
+        out.innerHTML = '';
+        const feed = document.createElement('div');
+        feed.style.cssText = 'margin:.25rem 0 .5rem;';
+        const results = document.createElement('div');
+        out.append(feed, results);
+
+        const status = document.createElement('div');
+        status.className = 'muted-cell';
+        const noun = side === 'SUPPLIER' ? 'suppliers' : 'customers';
+        status.textContent = `Planning searches for ${valued ? 'biggest ' + noun + ' (with contract value)' : noun}…`;
+        feed.appendChild(status);
+
+        const feedRows = new Map();   // query -> its <details> feed row
+        const groups = new Map();     // segment -> tbody (append-only, so LINK state survives new results)
+        let found = 0;
+
+        try {
+            const resp = await fetch('/extraction/discover-related', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ companyId, side, segments, valued })
+            });
+            if (!resp.ok || !resp.body) { status.textContent = `Discovery failed (${resp.status}). Check the Perplexity API key.`; return; }
+
+            // Read NDJSON line by line (same pattern as the filing chat stream).
+            const reader = resp.body.getReader(), dec = new TextDecoder();
+            let buf = '';
+            while (true) {
+                const { value, done } = await reader.read();
+                if (done) break;
+                buf += dec.decode(value, { stream: true });
+                let nl;
+                while ((nl = buf.indexOf('\n')) >= 0) {
+                    const line = buf.slice(0, nl).trim(); buf = buf.slice(nl + 1);
+                    if (!line) continue;
+                    let ev; try { ev = JSON.parse(line); } catch { continue; }
+
+                    if (ev.t === 'plan') {
+                        status.textContent = `${ev.queries.length} search${ev.queries.length === 1 ? '' : 'es'} planned`;
+                        for (const q of ev.queries) feedRows.set(q, addFeedRow(feed, q));
+                    } else if (ev.t === 'searching') {
+                        setFeed(feedRows.get(ev.query), '⟳', 'searching…', true);
+                    } else if (ev.t === 'result') {
+                        const items = ev.items || [], sources = ev.sources || [];
+                        found += items.length;
+                        const row = feedRows.get(ev.query);
+                        if (ev.error) setFeed(row, '✕', ev.error, false);
+                        else setFeed(row, '✓', `${items.length} found · ${sources.length} source${sources.length === 1 ? '' : 's'}`, false);
+                        setRowSources(row, sources);   // tuck this query's fetched links inside it (collapsed)
+                        for (const s of items) appendResult(results, groups, s, companyId);
+                    } else if (ev.t === 'error') {
+                        status.textContent = `[${ev.c}]`;
+                    }
+                }
+            }
+            status.textContent = found === 0
+                ? 'No named counterparties found.'
+                : `Done — ${found} counterpart${found === 1 ? 'y' : 'ies'} across ${feedRows.size} search${feedRows.size === 1 ? '' : 'es'}.`;
+        } catch {
+            status.textContent = 'Discovery failed — network error.';
+        } finally {
+            btn.disabled = false;
+            btn.textContent = label;
+        }
+    }
+
+    // One live-feed row as a collapsible <details>: the summary shows glyph + query + tail status; the
+    // body (hidden until clicked) holds the links that query fetched. Collapsed by default to stay compact.
+    function addFeedRow(feed, query) {
+        const row = document.createElement('details');
+        row.className = 'disc-row';
+        row.style.cssText = 'padding:.1rem 0;';
+        const summary = document.createElement('summary');
+        summary.style.cssText = 'display:flex;gap:.5rem;align-items:baseline;cursor:pointer;';
+        summary.innerHTML =
+            `<span class="js-glyph" style="width:1rem;flex:none;">·</span>` +
+            `<span style="flex:1;">${esc(query)}</span>` +
+            `<span class="js-tail muted-cell" style="flex:none;">queued</span>` +
+            `<span class="disc-chev" style="flex:none;">▾</span>`;
+        const body = document.createElement('div');
+        body.className = 'js-srcs';
+        body.style.cssText = 'margin:.25rem 0 .5rem 1.5rem;';
+        row.append(summary, body);
+        feed.appendChild(row);
+        return row;
+    }
+
+    // spin=true while the query is in flight → the glyph rotates so the user sees it's live.
+    function setFeed(row, glyph, tail, spin) {
+        if (!row) return;
+        const g = row.querySelector('.js-glyph');
+        g.textContent = glyph;
+        g.classList.toggle('disc-spin', !!spin);
+        row.querySelector('.js-tail').textContent = tail;
+    }
+
+    // Fill a query row's collapsed body with the source links it fetched (one line each: host + URL).
+    function setRowSources(row, urls) {
+        if (!row) return;
+        const body = row.querySelector('.js-srcs');
+        if (!urls.length) { body.innerHTML = `<span class="muted-cell">no sources</span>`; return; }
+        const list = document.createElement('ul');
+        list.style.cssText = 'margin:0;padding:0 0 0 1rem;list-style:disc;';
+        for (const url of urls) {
+            let host = url; try { host = new URL(url).hostname.replace(/^www\./, ''); } catch {}
+            const li = document.createElement('li');
+            li.innerHTML = `<a href="${url}" target="_blank" rel="noopener">${esc(host)}</a> <span class="muted-cell">${esc(url)}</span>`;
+            list.appendChild(li);
+        }
+        body.innerHTML = '';
+        body.appendChild(list);
+    }
+
+    // Append one suggestion under its segment, creating the segment's table on first sight. Append-only
+    // so any LINK buttons the user already clicked keep their state as more results stream in.
+    function appendResult(results, groups, s, companyId) {
+        const key = s.segment || '(unspecified)';
+        let tbody = groups.get(key);
+        if (!tbody) {
+            const heading = document.createElement('div');
+            heading.className = 'detail-section-label';
+            heading.style.marginTop = '1rem';
+            heading.textContent = `› ${key}`;
+            results.appendChild(heading);
+
+            const table = document.createElement('table');
+            table.className = 'terminal-table';
+            table.innerHTML = `<thead><tr><th>Company</th><th>Class</th><th>Value</th><th>Note</th><th>Source</th><th></th></tr></thead>`;
+            tbody = document.createElement('tbody');
+            table.appendChild(tbody);
+            results.appendChild(table);
+            groups.set(key, tbody);
+        }
+
+        const tr = document.createElement('tr');
+        const src = s.sourceUrl ? `<a href="${s.sourceUrl}" target="_blank" rel="noopener">link</a>` : '<span class="muted-cell">—</span>';
+        const known = s.existingCompanyId ? ' <span class="tag-cell">(known)</span>' : '';
+        tr.innerHTML =
+            `<td class="name-cell">${esc(s.name)}${known}</td>` +
+            `<td class="tag-cell">${esc(s.classification)}</td>` +
+            `<td class="num-cell">${fmtVal(s.contractValue)}</td>` +
+            `<td class="muted-cell">${esc(s.note || '—')}</td>` +
+            `<td class="muted-cell">${src}</td>`;
+        const action = document.createElement('td');
+        const link = document.createElement('button');
+        link.type = 'button';
+        link.className = 'btn-detail';
+        link.textContent = s.side === 'SUPPLIER' ? 'LINK SUPPLIER' : 'LINK CUSTOMER';
+        link.addEventListener('click', () => linkOne(s, link, companyId));
+        action.appendChild(link);
+        tr.appendChild(action);
+        tbody.appendChild(tr);
+    }
+
+    async function linkOne(s, btnEl, companyId) {
+        btnEl.disabled = true;
+        btnEl.textContent = 'LINKING…';
+        try {
+            const resp = await fetch('/extraction/link-counterparty', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    companyId,
+                    name: s.name,
+                    side: s.side,
+                    classification: s.classification,
+                    existingCompanyId: s.existingCompanyId ?? null,
+                    countryCode: s.countryCode ?? null,
+                    sector: s.sector ?? null,
+                    ticker: s.ticker ?? null,
+                    sourceUrl: s.sourceUrl ?? null,
+                    note: s.note ?? null,
+                    value: s.contractValue ?? null
+                })
+            });
+            if (!resp.ok) { btnEl.textContent = 'FAILED'; btnEl.disabled = false; return; }
+            btnEl.textContent = 'LINKED ✓';
+        } catch {
+            btnEl.textContent = 'FAILED';
+            btnEl.disabled = false;
+        }
+    }
+
+    function esc(v) {
+        return String(v).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+    }
+
+    // Format a raw USD contract value into a compact $X.XB / $XXXM / $XXXk (matches the main tables'
+    // billions convention). Only the valued mode populates this; plain mode rows show "—".
+    function fmtVal(v) {
+        if (v == null || isNaN(v)) return '—';
+        if (v >= 1e9) return '$' + (v / 1e9).toFixed(2) + 'B';
+        if (v >= 1e6) return '$' + (v / 1e6).toFixed(1) + 'M';
+        if (v >= 1e3) return '$' + (v / 1e3).toFixed(0) + 'k';
+        return '$' + v.toFixed(0);
+    }
+})();
+</script>
+}

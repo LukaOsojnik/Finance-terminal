@@ -15,8 +15,9 @@ public interface IDeepSeekClient
     /// <summary>
     /// Streaming multi-turn completion. Yields <see cref="ChatDelta"/> fragments as they arrive —
     /// "reasoning" (v4 thinking trace) and "text" (answer) — so the UI can render them live.
+    /// <paramref name="maxTokens"/> null (the default) sends no cap, letting the model run to its own limit.
     /// </summary>
     IAsyncEnumerable<ChatDelta> StreamAsync(
         string model, IReadOnlyList<DeepSeekMessage> messages,
-        int maxTokens = 2048, CancellationToken ct = default);
+        int? maxTokens = null, CancellationToken ct = default);
 }

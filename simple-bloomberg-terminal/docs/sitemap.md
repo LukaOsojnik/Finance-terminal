@@ -211,6 +211,20 @@
 
 ---
 
+## /companies/{id}/linked-sources
+
+| Field | Value |
+|---|---|
+| Controller | CompaniesController |
+| Action | LinkedSources |
+| HTTP | GET |
+| Route source | `[Route("companies")]` + `[Route("{id:long}/linked-sources")]` |
+| View | — (JSON `{ owned, inverse }` arrays of `{ kind, direction, id, name, type, value, other }`) |
+| Parameters | id: long (route, constrained) |
+| Notes | The company's active revenue/cost sources in two groups: `owned` (CompanyId == id — these block deletion) and `inverse` (RelatedCompanyId == id — owned by other companies). Feeds the linked-sources delete popup on the Companies index page. Returns 404 when the company is not found |
+
+---
+
 ## /companies/{id}/delete
 
 | Field | Value |
@@ -218,9 +232,10 @@
 | Controller | CompaniesController |
 | Action | Delete |
 | HTTP | POST |
-| Route source | `[Route("companies")]` + `[Route("{id:long}/delete")]` |
-| View | — (soft-delete, redirects) |
+| Route source | `[Route("companies")]` + `[Route("{id:long}/delete")]` (named route `CompanyDelete`) |
+| View | — (soft-delete; returns status codes, not a redirect) |
 | Parameters | id: long (route, constrained) |
+| Notes | Driven by fetch in site.js, so it returns 200 OK on success and 409 Conflict (with the blocking message) when active linked sources prevent deletion, rather than redirecting |
 
 ---
 
@@ -920,7 +935,7 @@
 | HTTP | POST |
 | Route source | `[Route("extraction")]` + `[Route("auto-extract/{companyId:long}")]` |
 | View | — (JSON source suggestions for the human to confirm) |
-| Parameters | companyId: long (route, constrained); accession: string (query, required); doc: string (query, required); node: string? (query string, optional — `REVENUE`\|`COST`\|`RISK`, default `REVENUE`) |
+| Parameters | companyId: long (route, constrained); accession: string (query, required); doc: string (query, required); node: string? (query string, optional — `REVENUE`\|`COST`\|`RISK`, default `REVENUE`); form: string? (query string, optional — SEC form type, e.g. `10-K`, forwarded to the sec2md markdown sidecar) |
 | Notes | Mode B — AI (`IFilingExtractionService`) reads one SEC filing and proposes rows + per-field proof for the active node (revenue / cost / company-risk) for the human to confirm; persists nothing (the page fills the form and the existing save path freezes proof). Responses: 200 OK; 400 (missing accession/doc); 404 (no such company); 503 (Claude unreachable) |
 
 ---
@@ -934,36 +949,50 @@
 | HTTP | POST |
 | Route source | `[Route("extraction")]` + `[Route("chat")]` |
 | View | — (streaming `application/x-ndjson` body of `{"t":"reasoning"\|"text"\|"error","c":"..."}` lines, not a normal JSON/view response) |
-| Parameters | req: ChatRequest (body) — { companyId, accession, doc, node (`REVENUE`\|`COST`\|`RISK`, default `REVENUE`), messages:[{role,content}] }; ct: CancellationToken |
+| Parameters | req: ChatRequest (body) — { companyId, accession, doc, node (`REVENUE`\|`COST`\|`RISK`, default `REVENUE`), form (SEC form type, e.g. `10-K`, forwarded to the sec2md markdown sidecar), messages:[{role,content}] }; ct: CancellationToken |
 | Notes | Mode B — streams a conversational extraction grounded on one open SEC filing; persists nothing (`​```save```​` blocks in the reply pre-fill the extraction form). Responses: 200 OK (NDJSON stream); 404 (no such company) |
 
 ---
 
-## /extraction/headings/{companyId}
+## /extraction/scan-auto/{companyId}
 
 | Field | Value |
 |---|---|
 | Controller | ExtractionController |
-| Action | Headings |
-| HTTP | GET |
-| Route source | `[Route("extraction")]` + `[Route("headings/{companyId:long}")]` |
-| View | — (JSON list of sub-headings: `[{ id, title, section, chars }]`) |
-| Parameters | companyId: long (route, constrained); accession: string (query, required); doc: string (query, required); node: string? (query string, optional — `REVENUE`\|`COST`\|`RISK`, default `REVENUE`) |
-| Notes | Mode B — returns the bold sub-headings found inside the node's SEC Items (Revenue/Cost → Items 7,8; Risk → Items 1A,7A) of the filing so the "Pick Sections" UI can let the user choose which sections to scan. Responses: 200 OK; 400 (missing accession/doc); 404 (no such company); 503 (SEC unreachable) |
+| Action | ScanAuto |
+| HTTP | POST |
+| Route source | `[Route("extraction")]` + `[Route("scan-auto/{companyId:long}")]` |
+| View | — (JSON `{ scanned, found }`) |
+| Parameters | companyId: long (route, constrained); accession: string (query, required); doc: string (query, required); node: string? (query string, optional — `REVENUE`\|`COST`\|`RISK`, default `REVENUE`); form: string? (query string, optional — SEC form type, e.g. `10-K`, forwarded to the sec2md markdown sidecar) |
+| Notes | Mode B (auto) — triages every bold heading by title, scans the AI-chosen ones in parallel, and stashes the digest as the AI Chat's grounding; persists nothing to the DB. Replaces the hand-pick flow (`headings` + `scan-headings`). Responses: 200 OK; 400 (missing accession/doc); 404 (no such company); 503 (DeepSeek/SEC unreachable) |
 
 ---
 
-## /extraction/scan-headings/{companyId}
+## /extraction/discover-related
 
 | Field | Value |
 |---|---|
 | Controller | ExtractionController |
-| Action | ScanHeadings |
+| Action | DiscoverRelated |
 | HTTP | POST |
-| Route source | `[Route("extraction")]` + `[Route("scan-headings/{companyId:long}")]` |
-| View | — (JSON `{ findings }` — candidate count) |
-| Parameters | companyId: long (route, constrained); accession: string (query, required); doc: string (query, required); node: string? (query string, optional — `REVENUE`\|`COST`\|`RISK`, default `REVENUE`); body: int[] (picked heading ids) |
-| Notes | Mode B — spawns one parallel worker per picked heading, scans only those paragraphs, and stores the result as the AI Chat's grounding digest; persists nothing to the DB. Responses: 200 OK; 400 (missing accession/doc or empty selection); 404 (no such company); 503 (DeepSeek/SEC unreachable) |
+| Route source | `[Route("extraction")]` + `[Route("discover-related")]` |
+| View | — (JSON array of CounterpartySuggestion) |
+| Parameters | req: DiscoverCounterpartiesRequest (body) — { companyId, side (`CUSTOMER`=revenue \| `SUPPLIER`=cost), segments:[] (empty => the model identifies the company's segments itself) }; ct: CancellationToken |
+| Notes | Web-search discovery via Perplexity `sonar-pro` — finds the named suppliers/customers behind a company's segments; persists nothing (the page lists them, the user confirms each via `link-counterparty`). See `docs/web_search.md`. Responses: 200 OK; 400 (missing companyId); 404 (no such company); 503 (web search unreachable) |
+
+---
+
+## /extraction/link-counterparty
+
+| Field | Value |
+|---|---|
+| Controller | ExtractionController |
+| Action | LinkCounterparty |
+| HTTP | POST |
+| Route source | `[Route("extraction")]` + `[Route("link-counterparty")]` |
+| View | — (JSON `{ sourceId, counterpartyId, node }`) |
+| Parameters | req: LinkCounterpartyRequest (body) — { companyId, name, side, classification, existingCompanyId?, countryCode?, sector?, ticker?, sourceUrl?, note? } |
+| Notes | Confirms one discovered counterparty: reuse (fuzzy `MatchByName`) or create the company (FMP-by-ticker, else minimal), create the `RevenueSource`/`CostSource` row with `RelatedCompanyId`, and save the sonar citation as a `RELATED_COMPANY` `SourceFieldReview`. See `docs/web_search.md`. Responses: 200 OK; 400 (missing companyId/name or bad classification); 404 (no such company) |
 
 ---
 

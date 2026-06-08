@@ -2,7 +2,7 @@
 
 A two-phase pipeline for gathering **cost & revenue source** data with provenance, then having an AI act as an analyst-reviewer that verifies each value against the source text it was drawn from. Each per-field proof links to the **`Filing`** it was drawn from — so a source can cite several filings (one per cell) and connects to all of them on the graph.
 
-Scope: `RevenueSource` and `CostSource` first. Companion to `api-model.md` (where the data comes from) and `external-api.md` (the macro side).
+Scope: `RevenueSource` and `CostSource` first. Companion to `api-model.md` (where the data comes from), `external-api.md` (the macro side), and `web_search.md` (discovering counterparty companies via Perplexity when filings don't name them).
 
 ---
 

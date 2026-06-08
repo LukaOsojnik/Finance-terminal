@@ -8,7 +8,9 @@ namespace simple_bloomberg_terminal.Services;
 public record DeepSeekRequest(
     string Model,
     List<DeepSeekMessage> Messages,
-    [property: JsonPropertyName("max_tokens")] int MaxTokens,
+    // Nullable so it can be omitted entirely (null → no max_tokens sent → the model uses its own
+    // output ceiling, not a fixed cap that can truncate the reply mid-sentence).
+    [property: JsonPropertyName("max_tokens"), JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] int? MaxTokens,
     bool Stream = false,
     [property: JsonPropertyName("response_format")] DeepSeekResponseFormat? ResponseFormat = null);
 

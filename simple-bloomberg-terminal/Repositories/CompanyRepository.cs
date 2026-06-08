@@ -82,6 +82,33 @@ public class CompanyRepository(AppDbContext db) : ICompanyRepository
         return q.OrderBy(c => c.Name).ToList();
     }
 
+    public Company? MatchByName(string? name)
+    {
+        if (string.IsNullOrWhiteSpace(name)) return null;
+        var norm = NormalizeName(name);
+        if (norm.Length == 0) return null;
+        // Small dataset: normalise every active company's name in memory and compare. Stripping the
+        // legal suffix on both sides is what lets sonar's "NVIDIA Corporation" find DB "NVIDIA".
+        return db.Companies.Where(c => c.DeletedAt == null).AsEnumerable()
+            .FirstOrDefault(c => NormalizeName(c.Name) == norm);
+    }
+
+    // Lowercase, drop punctuation, then drop common corporate-suffix tokens so two spellings of the
+    // same company collapse to one key. "The Coca-Cola Company" -> "coca cola"; "NVIDIA Corp" -> "nvidia".
+    private static readonly HashSet<string> NameNoise = new(StringComparer.Ordinal)
+    {
+        "inc", "incorporated", "corp", "corporation", "co", "company", "ltd", "limited", "plc", "llc",
+        "lp", "llp", "ag", "sa", "nv", "se", "ab", "oyj", "as", "spa", "gmbh", "bv", "pte", "kk",
+        "group", "holdings", "holding", "the"
+    };
+
+    private static string NormalizeName(string s)
+    {
+        var cleaned = new string(s.ToLowerInvariant().Select(ch => char.IsLetterOrDigit(ch) ? ch : ' ').ToArray());
+        var tokens = cleaned.Split(' ', StringSplitOptions.RemoveEmptyEntries).Where(t => !NameNoise.Contains(t));
+        return string.Join(' ', tokens);
+    }
+
     public void Add(Company entity)
     {
         db.Companies.Add(entity);

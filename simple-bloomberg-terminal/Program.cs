@@ -42,8 +42,13 @@ builder.Services.AddScoped<IStockService, StockService>();
 // (Mode B) on the /extraction page.
 builder.Services.AddHttpClient<IDeepSeekClient, DeepSeekClient>();
 builder.Services.AddScoped<IReviewService, ReviewService>();
+// sec2md sidecar (Python): converts a filing to clean markdown before the extractor's heading triage.
+builder.Services.AddHttpClient<ISec2MdClient, Sec2MdClient>();
 builder.Services.AddScoped<IFilingExtractionService, FilingExtractionService>();
 builder.Services.AddScoped<IExtractionChatService, ExtractionChatService>();
+// Perplexity sonar: typed HttpClient that web-searches a company's named suppliers/customers — the
+// counterparties SEC filings don't disclose. Feeds the "Discover related companies" action.
+builder.Services.AddHttpClient<ICounterpartyDiscovery, CounterpartyDiscoveryService>();
 // Caches a filing's cleaned section text so each chat turn doesn't re-download the document.
 builder.Services.AddMemoryCache();
 

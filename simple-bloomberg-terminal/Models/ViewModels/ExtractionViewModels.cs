@@ -81,9 +81,13 @@ public record ExtractionProof(
     string? Name, string? Value, string? Percentage, string? Classification, string? RelatedCompany,
     string? Note = null);
 
-/// <summary>One selectable bold sub-heading shown in the "pick sections" list. <c>Id</c> indexes the
-/// cached heading list so a later scan can map the user's ticks back to the paragraphs to read.</summary>
-public record HeadingInfo(int Id, string Title, string Section, int Chars);
+/// <summary>Outcome of an auto-scan: how many headings the triage model chose to read in full, how
+/// many candidate rows the workers pulled from them, and every heading it was offered with whether it
+/// was picked — so the page can show the user what was triaged and what the AI selected.</summary>
+public record AutoScanResult(int Scanned, int Found, IReadOnlyList<ScannedHeading> Headings);
+
+/// <summary>One heading the triage model saw, plus whether it chose to scan it.</summary>
+public record ScannedHeading(string Section, string Title, bool Picked);
 
 /// <summary>
 /// One "Save" of the whole left form: the source-row values plus every field that carries proof.
@@ -119,6 +123,78 @@ public class ProofInput
     public string? FilingUrl { get; set; }
 }
 
+/// <summary>
+/// One counterparty the web-search model (Perplexity sonar) proposed for a specific business
+/// <see cref="Segment"/> of a company: a named supplier or customer, where it would attach
+/// (CUSTOMER => revenue source, SUPPLIER => cost source), the per-node classification, a one-line
+/// note and a citation URL. Nothing is persisted until the user confirms via link-counterparty.
+/// <see cref="ExistingCompanyId"/> is set when the name already matches a <c>Company</c> row, so the
+/// page can show "link" vs "create + link".
+/// </summary>
+public record CounterpartySuggestion(
+    string Name, string Side, string Segment, string Classification, string? Note, string? SourceUrl,
+    string? CountryCode, string? Sector, string? Ticker, long? ExistingCompanyId,
+    // Estimated USD value of the relationship/contract — only populated in "valued" discovery mode
+    // (the BIGGEST-counterparties button); null otherwise.
+    double? ContractValue = null);
+
+/// <summary>
+/// One event in a streamed discovery run (NDJSON to the page, like the chat). The planner first emits a
+/// <c>plan</c> carrying the sub-queries it decomposed the company+segments into; then per sub-query a
+/// <c>searching</c> (the query started) followed by a <c>result</c> (the named counterparties that
+/// query surfaced). Lets the page render a live feed instead of waiting for one big answer.
+/// </summary>
+/// <param name="Type">plan | searching | result.</param>
+/// <param name="Sources">On a <c>result</c>: the web pages that search fetched (citation URLs), so the
+/// page can show a live "what's been fetched" list as each query lands.</param>
+/// <param name="Error">On a <c>result</c>: set when that query's search FAILED (rather than genuinely
+/// finding nothing), so the row can show why instead of a misleading "0 found".</param>
+public record DiscoveryEvent(
+    string Type,
+    string? Query = null,
+    IReadOnlyList<string>? Queries = null,
+    IReadOnlyList<CounterpartySuggestion>? Items = null,
+    IReadOnlyList<string>? Sources = null,
+    string? Error = null);
+
+/// <summary>
+/// A segment-aware discovery run: find the named counterparties for each of the company's revenue
+/// (Side=CUSTOMER) or cost (Side=SUPPLIER) <see cref="Segments"/>. The page sends the segment names it
+/// already rendered, so the controller needn't re-query them.
+/// </summary>
+public class DiscoverCounterpartiesRequest
+{
+    public long CompanyId { get; set; }
+    public string Side { get; set; } = "CUSTOMER";   // CUSTOMER => revenue segments, SUPPLIER => cost
+    public List<string> Segments { get; set; } = [];
+    // false (default) => the original mode: find the named counterparties per segment. true => the
+    // "biggest counterparties + contract value" mode behind the second button (asks sonar for the
+    // largest customers/suppliers AND the dollar value of each relationship).
+    public bool Valued { get; set; }
+}
+
+/// <summary>
+/// One confirmed counterparty link: resolve (or create) the counterparty <c>Company</c>, then create
+/// a revenue source (CUSTOMER) or cost source (SUPPLIER) on the inspected company pointing at it via
+/// RelatedCompanyId — feeding the graph's "RELATED COMPANIES" hub. CountryCode/Sector seed a brand-new
+/// counterparty company (the <c>Company</c> ctor requires both); the controller falls back to the
+/// inspecting company's country/sector when they don't resolve.
+/// </summary>
+public class LinkCounterpartyRequest
+{
+    public long CompanyId { get; set; }
+    public string Name { get; set; } = string.Empty;
+    public string Side { get; set; } = "CUSTOMER";          // CUSTOMER => revenue, SUPPLIER => cost
+    public string Classification { get; set; } = string.Empty; // SourceType (rev) or CostBase (cost) name
+    public long? ExistingCompanyId { get; set; }
+    public string? CountryCode { get; set; }
+    public string? Sector { get; set; }
+    public string? Ticker { get; set; }            // when set, a new counterparty is fetched from FMP
+    public string? SourceUrl { get; set; }         // sonar citation — saved as proof on the linked row
+    public string? Note { get; set; }              // sonar's one-line note, used as the proof snapshot
+    public double? Value { get; set; }             // estimated contract value (USD) from valued discovery; stored on the row
+}
+
 /// <summary>One visible chat turn (the grounding/system context is added server-side, not here).</summary>
 public record ChatMessage(string Role, string Content);
 
@@ -129,5 +205,6 @@ public class ChatRequest
     public string Accession { get; set; } = string.Empty;
     public string Doc { get; set; } = string.Empty;
     public string Node { get; set; } = "REVENUE";
+    public string? Form { get; set; }   // SEC form (e.g. 10-K), passed to the sec2md sidecar
     public List<ChatMessage> Messages { get; set; } = [];
 }

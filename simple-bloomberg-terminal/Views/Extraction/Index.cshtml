@@ -36,6 +36,8 @@
                 <span>AI Chat <span id="aiChatCtx" class="ai-chat-ctx"></span></span>
                 <button type="button" class="ext-btn ext-btn-ghost ai-chat-close" id="aiChatClose">✕</button>
             </div>
+            <!-- Auto-scan triage report: every heading offered, with the AI's picks marked. -->
+            <div id="scanReport" class="scan-report" hidden></div>
             <div id="aiChatLog" class="ai-chat-log"></div>
             <!-- Proposed saves parsed from the reply; click a card to fill the cells above. -->
             <div id="aiSaveList" class="ai-suggest-list"></div>
@@ -108,7 +110,7 @@
             <div class="extraction-pane-actions">
                 <button type="button" id="factsBtn" class="ext-btn ext-btn-secondary">Company Facts</button>
                 <button type="button" id="filingsBtn" class="ext-btn ext-btn-secondary">Filings</button>
-                <button type="button" id="pickSectionsBtn" class="ext-btn ext-btn-ref">Pick Sections</button>
+                <button type="button" id="autoScanBtn" class="ext-btn ext-btn-ref">Auto-Scan</button>
                 <button type="button" id="aiChatBtn" class="ext-btn ext-btn-ref">AI Chat</button>
             </div>
         </div>
@@ -135,24 +137,6 @@
         </div>
         <div id="filingsGrid" class="ext-filings-grid"></div>
         <div id="filingsEmpty" class="ext-modal-empty" hidden>No filings match.</div>
-    </div>
-</div>
-
-<!-- Pick-sections overlay: bold headings in Items 7/8/1A; tick the promising ones to scan. -->
-<div id="headingsModal" class="ext-modal" hidden>
-    <div class="ext-modal-backdrop" data-close></div>
-    <div class="ext-modal-panel">
-        <div class="ext-modal-head">
-            <div class="ext-modal-titlewrap">
-                <span class="ext-modal-title">Pick Sections</span>
-                <span id="headingsCount" class="ext-modal-count"></span>
-            </div>
-            <input id="headingsFilter" class="form-control ext-modal-filter" placeholder="Filter headings..."/>
-            <button type="button" id="headingsScanBtn" class="ext-btn ext-btn-primary">Scan selected → chat</button>
-            <button type="button" class="ext-btn ext-btn-ghost" data-close>✕ CLOSE</button>
-        </div>
-        <div id="headingsList" class="ext-headings-list"></div>
-        <div id="headingsEmpty" class="ext-modal-empty" hidden>No bold headings found in this node’s sections. Use AI Chat for a full scan.</div>
     </div>
 </div>
 
@@ -325,6 +309,25 @@
     #aiSaveList:empty { display: none; }
     #aiSaveList { padding: 0 .6rem .4rem; }
 
+    /* ── Auto-scan triage report (all titles + the AI's picks) ── */
+    .scan-report {
+        margin: .5rem .6rem 0; border: 1px solid var(--border-subtle); border-radius: var(--radius-sm);
+        background: var(--bg-base); max-height: 200px; overflow: auto; padding: .5rem .6rem;
+    }
+    .scan-report-head {
+        font-family: var(--font-display); font-size: .66rem; font-weight: 600; letter-spacing: .1em;
+        text-transform: uppercase; color: var(--accent); margin-bottom: .45rem;
+    }
+    .scan-report-sec {
+        font-family: var(--font-mono); font-size: .68rem; color: var(--text-secondary);
+        margin: .4rem 0 .2rem; letter-spacing: .04em;
+    }
+    .scan-report-row { display: flex; gap: .45rem; font-family: var(--font-mono); font-size: .74rem; padding: .1rem 0; }
+    .scan-report-row .sr-mark { width: 1em; flex-shrink: 0; text-align: center; }
+    .sr-picked { color: var(--text-primary); }
+    .sr-picked .sr-mark { color: var(--green); }
+    .sr-skipped { color: var(--muted); opacity: .6; }
+
     .ext-endpoint { font-family: var(--font-mono); font-size: .7rem; color: var(--muted);
         letter-spacing: .04em; margin-bottom: .5rem; min-height: 1em; }
 
@@ -413,23 +416,6 @@
         overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
     .ext-filing-card.no-doc { opacity: .5; cursor: not-allowed; }
     .ext-filing-card.no-doc:hover { border-color: var(--border-subtle); box-shadow: none; transform: none; }
-
-    /* ── Pick-sections list ── */
-    .ext-headings-list { flex: 1; overflow-y: auto; padding: 1rem 1.1rem; }
-    .ext-headings-group { margin-bottom: 1rem; }
-    .ext-headings-sec {
-        font-family: var(--font-display); font-size: .72rem; font-weight: 700; letter-spacing: .1em;
-        text-transform: uppercase; color: var(--accent); margin-bottom: .4rem;
-        padding-bottom: .3rem; border-bottom: 1px solid var(--border-subtle);
-    }
-    .ext-headings-row {
-        display: flex; align-items: center; gap: .55rem; padding: .35rem .4rem;
-        border-radius: var(--radius-sm); cursor: pointer;
-        font-family: var(--font-mono); font-size: .8rem; color: var(--text-primary);
-    }
-    .ext-headings-row:hover { background: #00d4ff0d; }
-    .ext-headings-row .ehr-title { flex: 1; }
-    .ext-headings-row .ehr-chars { color: var(--muted); font-size: .7rem; font-variant-numeric: tabular-nums; }
 
     @@media (max-width: 800px) {
         .extraction-split { flex-direction: column; }
@@ -705,7 +691,7 @@
     // ---- right pane: Company Facts ----
     async function loadFacts() {
         const id = companyId();
-        if (!id) { alert('Pick a company first.'); return; }
+        if (!id) { uiAlert('Pick a company first.'); return; }
         showText('Loading company facts…', '');
         const res = await fetch(`/api/stock/facts/${id}`);
         if (!res.ok) { showText(`Facts failed (${res.status}): ${await res.text()}`, ''); return; }
@@ -756,7 +742,7 @@
 
     $('filingsBtn').addEventListener('click', async () => {
         const id = companyId();
-        if (!id) { alert('Pick a company first.'); return; }
+        if (!id) { uiAlert('Pick a company first.'); return; }
         filingsGrid.innerHTML = '';
         $('filingsCount').textContent = 'loading…';
         $('filingsEmpty').hidden = true;
@@ -768,7 +754,7 @@
     });
 
     async function openFiling(id, f) {
-        if (!f.accessionNumber || !f.primaryDocument) { alert('Filing has no primary document.'); return; }
+        if (!f.accessionNumber || !f.primaryDocument) { uiAlert('Filing has no primary document.'); return; }
         showText('Loading filing…', '');
         const qs = `accession=${encodeURIComponent(f.accessionNumber)}&doc=${encodeURIComponent(f.primaryDocument)}`;
         const res = await fetch(`/api/stock/filing/${id}?${qs}`);
@@ -812,8 +798,8 @@
     // ---- SAVE: one button writes the row + every field that carries proof ----
     async function saveRow() {
         const id = Number(companyId());
-        if (!id) { alert('Pick a company first.'); return; }
-        if (!$('f_name').value.trim()) { alert('Name is required before saving.'); return; }
+        if (!id) { uiAlert('Pick a company first.'); return; }
+        if (!$('f_name').value.trim()) { uiAlert('Name is required before saving.'); return; }
         const status = $('saveStatus');
         status.textContent = 'Saving…';
 
@@ -954,9 +940,9 @@
     async function sendChat(text) {
         if (chatBusy || !text.trim()) return;
         const id = companyId();
-        if (!id) { alert('Pick a company first.'); return; }
+        if (!id) { uiAlert('Pick a company first.'); return; }
         if (!currentFiling?.accessionNumber || !currentFiling?.primaryDocument) {
-            alert('Open a filing in the right pane first (Filings → pick one).'); return;
+            uiAlert('Open a filing in the right pane first (Filings → pick one).'); return;
         }
         chatBusy = true; aiChatText.value = '';
         chatHistory.push({ role: 'user', content: text });
@@ -972,6 +958,7 @@
                     accession: currentFiling.accessionNumber,
                     doc: currentFiling.primaryDocument,
                     node,
+                    form: currentFiling.form || null,
                     messages: chatHistory
                 })
             });
@@ -1009,12 +996,13 @@
     // clears the conversation; the first open seeds the "find the sources" question.
     function openChat(reset) {
         if (!currentFiling?.accessionNumber || !currentFiling?.primaryDocument) {
-            alert('Open a filing in the right pane first (Filings → pick one).'); return;
+            uiAlert('Open a filing in the right pane first (Filings → pick one).'); return;
         }
         aiChat.hidden = false;
         if (reset || chatFiling !== currentFiling.accessionNumber) {
             chatFiling = currentFiling.accessionNumber;
             chatHistory = []; aiChatLog.innerHTML = ''; aiSaveList.innerHTML = '';
+            clearScanReport();   // the previous filing's triage list no longer applies
         }
         $('aiChatCtx').textContent = currentFiling.form ? `· ${currentFiling.form} ${currentFiling.filingDate || ''}` : '';
         aiChatText.focus();
@@ -1027,84 +1015,56 @@
     }
     $('aiChatBtn').addEventListener('click', () => openChat(false));
 
-    // ---- Pick Sections: choose bold headings → scan only those → ground the chat on the result ----
-    const headingsModal = $('headingsModal'), headingsList = $('headingsList'), headingsFilter = $('headingsFilter');
-    let allHeadings = [];
-
-    function closeHeadings() { headingsModal.hidden = true; }
-    headingsModal.querySelectorAll('[data-close]').forEach(el => el.addEventListener('click', closeHeadings));
-    document.addEventListener('keydown', e => { if (e.key === 'Escape' && !headingsModal.hidden) closeHeadings(); });
-
-    function renderHeadings(list) {
-        headingsList.innerHTML = '';
+    // Read-only triage report: list every heading the model saw, grouped by Item, with the ones it
+    // chose to scan marked (✓) and the rest dimmed — so the user sees what was offered and picked.
+    const scanReport = $('scanReport');
+    function clearScanReport() { scanReport.hidden = true; scanReport.innerHTML = ''; }
+    function renderScanReport(r) {
+        if (!r.headings || !r.headings.length) { clearScanReport(); return; }
+        const chosen = r.headings.filter(h => h.picked).length;
         const bySec = {};
-        list.forEach(h => { (bySec[h.section] ||= []).push(h); });
+        r.headings.forEach(h => { (bySec[h.section] ||= []).push(h); });
+        let html = `<div class="scan-report-head">AI triaged ${r.headings.length} titles · chose ${chosen} · ${r.found} candidates</div>`;
         Object.entries(bySec).forEach(([sec, items]) => {
-            const grp = document.createElement('div');
-            grp.className = 'ext-headings-group';
-            grp.innerHTML = `<div class="ext-headings-sec">${escapeHtml(sec)}</div>`;
+            html += `<div class="scan-report-sec">${escapeHtml(sec)}</div>`;
             items.forEach(h => {
-                const row = document.createElement('label');
-                row.className = 'ext-headings-row';
-                row.innerHTML =
-                    `<input type="checkbox" value="${h.id}"/>` +
-                    `<span class="ehr-title">${escapeHtml(h.title)}</span>` +
-                    `<span class="ehr-chars">${h.chars}c</span>`;
-                grp.appendChild(row);
+                html += `<div class="scan-report-row ${h.picked ? 'sr-picked' : 'sr-skipped'}">` +
+                    `<span class="sr-mark">${h.picked ? '✓' : '·'}</span>` +
+                    `<span class="sr-title">${escapeHtml(h.title)}</span></div>`;
             });
-            headingsList.appendChild(grp);
         });
-        $('headingsCount').textContent = `${list.length} headings`;
-        $('headingsEmpty').hidden = list.length > 0;
+        scanReport.innerHTML = html;
+        scanReport.hidden = false;
     }
 
-    headingsFilter.addEventListener('input', () => {
-        const q = headingsFilter.value.trim().toLowerCase();
-        renderHeadings(q ? allHeadings.filter(h => `${h.title} ${h.section}`.toLowerCase().includes(q)) : allHeadings);
-    });
-
-    $('pickSectionsBtn').addEventListener('click', async () => {
+    // ---- Auto-Scan: AI triages every heading by title, scans the relevant ones in parallel, then
+    // grounds the chat on the digest. No picking — the model decides which sections to read. ----
+    $('autoScanBtn').addEventListener('click', async () => {
         const id = companyId();
-        if (!id) { alert('Pick a company first.'); return; }
+        if (!id) { uiAlert('Pick a company first.'); return; }
         if (!currentFiling?.accessionNumber || !currentFiling?.primaryDocument) {
-            alert('Open a filing in the right pane first (Filings → pick one).'); return;
+            uiAlert('Open a filing in the right pane first (Filings → pick one).'); return;
         }
-        headingsList.innerHTML = ''; $('headingsCount').textContent = 'loading…'; $('headingsEmpty').hidden = true;
-        headingsModal.hidden = false; headingsFilter.value = '';
-        const qs = `accession=${encodeURIComponent(currentFiling.accessionNumber)}&doc=${encodeURIComponent(currentFiling.primaryDocument)}&node=${node}`;
+        const btn = $('autoScanBtn'), label = btn.textContent;
+        btn.disabled = true; btn.textContent = 'Scanning…';
+        const qs = `accession=${encodeURIComponent(currentFiling.accessionNumber)}&doc=${encodeURIComponent(currentFiling.primaryDocument)}&node=${node}&form=${encodeURIComponent(currentFiling.form || '')}`;
         try {
-            const res = await fetch(`/extraction/headings/${id}?${qs}`);
-            if (!res.ok) { $('headingsCount').textContent = `failed (${res.status})`; return; }
-            allHeadings = await res.json();
-            renderHeadings(allHeadings);
-        } catch (e) { $('headingsCount').textContent = 'network error'; }
-    });
-
-    $('headingsScanBtn').addEventListener('click', async () => {
-        const id = companyId();
-        const ids = [...headingsList.querySelectorAll('input[type=checkbox]:checked')].map(c => Number(c.value));
-        if (!ids.length) { alert('Tick at least one heading.'); return; }
-        const btn = $('headingsScanBtn'), label = btn.textContent;
-        btn.disabled = true; btn.textContent = `Scanning ${ids.length}…`;
-        const qs = `accession=${encodeURIComponent(currentFiling.accessionNumber)}&doc=${encodeURIComponent(currentFiling.primaryDocument)}&node=${node}`;
-        try {
-            const res = await fetch(`/extraction/scan-headings/${id}?${qs}`, {
+            const res = await fetch(`/extraction/scan-auto/${id}?${qs}`, {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'RequestVerificationToken': token },
-                body: JSON.stringify(ids)
+                headers: { 'RequestVerificationToken': token }
             });
-            if (!res.ok) { alert('Scan failed: ' + await res.text()); return; }
-            await res.json();
-            closeHeadings();
-            openChat(true);   // curated digest is now cached → the chat grounds on it
-        } catch (e) { alert('Network error: ' + e.message); }
+            if (!res.ok) { uiAlert('Scan failed: ' + await res.text()); return; }
+            const r = await res.json();
+            openChat(true);     // digest is now cached → the chat grounds on it
+            renderScanReport(r); // show every title + which ones the AI chose
+        } catch (e) { uiAlert('Network error: ' + e.message); }
         finally { btn.disabled = false; btn.textContent = label; }
     });
 
     // ---- Mode A: run the phase-2 AI reviewer over this company's saved cells ----
     $('reviewBtn').addEventListener('click', async () => {
         const id = companyId();
-        if (!id) { alert('Pick a company first.'); return; }
+        if (!id) { uiAlert('Pick a company first.'); return; }
         const status = $('loadStatus');
         status.textContent = 'AI reviewing saved cells…';
         try {

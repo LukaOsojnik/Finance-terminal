@@ -15,6 +15,22 @@
                     <option value="@co.Id" selected="@(Model.SelectedCompanyId == co.Id)">@co.Name</option>
                 }
             </select>
+            <label class="graph-check" title="Available when more than 5 customers have a value">
+                <input type="checkbox" id="graph-filter-customers" disabled/>
+                <span>TOP 5 CUSTOMERS</span>
+            </label>
+            <label class="graph-check" title="Available when a customer cites a filing">
+                <input type="checkbox" id="graph-filter-customers-filings" disabled/>
+                <span>CUSTOMERS W/ FILINGS</span>
+            </label>
+            <label class="graph-check" title="Available when more than 5 suppliers have a value">
+                <input type="checkbox" id="graph-filter-suppliers" disabled/>
+                <span>TOP 5 SUPPLIERS</span>
+            </label>
+            <label class="graph-check" title="Available when a supplier cites a filing">
+                <input type="checkbox" id="graph-filter-suppliers-filings" disabled/>
+                <span>SUPPLIERS W/ FILINGS</span>
+            </label>
         </div>
     </div>
 
@@ -48,6 +64,11 @@
     .graph-label { font-family: var(--font-display); font-size: 0.75rem; letter-spacing: 1.5px; color: var(--text-secondary); }
     .graph-select { background: var(--bg-surface); border: 1px solid var(--border-subtle); color: var(--text-primary); padding: 0.4rem 0.6rem; font-family: var(--font-mono); border-radius: var(--radius-sm); min-width: 220px; }
     .graph-select:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-dim); }
+    .graph-check { display: flex; align-items: center; gap: 0.35rem; font-family: var(--font-display); font-size: 0.72rem; letter-spacing: 1px; color: var(--text-secondary); cursor: pointer; user-select: none; }
+    .graph-check input { accent-color: var(--accent); cursor: pointer; }
+    .graph-check:has(input:disabled) { opacity: 0.4; cursor: not-allowed; }
+    .graph-check:has(input:disabled) input { cursor: not-allowed; }
+    .graph-check:has(input:checked) { color: var(--accent); }
 
     .graph-legend { display: flex; gap: 0.4rem; flex-wrap: wrap; margin-bottom: 0.5rem; }
     .legend-chip { font-family: var(--font-mono); font-size: 0.65rem; letter-spacing: 1px; padding: 0.2rem 0.55rem; border-radius: 2px; border: 1px solid; }
@@ -83,6 +104,10 @@
                 return;
             }
             const select = document.getElementById('graph-company-select');
+            const custChk = document.getElementById('graph-filter-customers');
+            const custFilingChk = document.getElementById('graph-filter-customers-filings');
+            const supChk = document.getElementById('graph-filter-suppliers');
+            const supFilingChk = document.getElementById('graph-filter-suppliers-filings');
             const canvas = document.getElementById('graph-canvas');
             const detail = document.getElementById('graph-detail');
             const detailGroup = document.getElementById('graph-detail-group');
@@ -103,15 +128,98 @@
             };
 
             const EDGE_STYLES = {
-                revenue: { color: { color: '#39d35366', highlight: '#39d353' }, dashes: false },
-                cost:    { color: { color: '#f8514966', highlight: '#f85149' }, dashes: false },
-                event:   { color: { color: '#c084fc66', highlight: '#c084fc' }, dashes: [4, 4] },
-                related: { color: { color: '#00d4ff88', highlight: '#00d4ff' }, dashes: false, width: 2 },
-                filing:  { color: { color: '#e0a45866', highlight: '#e0a458' }, dashes: [2, 3] }
+                revenue: { color: { color: '#39d35366', highlight: '#39d353' }, dashes: false, length: 150 },
+                cost:    { color: { color: '#f8514966', highlight: '#f85149' }, dashes: false, length: 150 },
+                event:   { color: { color: '#c084fc66', highlight: '#c084fc' }, dashes: [4, 4], length: 150 },
+                related: { color: { color: '#00d4ff88', highlight: '#00d4ff' }, dashes: false, width: 2, length: 150 },
+                // filing edges are the outermost tier — give them a long rest length so a degree-1
+                // filing is pushed past its source rather than drifting into the center↔source gap.
+                filing:  { color: { color: '#e0a45866', highlight: '#e0a458' }, dashes: [2, 3], length: 260 }
             };
 
             let network = null;
             let lastData = null;
+            let fullPayload = null;
+
+            // The top-5 tick is usable only when a group has MORE than 5 leaves carrying a value
+            // (below that it's a no-op); the with-filings tick only when a leaf cites a filing.
+            function countWithValue(group) {
+                return fullPayload.nodes.filter(n => n.group === group && n.valueUsd != null).length;
+            }
+
+            // Set of leaf ids that cite a filing — filing edges run leaf -> filing.
+            function leavesWithFiling() {
+                return new Set(fullPayload.edges.filter(e => e.group === 'filing').map(e => e.from));
+            }
+
+            function updateFilterAvailability() {
+                const filingLeaves = fullPayload ? leavesWithFiling() : new Set();
+                const hasFiling = group => fullPayload
+                    && fullPayload.nodes.some(n => n.group === group && filingLeaves.has(n.id));
+
+                const avail = [
+                    [custChk, !!fullPayload && countWithValue('revenue') > 5],
+                    [custFilingChk, hasFiling('revenue')],
+                    [supChk, !!fullPayload && countWithValue('cost') > 5],
+                    [supFilingChk, hasFiling('cost')]
+                ];
+                avail.forEach(([chk, ok]) => {
+                    chk.disabled = !ok;
+                    if (!ok) chk.checked = false;
+                });
+            }
+
+            // Per side the kept leaves are the UNION of: top-5 by value (if its tick is on) and
+            // every leaf citing a filing (if its tick is on). With neither tick on, the side is
+            // untouched. Afterwards drop filing proof nodes left orphaned by removed leaves.
+            // fullPayload stays intact so unticking restores everything without a refetch.
+            function buildFiltered() {
+                const removed = new Set();
+                const filingLeaves = leavesWithFiling();
+
+                function trim(group, top5On, filingsOn) {
+                    if (!top5On && !filingsOn) return;
+                    const keep = new Set();
+                    if (top5On) {
+                        fullPayload.nodes
+                            .filter(n => n.group === group && n.valueUsd != null)
+                            .sort((a, b) => b.valueUsd - a.valueUsd)
+                            .slice(0, 5)
+                            .forEach(n => keep.add(n.id));
+                    }
+                    if (filingsOn) {
+                        fullPayload.nodes
+                            .filter(n => n.group === group && filingLeaves.has(n.id))
+                            .forEach(n => keep.add(n.id));
+                    }
+                    fullPayload.nodes
+                        .filter(n => n.group === group && !keep.has(n.id))
+                        .forEach(n => removed.add(n.id));
+                }
+                trim('revenue', custChk.checked, custFilingChk.checked);
+                trim('cost', supChk.checked, supFilingChk.checked);
+
+                // a filing survives only if some kept leaf still cites it
+                const keptFilings = new Set(
+                    fullPayload.edges
+                        .filter(e => e.group === 'filing' && !removed.has(e.from))
+                        .map(e => e.to));
+                fullPayload.nodes
+                    .filter(n => n.group === 'filing' && !keptFilings.has(n.id))
+                    .forEach(n => removed.add(n.id));
+
+                return {
+                    centerId: fullPayload.centerId,
+                    centerLabel: fullPayload.centerLabel,
+                    nodes: fullPayload.nodes.filter(n => !removed.has(n.id)),
+                    edges: fullPayload.edges.filter(e => !removed.has(e.from) && !removed.has(e.to))
+                };
+            }
+
+            function applyFilters() {
+                if (!fullPayload) return;
+                render(buildFiltered());
+            }
 
             function render(payload) {
                 lastData = payload;
@@ -177,7 +285,7 @@
             }
 
             function load(companyId) {
-                if (!companyId) { canvas.innerHTML = ''; if (network) { network.destroy(); network = null; } return; }
+                if (!companyId) { canvas.innerHTML = ''; fullPayload = null; updateFilterAvailability(); if (network) { network.destroy(); network = null; } return; }
                 fetch(`/graph/data/company/${companyId}`, { headers: { 'Accept': 'application/json' } })
                     .then(r => r.ok ? r.json() : Promise.reject('HTTP ' + r.status))
                     .then(payload => {
@@ -186,7 +294,9 @@
                             canvas.innerHTML = '<div style="padding:1rem;color:#f85149;font-family:JetBrains Mono">No graph data returned.</div>';
                             return;
                         }
-                        render(payload);
+                        fullPayload = payload;
+                        updateFilterAvailability();
+                        applyFilters();
                     })
                     .catch(err => {
                         console.error('graph fetch failed', err);
@@ -201,6 +311,9 @@
                 history.replaceState({}, '', url);
                 load(id);
             });
+
+            [custChk, custFilingChk, supChk, supFilingChk]
+                .forEach(chk => chk.addEventListener('change', applyFilters));
 
             const initial = select.value;
             if (initial) load(initial);

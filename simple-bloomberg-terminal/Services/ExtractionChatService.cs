@@ -11,17 +11,19 @@ public class ExtractionChatService : IExtractionChatService
 {
     private readonly ICompanyRepository _companies;
     private readonly IStockApiClient _client;
+    private readonly ISec2MdClient _sec2md;
     private readonly IFilingExtractionService _scan;
     private readonly IDeepSeekClient _llm;
     private readonly IMemoryCache _cache;
     private readonly string _model;
 
     public ExtractionChatService(
-        ICompanyRepository companies, IStockApiClient client, IFilingExtractionService scan,
-        IDeepSeekClient llm, IMemoryCache cache, IConfiguration config)
+        ICompanyRepository companies, IStockApiClient client, ISec2MdClient sec2md,
+        IFilingExtractionService scan, IDeepSeekClient llm, IMemoryCache cache, IConfiguration config)
     {
         _companies = companies;
         _client = client;
+        _sec2md = sec2md;
         _scan = scan;
         _llm = llm;
         _cache = cache;
@@ -85,7 +87,8 @@ public class ExtractionChatService : IExtractionChatService
 
     public async IAsyncEnumerable<ChatDelta> StreamReplyAsync(
         long companyId, string accession, string doc, ExtractionNode node,
-        IReadOnlyList<ChatMessage> history, [EnumeratorCancellation] CancellationToken ct = default)
+        IReadOnlyList<ChatMessage> history, string? filingType = null,
+        [EnumeratorCancellation] CancellationToken ct = default)
     {
         // The parallel worker scan runs (once per filing) before the main agent can answer — tell the
         // user so the first turn isn't a silent wait while 36 chunks fan out.
@@ -93,38 +96,44 @@ public class ExtractionChatService : IExtractionChatService
         if (hasFiling && !_cache.TryGetValue(FilingExtractionService.FindingsKey(accession, doc, node), out _))
             yield return new ChatDelta("status", "Scanning the filing with parallel worker agents…");
 
-        var grounding = await GroundingAsync(companyId, accession, doc, node, ct);
+        var grounding = await GroundingAsync(companyId, accession, doc, node, filingType, ct);
 
         var messages = new List<DeepSeekMessage> { new("system", SystemFor(node) + grounding) };
         foreach (var m in history)
             messages.Add(new DeepSeekMessage(m.Role == "assistant" ? "assistant" : "user", m.Content));
 
-        await foreach (var delta in _llm.StreamAsync(_model, messages, maxTokens: 2048, ct: ct))
+        // No maxTokens → the lead-analyst reply runs to the model's own ceiling instead of being cut
+        // off mid-answer at a fixed cap.
+        await foreach (var delta in _llm.StreamAsync(_model, messages, ct: ct))
             yield return delta;
     }
 
     // The main agent's grounding: the workers' findings digest (auto-scan, or a curated heading scan
     // the user kicked off). Falls back to raw section excerpts only if the scan returned nothing.
     private async Task<string> GroundingAsync(
-        long companyId, string accession, string doc, ExtractionNode node, CancellationToken ct)
+        long companyId, string accession, string doc, ExtractionNode node, string? filingType, CancellationToken ct)
     {
         if (string.IsNullOrWhiteSpace(accession) || string.IsNullOrWhiteSpace(doc)) return "";
 
-        var digest = await _scan.GetOrScanDigestAsync(companyId, accession, doc, node, ct);
+        var digest = await _scan.GetOrScanDigestAsync(companyId, accession, doc, node, filingType, ct);
         if (!string.IsNullOrEmpty(digest)) return $"\n\n{digest}";
 
-        var raw = await RawFallbackAsync(companyId, accession, doc, node, ct);
+        var raw = await RawFallbackAsync(companyId, accession, doc, node, filingType, ct);
         return string.IsNullOrEmpty(raw) ? "" : $"\n\n{raw}";
     }
 
     // Used only when the scan yields nothing: the cleaned node-target Item excerpts, budgeted per
-    // section (Items 7/8 for revenue & cost, Items 1A/7A for risk).
+    // section (Items 7/8 for revenue & cost, Items 1A/7A for risk). Prefers sec2md markdown, falling
+    // back to raw SEC HTML when the sidecar is down (FilingSections reads both).
     private async Task<string> RawFallbackAsync(
-        long companyId, string accession, string doc, ExtractionNode node, CancellationToken ct)
+        long companyId, string accession, string doc, ExtractionNode node, string? filingType, CancellationToken ct)
     {
         var company = _companies.GetById(companyId);
         if (company is null || string.IsNullOrWhiteSpace(company.Cik)) return "";
-        var raw = await _client.GetFilingDocument(company.Cik.TrimStart('0'), accession.Replace("-", ""), doc);
+        var cik = company.Cik.TrimStart('0');
+        var acc = accession.Replace("-", "");
+        var raw = await _sec2md.ToMarkdownAsync(cik, acc, doc, filingType, ct)
+                  ?? await _client.GetFilingDocument(cik, acc, doc);
         if (raw is null) return "";
         var items = FilingSections.ItemsFor(node);
         var context = BuildContext(raw, items);
