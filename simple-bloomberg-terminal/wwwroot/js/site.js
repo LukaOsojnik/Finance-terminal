@@ -570,3 +570,523 @@ document.addEventListener('submit', async e => {
     track.addEventListener('mouseleave', () => track.classList.remove('paused'));
 })();
 
+// ── Background-scan notification widget ──
+// Detached scans are owned by the server; this widget is rebuilt from it on every page (full
+// reloads wipe JS state, so the only thing that survives in the browser is the list of job ids
+// kept in localStorage). Polls /extraction/scan-jobs until nothing is running.
+(function () {
+    const root = document.getElementById('scanNotify');
+    if (!root) return;
+
+    const $ = id => document.getElementById(id);
+    const chip = $('scanNotifyChip'), badge = $('scanNotifyBadge'), panel = $('scanNotifyPanel');
+    const listEl = $('scanNotifyList'), chatEl = $('scanNotifyChat');
+    const logEl = $('scanNotifyLog'), inputEl = $('scanNotifyInput'), sendBtn = $('scanNotifySend');
+    const headEl = $('scanNotifyChatHead'), openBtn = $('scanNotifyOpen'), savesEl = $('scanNotifySaves');
+    const savesGrip = $('scanNotifySavesGrip');
+    const SAVES_H_KEY = 'bbt.scanSavesH';   // user-dragged checklist height (px)
+    const editModal = $('scanEditModal'), editBody = $('scanEditBody'), editTitle = $('scanEditTitle');
+    // Classification options per node — mirror the extraction form's enum dropdowns.
+    const CLASS_OPTS = {
+        REVENUE: ['CUSTOMER', 'SEGMENT', 'REGION', 'PRODUCT'],
+        COST: ['COGS', 'OPEX', 'TOTAL_COSTS'],
+        RISK: ['MACROECONOMIC', 'INDUSTRY', 'BUSINESS', 'LEGAL_REGULATORY', 'FINANCIAL', 'GENERAL']
+    };
+
+    const IDS_KEY = 'bbt.scanJobs';                 // array of tracked job ids
+    const chatKey = id => `bbt.scanChat.${id}`;     // per-job visible turns [{role,content}]
+    const token = () => document.querySelector('input[name="__RequestVerificationToken"]')?.value;
+
+    const read = (k, def) => { try { return JSON.parse(localStorage.getItem(k)) ?? def; } catch { return def; } };
+    const write = (k, v) => localStorage.setItem(k, JSON.stringify(v));
+    const escapeHtml = s => String(s ?? '').replace(/[&<>"']/g, c =>
+        ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+    // Hide ```save {json}``` blocks from the prose shown in bubbles (kept verbatim in history).
+    // Collapse the blank lines the removed blocks leave behind so stacked saves don't gap the text.
+    const stripSave = t => t.replace(/```save[\s\S]*?```/g, '').replace(/\n{3,}/g, '\n\n').trim();
+    const fmtElapsed = ms => {
+        const s = Math.max(0, Math.floor(ms / 1000));
+        return s < 60 ? `${s}s` : `${Math.floor(s / 60)}m ${s % 60}s`;
+    };
+
+    let trackedIds = read(IDS_KEY, []);
+    let jobs = [];                 // latest server snapshot for tracked ids
+    const prevStatus = {};         // id -> last seen status, to detect running->done
+    const prevReplying = {};       // id -> last seen replying flag, to detect reply-finished
+    let openJobId = null;          // job whose chat is expanded, or null
+    let timer = null, elapsedTimer = null, chatTimer = null;
+    // The in-flight reply, mirrored from the server buffer by polling: { jobId, reply, think,
+    // replying, error }. Server-owned, so it survives both minimize and full page navigation.
+    let live = null;
+    let thinkOpen = false;          // user's expand/collapse choice for the live "thinking" block;
+                                    // persisted across paintStreaming() rebuilds (else each poll reopens it)
+    let saveSel = new Set();        // ticked save keys (original block name) for the open job
+    let saveSelJob = null;          // which job saveSel belongs to (reset on switch)
+    let saveEdits = {};             // key -> field overrides the user applied in the edit popup
+    let editingKey = null;          // save key currently open in the edit popup
+    let forceBottom = false;        // one-shot: scroll chat to bottom on the next render (open/send)
+    // True when the chat log is scrolled to (or near) the bottom — so polls only auto-scroll then,
+    // never yanking the user down while they read older messages.
+    const atBottom = () => logEl.scrollHeight - logEl.scrollTop - logEl.clientHeight < 40;
+
+    function trackedJobs() { return jobs.filter(j => trackedIds.includes(j.id)); }
+    function jobById(id) { return jobs.find(j => j.id === id); }
+
+    async function poll() {
+        if (!trackedIds.length) { jobs = []; render(); stopTimer(); return; }
+        try {
+            const res = await fetch(`/extraction/scan-jobs?ids=${encodeURIComponent(trackedIds.join(','))}`);
+            if (res.ok) jobs = await res.json();
+        } catch { /* offline — keep last snapshot, try again next tick */ }
+        // Detect a fresh scan completion or a fresh reply completion, to notify the user.
+        let justDone = false, replyDone = false;
+        for (const j of jobs) {
+            if (prevStatus[j.id] === 'Running' && j.status !== 'Running') justDone = true;
+            if (prevReplying[j.id] && !j.replying) { replyDone = true; refreshReply(j.id); } // pull the final answer into history
+            prevStatus[j.id] = j.status;
+            prevReplying[j.id] = j.replying;
+        }
+        render();
+        if ((justDone || replyDone) && panel.hidden) { panel.hidden = false; }   // surface on completion
+        // Keep polling while anything is scanning OR generating a reply (so the chip stays live).
+        if (!jobs.some(j => j.status === 'Running' || j.replying)) stopTimer();
+    }
+
+    function startTimer() {
+        if (!timer) timer = setInterval(poll, 2500);
+        // 1s ticker keeps the "running for Ns" label live between polls.
+        if (!elapsedTimer) elapsedTimer = setInterval(tickElapsed, 1000);
+    }
+    function stopTimer() {
+        if (timer) { clearInterval(timer); timer = null; }
+        if (elapsedTimer) { clearInterval(elapsedTimer); elapsedTimer = null; }
+    }
+    function tickElapsed() {
+        document.querySelectorAll('.scan-notify-elapsed[data-start]').forEach(el =>
+            el.textContent = fmtElapsed(Date.now() - Number(el.dataset.start)));
+    }
+
+    function render() {
+        const tj = trackedJobs();
+        root.hidden = tj.length === 0;
+        badge.textContent = tj.length;
+        const running = tj.some(j => j.status === 'Running');
+        root.classList.toggle('has-running', running);
+        root.classList.toggle('has-done', !running && tj.some(j => j.status === 'Done'));
+        const replying = tj.some(j => j.replying) || (live && live.replying);
+        root.classList.toggle('has-replying', !!replying);   // chip pulses while the AI replies
+        if (openJobId && jobById(openJobId)) renderChat(); else renderList(tj);
+    }
+
+    function renderList(tj) {
+        chatEl.hidden = true; listEl.hidden = false;
+        if (!tj.length) { listEl.innerHTML = `<div class="scan-notify-empty">No scans.</div>`; return; }
+        listEl.innerHTML = tj.map(j => {
+            const replying = j.replying || (live && live.replying && live.jobId === j.id);
+            const st = replying ? 'replying' : j.status.toLowerCase();
+            const statusLabel = replying ? 'REPLYING…' : j.status;
+            const running = j.status === 'Running';
+            const meta = replying ? 'AI is answering…'
+                : j.status === 'Done' ? `${j.found} found`
+                : j.status === 'Error' ? (j.error || 'failed') : 'live';
+            // While running, show the worker's current phase + a live elapsed timer.
+            const startMs = j.createdAt ? Date.parse(j.createdAt) : Date.now();
+            const elapsed = running
+                ? `<span class="scan-notify-elapsed" data-start="${startMs}">${escapeHtml(fmtElapsed(Date.now() - startMs))}</span>` : '';
+            const progress = running
+                ? `<div class="scan-notify-progress">${escapeHtml(j.progress || 'starting…')}</div>` : '';
+            return `<div class="scan-notify-job" data-id="${j.id}">
+                <div class="scan-notify-job-title">${escapeHtml(j.companyName || 'Company')} · ${escapeHtml(j.filingLabel)}
+                    <span class="scan-notify-node">${escapeHtml(j.node || '')}</span></div>
+                <div class="scan-notify-job-meta">
+                    <span class="scan-notify-status ${st}">${escapeHtml(statusLabel)}</span>
+                    <span>${escapeHtml(meta)}</span>
+                    ${elapsed}
+                    <button class="scan-notify-job-x" data-dismiss="${j.id}" title="Dismiss">&times;</button>
+                </div>
+                ${progress}
+            </div>`;
+        }).join('');
+    }
+
+    function ensureChatHistory(job) {
+        let h = read(chatKey(job.id), null);
+        // Seed with the auto summary the server produced — but only once it exists (a still-running
+        // job has no summary yet), so we never persist a placeholder that outlives completion.
+        if (!h && job.status !== 'Running' && job.summary) {
+            h = [
+                { role: 'user', content: 'Summarize the candidates you found in this filing.' },
+                { role: 'assistant', content: job.summary }
+            ];
+            write(chatKey(job.id), h);
+        }
+        return h || [];
+    }
+
+    function renderChat() {
+        const job = jobById(openJobId);
+        listEl.hidden = true; chatEl.hidden = false;
+        // Decide BEFORE rebuilding whether to keep pinning to the bottom (forced on open/send, else
+        // only if the user was already there). Preserve scroll position otherwise.
+        const stick = forceBottom || atBottom();
+        const prevTop = logEl.scrollTop;
+        forceBottom = false;
+        headEl.textContent = `${job.companyName || 'Company'} · ${job.filingLabel} · ${job.node}`;
+        const h = ensureChatHistory(job);
+        logEl.innerHTML = h.map(m =>
+            `<div class="scan-notify-bubble ${m.role}"><span class="role">${m.role}</span>${escapeHtml(stripSave(m.content) || m.content)}</div>`
+        ).join('');
+        paintStreaming();   // re-attach any in-flight reply so re-renders never drop it
+        const replying = live && live.replying && live.jobId === openJobId;
+        sendBtn.disabled = !!replying;
+        inputEl.placeholder = replying ? 'AI is answering…' : 'Ask about this filing…';
+        renderSaves(job);
+        logEl.scrollTop = stick ? logEl.scrollHeight : prevTop;
+    }
+
+    // Normalize one ```save``` block JSON to the batch-save item shape (snake_case → camelCase).
+    function normalizeSave(j) {
+        return {
+            name: j.name || '',
+            classification: j.classification || '',
+            value: j.value != null && j.value !== '' ? Number(j.value) : null,
+            percentage: j.percentage != null && j.percentage !== '' ? Number(j.percentage) : null,
+            note: j.note ?? null,
+            relatedCompany: j.related_company || j.relatedCompany || null,
+            relatedCompanyTicker: j.related_company_ticker || j.relatedCompanyTicker || null,
+            proof: {
+                name: j.proof?.name ?? null, value: j.proof?.value ?? null,
+                percentage: j.proof?.percentage ?? null, classification: j.proof?.classification ?? null,
+                relatedCompany: j.proof?.related_company ?? j.proof?.relatedCompany ?? null,
+                note: j.proof?.note ?? null
+            }
+        };
+    }
+
+    // Every ```save``` block across the stored conversation, deduped by name (latest wins).
+    function parseSaves(id) {
+        const byName = new Map();
+        const re = /```save\s*([\s\S]*?)```/g;
+        for (const m of read(chatKey(id), [])) {
+            if (m.role !== 'assistant') continue;
+            let x; re.lastIndex = 0;
+            while ((x = re.exec(m.content)) !== null) {
+                let j; try { j = JSON.parse(x[1].trim()); } catch { continue; }
+                const s = normalizeSave(j);
+                if (s.name) { s.key = s.name; byName.set(s.name, s); }   // key = original block name
+            }
+        }
+        return [...byName.values()];
+    }
+
+    function renderSaves(job) {
+        if (saveSelJob !== job.id) { saveSel = new Set(); saveEdits = {}; saveSelJob = job.id; }
+        // Merge any user edits onto the parsed blocks (key survives a rename).
+        const items = parseSaves(job.id).map(s => Object.assign({}, s, saveEdits[s.key] || {}));
+        if (!items.length) { savesEl.hidden = true; if (savesGrip) savesGrip.hidden = true; savesEl.innerHTML = ''; return; }
+        savesEl.hidden = false;
+        if (savesGrip) savesGrip.hidden = false;
+        savesEl.style.height = (read(SAVES_H_KEY, 200)) + 'px';   // restore the dragged height
+        const rows = items.map((s, i) => {
+            const bits = [];
+            if (s.value != null) bits.push('$' + Number(s.value).toLocaleString());
+            if (s.percentage != null) bits.push(s.percentage + '%');
+            const cp = s.relatedCompany
+                ? `<span class="scan-notify-save-cp">↔ ${escapeHtml(s.relatedCompany)}${s.relatedCompanyTicker ? ' (' + escapeHtml(s.relatedCompanyTicker) + ')' : ''}</span>` : '';
+            return `<div class="scan-notify-save-row">
+                <input type="checkbox" data-save="${i}" ${saveSel.has(s.key) ? 'checked' : ''}>
+                <span class="scan-notify-save-main" data-edit="${i}" title="Click to edit">
+                    <span class="scan-notify-save-name">${escapeHtml(s.name)}</span>
+                    <span class="scan-notify-save-meta">${escapeHtml(s.classification || '—')}${bits.length ? ' · ' + escapeHtml(bits.join(' · ')) : ''} ${cp}</span>
+                </span></div>`;
+        }).join('');
+        savesEl.innerHTML =
+            `<div class="scan-notify-saves-head"><span>Proposed saves</span><span>${items.length}</span></div>` +
+            rows +
+            `<div class="scan-notify-save-bar">
+                <button class="scan-notify-save-btn" data-savebtn ${saveSel.size ? '' : 'disabled'}>Save selected (${saveSel.size})</button>
+                <span class="scan-notify-save-status"></span>
+            </div>`;
+        // keep `items` reachable by the click handlers
+        savesEl._items = items;
+    }
+
+    async function saveSelected(job) {
+        const items = (savesEl._items || []).filter(s => saveSel.has(s.key));
+        if (!items.length) return;
+        const statusEl = savesEl.querySelector('.scan-notify-save-status');
+        const btn = savesEl.querySelector('[data-savebtn]');
+        if (btn) { btn.disabled = true; btn.textContent = 'Saving…'; }
+        if (statusEl) statusEl.textContent = '';
+        try {
+            const res = await fetch('/extraction/save-batch', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'RequestVerificationToken': token() },
+                body: JSON.stringify({
+                    companyId: job.companyId, node: job.node,
+                    accession: job.accession, form: job.form, items
+                })
+            });
+            if (!res.ok) { if (statusEl) { statusEl.style.color = 'var(--red)'; statusEl.textContent = `Save failed (${res.status})`; } return; }
+            const r = await res.json();
+            saveSel = new Set();   // clear ticks after a successful save
+            renderSaves(job);
+            const s2 = savesEl.querySelector('.scan-notify-save-status');
+            if (s2) s2.textContent = `Saved ${r.saved}${r.links ? ` · ${r.links} linked` : ''}.`;
+        } catch {
+            if (statusEl) { statusEl.style.color = 'var(--red)'; statusEl.textContent = 'Network error'; }
+        }
+    }
+
+    // The live reply bubble is rebuilt from `live` (mirrored from the server buffer) on every
+    // paint, so closing the panel, Back, navigation, or a poll re-render never lose the text.
+    function paintStreaming() {
+        document.getElementById('scanNotifyStream')?.remove();
+        if (!live || live.jobId !== openJobId) return;
+        if (!live.replying && !live.reply && !live.error) return;
+        const bubble = document.createElement('div');
+        bubble.id = 'scanNotifyStream';
+        bubble.className = 'scan-notify-bubble assistant';
+        bubble.innerHTML = `<span class="role">assistant</span>`;
+        if (live.think) {
+            const d = document.createElement('details');
+            d.className = 'scan-notify-think'; d.open = thinkOpen;   // remember the user's choice across rebuilds
+            d.addEventListener('toggle', () => { thinkOpen = d.open; });
+            const s = document.createElement('summary');
+            s.className = 'scan-notify-think-summary'; s.textContent = 'Thinking';
+            const t = document.createElement('div');
+            t.className = 'scan-notify-think-body'; t.textContent = live.think;
+            d.append(s, t);
+            bubble.appendChild(d);
+        }
+        const span = document.createElement('span');
+        span.textContent = live.error ? `[${live.error}]`
+            : live.reply ? stripSave(live.reply)
+            : '⏳ replying…';
+        bubble.appendChild(span);
+        logEl.appendChild(bubble);
+        // No scroll here — renderChat() decides whether to pin to the bottom (respects user scroll).
+    }
+
+    function lastStoredRole(id) {
+        const h = read(chatKey(id), []);
+        return h.length ? h[h.length - 1].role : null;
+    }
+    function startChatPoll() { if (!chatTimer) chatTimer = setInterval(() => refreshReply(openJobId), 1000); }
+    function stopChatPoll() { if (chatTimer) { clearInterval(chatTimer); chatTimer = null; } }
+
+    // Mirror the server reply buffer into `live`. When generation finishes, append the final
+    // answer to the stored history exactly once (guarded by "last stored turn is the user's").
+    async function refreshReply(id) {
+        if (!id) return;
+        let s;
+        try {
+            const res = await fetch(`/extraction/scan-jobs/${id}/reply`);
+            if (!res.ok) return;
+            s = await res.json();
+        } catch { return; }
+        live = { jobId: id, reply: s.reply || '', think: s.think || '', replying: s.replying, error: s.error || null };
+        if (s.replying) startChatPoll();
+        else {
+            stopChatPoll();
+            if (s.reply && lastStoredRole(id) === 'user') {
+                const h = read(chatKey(id), []);
+                h.push({ role: 'assistant', content: s.reply });
+                write(chatKey(id), h);
+                live = null;   // it's in history now; render from there
+            } else if (!s.error) {
+                live = null;
+            }
+        }
+        if (openJobId === id) renderChat();
+        render();   // refresh chip/pill replying state
+    }
+
+    async function sendChat() {
+        const job = jobById(openJobId);
+        const text = inputEl.value.trim();
+        if (!job || (live && live.replying) || !text) return;
+        if (job.status !== 'Done') { inputEl.placeholder = 'Wait for the scan to finish…'; return; }
+        inputEl.value = '';
+        const h = ensureChatHistory(job);
+        h.push({ role: 'user', content: text });
+        write(chatKey(job.id), h);
+        // Kick off detached server generation, then poll its buffer. No page-bound fetch to abort.
+        live = { jobId: job.id, reply: '', think: '', replying: true, error: null };
+        forceBottom = true;   // jump to the new turn when the user sends
+        renderChat();
+        try {
+            const res = await fetch(`/extraction/scan-jobs/${job.id}/reply`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'RequestVerificationToken': token() },
+                body: JSON.stringify({ messages: h })
+            });
+            if (!res.ok) { live = { jobId: job.id, reply: '', think: '', replying: false, error: `error ${res.status}` }; renderChat(); return; }
+        } catch { live = { jobId: job.id, reply: '', think: '', replying: false, error: 'network error' }; renderChat(); return; }
+        startChatPoll(); startTimer();   // chip poll + reply poll both run
+    }
+
+    // ── events ──
+    chip.addEventListener('click', () => { panel.hidden = !panel.hidden; });
+    $('scanNotifyClose').addEventListener('click', () => { panel.hidden = true; });
+    $('scanNotifyBack').addEventListener('click', () => { openJobId = null; stopChatPoll(); render(); });
+
+    listEl.addEventListener('click', e => {
+        const dismiss = e.target.closest('[data-dismiss]');
+        if (dismiss) {
+            e.stopPropagation();
+            const id = dismiss.getAttribute('data-dismiss');
+            trackedIds = trackedIds.filter(x => x !== id);
+            write(IDS_KEY, trackedIds);
+            localStorage.removeItem(chatKey(id));
+            if (live && live.jobId === id) { live = null; stopChatPoll(); }
+            fetch(`/extraction/scan-jobs/dismiss/${id}`, {
+                method: 'POST', headers: { 'RequestVerificationToken': token() }
+            }).catch(() => {});
+            poll();
+            return;
+        }
+        const card = e.target.closest('.scan-notify-job');
+        if (card) {
+            openJobId = card.getAttribute('data-id');
+            forceBottom = true;        // opening a job starts at the latest message
+            render();
+            refreshReply(openJobId);   // resume any reply still being generated server-side
+        }
+    });
+
+    sendBtn.addEventListener('click', sendChat);
+    inputEl.addEventListener('keydown', e => {
+        if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendChat(); }
+    });
+
+    // Tick / untick a proposed save; the Set survives the periodic re-renders.
+    savesEl.addEventListener('change', e => {
+        const cb = e.target.closest('[data-save]');
+        if (!cb) return;
+        const s = (savesEl._items || [])[Number(cb.getAttribute('data-save'))];
+        if (!s) return;
+        if (cb.checked) saveSel.add(s.key); else saveSel.delete(s.key);
+        const btn = savesEl.querySelector('[data-savebtn]');
+        if (btn) { btn.disabled = !saveSel.size; btn.textContent = `Save selected (${saveSel.size})`; }
+    });
+    savesEl.addEventListener('click', e => {
+        if (e.target.closest('[data-savebtn]')) {
+            const job = jobById(openJobId);
+            if (job) saveSelected(job);
+            return;
+        }
+        const main = e.target.closest('[data-edit]');
+        if (main) {
+            const s = (savesEl._items || [])[Number(main.getAttribute('data-edit'))];
+            if (s) openEdit(s);
+        }
+    });
+
+    // ── edit-one-object popup ──
+    const field = (label, inner) => `<div class="scan-edit-field"><label>${label}</label>${inner}</div>`;
+    function openEdit(s) {
+        const job = jobById(openJobId);
+        if (!job || !editModal) return;
+        editingKey = s.key;
+        const node = (job.node || 'REVENUE').toUpperCase();
+        const opts = (CLASS_OPTS[node] || []).map(o =>
+            `<option value="${o}" ${s.classification === o ? 'selected' : ''}>${o}</option>`).join('');
+        editTitle.textContent = `Edit ${node.toLowerCase()} object`;
+        let html = field('Name', `<input id="se_name" value="${escapeHtml(s.name || '')}">`)
+            + field('Classification', `<select id="se_class"><option value=""></option>${opts}</select>`);
+        if (node === 'RISK') {
+            html += field('Note', `<textarea id="se_note">${escapeHtml(s.note || '')}</textarea>`);
+        } else {
+            html += field('Value (USD)', `<input id="se_value" type="number" step="any" value="${s.value != null ? s.value : ''}">`)
+                + field('Percentage', `<input id="se_pct" type="number" step="any" value="${s.percentage != null ? s.percentage : ''}">`)
+                + field('Related company', `<input id="se_rel" value="${escapeHtml(s.relatedCompany || '')}">`)
+                + field('Related ticker', `<input id="se_tick" value="${escapeHtml(s.relatedCompanyTicker || '')}">`);
+        }
+        editBody.innerHTML = html;
+        editModal.hidden = false;
+        $('se_name').focus();
+    }
+    function closeEdit() { editModal.hidden = true; editingKey = null; }
+    function applyEdit() {
+        if (editingKey == null) return;
+        const numOrNull = v => v === '' || v == null ? null : Number(v);
+        const job = jobById(openJobId);
+        const node = (job?.node || 'REVENUE').toUpperCase();
+        const edit = {
+            name: $('se_name').value.trim(),
+            classification: $('se_class').value || null
+        };
+        if (node === 'RISK') {
+            edit.note = $('se_note').value.trim() || null;
+        } else {
+            edit.value = numOrNull($('se_value').value);
+            edit.percentage = numOrNull($('se_pct').value);
+            edit.relatedCompany = $('se_rel').value.trim() || null;
+            edit.relatedCompanyTicker = $('se_tick').value.trim() || null;
+        }
+        saveEdits[editingKey] = Object.assign({}, saveEdits[editingKey], edit);
+        saveSel.add(editingKey);   // editing implies you want to keep it
+        closeEdit();
+        if (job) renderSaves(job);
+    }
+    $('scanEditApply')?.addEventListener('click', applyEdit);
+    $('scanEditCancel')?.addEventListener('click', closeEdit);
+    $('scanEditClose')?.addEventListener('click', closeEdit);
+    editModal?.addEventListener('click', e => { if (e.target === editModal) closeEdit(); });
+
+    // Hold-and-drag the grip to resize the checklist; dragging up makes it taller. Height persists.
+    savesGrip?.addEventListener('pointerdown', e => {
+        e.preventDefault();
+        const startY = e.clientY, startH = savesEl.offsetHeight;
+        savesGrip.setPointerCapture(e.pointerId);
+        const move = ev => {
+            // Cap against the chat column (not the viewport): the saves block grows by
+            // stealing space from the log, so leave the log a ~160px floor.
+            const cap = Math.max(140, chatEl.clientHeight - 160);
+            const h = Math.max(100, Math.min(cap, startH + (startY - ev.clientY)));
+            savesEl.style.height = h + 'px';
+        };
+        const up = () => {
+            savesGrip.releasePointerCapture(e.pointerId);
+            savesGrip.removeEventListener('pointermove', move);
+            savesGrip.removeEventListener('pointerup', up);
+            write(SAVES_H_KEY, savesEl.offsetHeight);
+        };
+        savesGrip.addEventListener('pointermove', move);
+        savesGrip.addEventListener('pointerup', up);
+    });
+    openBtn.addEventListener('click', () => {
+        const job = jobById(openJobId);
+        if (!job) return;
+        const qs = new URLSearchParams({
+            companyId: job.companyId, accession: job.accession, doc: job.doc,
+            node: job.node, jobId: job.id
+        });
+        if (job.form) qs.set('form', job.form);
+        window.location.href = `/extraction?${qs}`;
+    });
+
+    // Called by the extraction page when it hands a freshly-started scan to the widget. `meta`
+    // (company/filing/node) lets the window render the task instantly, before the first poll lands.
+    window.startScanJob = function (jobId, meta) {
+        if (!jobId) return;
+        if (!trackedIds.includes(jobId)) { trackedIds.push(jobId); write(IDS_KEY, trackedIds); }
+        prevStatus[jobId] = 'Running';
+        if (!jobById(jobId)) {
+            jobs.push(Object.assign({
+                id: jobId, status: 'Running', progress: 'Starting…', found: 0,
+                companyName: '', filingLabel: '', node: '', accession: '', doc: '',
+                form: null, companyId: 0, summary: '', createdAt: new Date().toISOString()
+            }, meta || {}));
+        }
+        openJobId = null;
+        render();
+        panel.hidden = false;   // pop the window open immediately so the user sees it working
+        poll(); startTimer();
+    };
+
+    // On load: rebuild from whatever this browser is tracking.
+    if (trackedIds.length) { poll(); startTimer(); }
+})();
+

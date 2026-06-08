@@ -866,7 +866,7 @@
 | Route source | `[Route("extraction")]` + `[Route("")]` |
 | View | Views/Extraction/Index.cshtml |
 | Parameters | companyId: long? (query string, optional); revenueSourceId: long? (query string, optional — REVENUE deep-link prefill only); node: string? (query string, optional — `REVENUE`\|`COST`\|`RISK`, default `REVENUE`) |
-| Notes | Phase-1 split-screen extraction UI — company autocomplete picker plus a Node dropdown (Revenue/Cost/Risk) that drives which SEC Items are scanned (Revenue/Cost → Items 7,8; Risk → Items 1A,7A), the AI prompts, and which entity a save lands in (RevenueSource / CostSource / CompanyRisk). Left pane = source cells, right pane = JSON from `POST /api/stock/refresh/{companyId}`; "Use as reference" writes per-cell SourceFieldReview rows. `?revenueSourceId=` deep-links prefill an existing RevenueSource row (REVENUE node only) |
+| Notes | Phase-1 split-screen extraction UI — company autocomplete picker plus a Node dropdown (Revenue/Cost/Risk) that drives which SEC Items are scanned (Revenue/Cost → Items 7,8; Risk → Items 1A,7A), the AI prompts, and which entity a save lands in (RevenueSource / CostSource / CompanyRisk). Left pane = source cells, right pane = JSON from `POST /api/stock/refresh/{companyId}`; "Use as reference" writes per-cell SourceFieldReview rows. `?revenueSourceId=` deep-links prefill an existing RevenueSource row (REVENUE node only). The page JS also reads `accession`, `doc`, `form`, and `jobId` from the query string (not bound server-side) to rehydrate the filing/scan context when the user clicks back from the notification widget to save a background scan's yielded objects |
 
 ---
 
@@ -909,6 +909,20 @@
 | View | — (JSON `{ revenueSourceId, proofs }`) |
 | Parameters | JSON body (SaveRequest): companyId, revenueSourceId?, node (`REVENUE`\|`COST`\|`RISK`, default `REVENUE`), sourceType, name, value, percentage, note, relatedCompanyId, proofs:[{field, endpoint, referencePointer, referenceSnapshot, referencedValue, filingAccessionNumber, filingForm, filingDate, filingUrl}] |
 | Notes | Current UI save path — saves the whole extraction form in one request: `node` selects which entity the row upserts into (RevenueSource / CostSource / CompanyRisk; `note` backs RISK rows) from the field values, then upserts one SourceFieldReview per entry in Proofs. Responses: 200 OK; 400 (bad companyId / missing name / invalid classification); 404 (revenueSourceId given but row not found) |
+
+---
+
+## /extraction/save-batch
+
+| Field | Value |
+|---|---|
+| Controller | ExtractionController |
+| Action | SaveBatch (async) |
+| HTTP | POST |
+| Route source | `[Route("extraction")]` + `[Route("save-batch")]` |
+| View | — (JSON `{ saved, links }`) |
+| Parameters | JSON body — { companyId, node, accession, form, items:[{ name, classification, value, percentage, note, relatedCompany, relatedCompanyTicker, proof:{ name, value, percentage, classification, relatedCompany, note } }] } |
+| Notes | Batch-saves multiple AI-proposed objects in one call from the notification widget's chat (the user ticks which `​```save```​` blocks to keep). For each item it upserts the source row (RevenueSource / CostSource / CompanyRisk) plus per-field SourceFieldReview proof (endpoint "AI extraction", pointer "ai-suggested"). Items that name a related company (revenue→CUSTOMER, cost→SUPPLIER) additionally resolve or create that company via the same FMP/Yahoo pipeline as link-counterparty (`GetOrCreateCompanyAsync`) and create a reciprocal mirror row on it (`EnsureReciprocal`) — i.e. the relationship is saved bidirectionally. Returns `{ saved, links }` (rows saved, reciprocal links created). Responses: 200 OK; 400 (CompanyId missing); 404 (company not found) |
 
 ---
 
@@ -965,6 +979,76 @@
 | View | — (JSON `{ scanned, found }`) |
 | Parameters | companyId: long (route, constrained); accession: string (query, required); doc: string (query, required); node: string? (query string, optional — `REVENUE`\|`COST`\|`RISK`, default `REVENUE`); form: string? (query string, optional — SEC form type, e.g. `10-K`, forwarded to the sec2md markdown sidecar) |
 | Notes | Mode B (auto) — triages every bold heading by title, scans the AI-chosen ones in parallel, and stashes the digest as the AI Chat's grounding; persists nothing to the DB. Replaces the hand-pick flow (`headings` + `scan-headings`). Responses: 200 OK; 400 (missing accession/doc); 404 (no such company); 503 (DeepSeek/SEC unreachable) |
+
+---
+
+## /extraction/scan-auto-async/{companyId}
+
+| Field | Value |
+|---|---|
+| Controller | ExtractionController |
+| Action | ScanAutoAsync |
+| HTTP | POST |
+| Route source | `[Route("extraction")]` + `[Route("scan-auto-async/{companyId:long}")]` |
+| View | — (JSON `{ jobId }`) |
+| Parameters | companyId: long (route, constrained); accession: string (query, required); doc: string (query, required); node: string? (query string, optional — `REVENUE`\|`COST`\|`RISK`, default `REVENUE`); form: string? (query string, optional — SEC form type, e.g. `10-K`, forwarded to the sec2md markdown sidecar); companyName: string? (query string, optional); filingLabel: string? (query string, optional) |
+| Notes | Mode B (async) — same scan as `scan-auto`, but detached: registers a background `ScanJob` in the in-memory `ScanJobStore`, fires the scan + an auto AI-summary chat turn on a background task (own DI scope), and returns the `jobId` at once so the page doesn't block. The user can navigate away; the global notification widget polls `scan-jobs` for the result. Persists nothing to the DB. Responses: 200 OK (`{ jobId }`); 400 (missing accession/doc); 404 (no such company) |
+
+---
+
+## /extraction/scan-jobs
+
+| Field | Value |
+|---|---|
+| Controller | ExtractionController |
+| Action | ScanJobs |
+| HTTP | GET |
+| Route source | `[Route("extraction")]` + `[Route("scan-jobs")]` |
+| View | — (JSON array of jobs: `{ id, status, companyId, companyName, accession, doc, node, form, filingLabel, found, summary, error, replying }`) |
+| Parameters | ids: string? (query string — comma-separated job ids the browser is tracking) |
+| Notes | Returns the status/found-count/AI summary of the background scan jobs whose ids the browser holds (in localStorage). Unknown/dismissed ids are skipped. Backs the global bottom-right notification widget, which shows the summary, lets the user chat (via `POST /extraction/chat`), and links back to `/extraction` to save the yielded objects |
+
+---
+
+## /extraction/scan-jobs/dismiss/{jobId}
+
+| Field | Value |
+|---|---|
+| Controller | ExtractionController |
+| Action | DismissScanJob |
+| HTTP | POST |
+| Route source | `[Route("extraction")]` + `[Route("scan-jobs/dismiss/{jobId}")]` |
+| View | — (200 OK, no body) |
+| Parameters | jobId: string (route) |
+| Notes | Removes a job from the in-memory `ScanJobStore` when the user dismisses it in the notification widget |
+
+---
+
+## /extraction/scan-jobs/{jobId}/reply
+
+| Field | Value |
+|---|---|
+| Controller | ExtractionController |
+| Action | ScanJobReply |
+| HTTP | POST |
+| Route source | `[Route("extraction")]` + `[Route("scan-jobs/{jobId}/reply")]` |
+| View | — (200 OK, no body) |
+| Parameters | jobId: string (route); JSON body — { messages:[{role,content}] } (the conversation so far) |
+| Notes | Starts a DETACHED background chat reply for a finished scan job so the answer survives the user navigating away. The reply is generated on a background task (own DI scope) via `IExtractionChatService.StreamReplyAsync`, streamed into the job's `ReplyBuffer`/`ReplyThink`. Responses: 200 OK on start; 404 (unknown job); 400 (scan not finished); 409 (a reply is already in progress) |
+
+---
+
+## /extraction/scan-jobs/{jobId}/reply (GET)
+
+| Field | Value |
+|---|---|
+| Controller | ExtractionController |
+| Action | ScanJobReplyState |
+| HTTP | GET |
+| Route source | `[Route("extraction")]` + `[Route("scan-jobs/{jobId}/reply")]` |
+| View | — (JSON `{ replying, reply, think, error }`) |
+| Parameters | jobId: string (route) |
+| Notes | Polled by the notification widget to mirror the in-flight reply. Responses: 200 OK; 404 (unknown job) |
 
 ---
 

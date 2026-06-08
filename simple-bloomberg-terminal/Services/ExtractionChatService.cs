@@ -46,10 +46,13 @@ public class ExtractionChatService : IExtractionChatService
             "relationships to keep. Be concise.\n\n" +
             "When the user wants to SAVE a specific cost, output a fenced block exactly like:\n" +
             "```save\n{\"name\":\"\",\"classification\":\"COGS\",\"value\":null,\"percentage\":null," +
-            "\"related_company\":null,\"proof\":{\"name\":\"\",\"value\":null,\"percentage\":null," +
+            "\"related_company\":null,\"related_company_ticker\":null,\"proof\":{\"name\":\"\",\"value\":null,\"percentage\":null," +
             "\"classification\":null,\"related_company\":null}}\n```\n" +
             "classification is exactly one of COGS, OPEX, TOTAL_COSTS. value is absolute US dollars " +
-            "(scale any 'in thousands/millions'); percentage is 0-100; use null when not stated. Each " +
+            "(scale any 'in thousands/millions'); percentage is 0-100; use null when not stated. " +
+            "related_company is a named supplier/counterparty (else null); when it's a publicly traded " +
+            "company you can identify, also set related_company_ticker to its stock ticker (else null) " +
+            "so it can be enriched. Each " +
             "proof field is the VERBATIM excerpt substring backing it (null for fields you left null). " +
             "Emit one save block per cost the user confirms, alongside your normal reply.",
 
@@ -77,10 +80,13 @@ public class ExtractionChatService : IExtractionChatService
             "counterparty relationships to keep. Be concise.\n\n" +
             "When the user wants to SAVE a specific source, output a fenced block exactly like:\n" +
             "```save\n{\"name\":\"\",\"classification\":\"PRODUCT\",\"value\":null,\"percentage\":null," +
-            "\"related_company\":null,\"proof\":{\"name\":\"\",\"value\":null,\"percentage\":null," +
+            "\"related_company\":null,\"related_company_ticker\":null,\"proof\":{\"name\":\"\",\"value\":null,\"percentage\":null," +
             "\"classification\":null,\"related_company\":null}}\n```\n" +
             "classification is exactly one of CUSTOMER, SEGMENT, REGION, PRODUCT. value is absolute US " +
             "dollars (scale any 'in thousands/millions'); percentage is 0-100; use null when not stated. " +
+            "related_company is a named customer/counterparty (else null); when it's a publicly traded " +
+            "company you can identify, also set related_company_ticker to its stock ticker (else null) " +
+            "so it can be enriched. " +
             "Each proof field is the VERBATIM excerpt substring backing it (null for fields you left " +
             "null). Emit one save block per source the user confirms, alongside your normal reply.",
     };

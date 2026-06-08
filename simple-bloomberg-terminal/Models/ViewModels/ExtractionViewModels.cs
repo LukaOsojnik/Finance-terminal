@@ -109,6 +109,34 @@ public class SaveRequest
     public List<ProofInput> Proofs { get; set; } = [];
 }
 
+/// <summary>
+/// Save several AI-proposed objects at once, straight from the notification widget's chat (the
+/// user ticks which ```save``` blocks to keep). Each item upserts its source row + per-field proof;
+/// items that name a counterparty additionally resolve/create that company (FMP/Yahoo, like the
+/// discover→link pipeline) and get a reciprocal mirror row — so the relationship is bidirectional.
+/// </summary>
+public class SaveBatchRequest
+{
+    public long CompanyId { get; set; }
+    public string Node { get; set; } = "REVENUE";
+    public string? Accession { get; set; }   // filing the proofs came from (upserted by accession)
+    public string? Form { get; set; }
+    public List<SaveBatchItem> Items { get; set; } = [];
+}
+
+/// <summary>One ticked save block (snake_case from the model is bound to these by the web defaults).</summary>
+public class SaveBatchItem
+{
+    public string Name { get; set; } = string.Empty;
+    public string Classification { get; set; } = string.Empty;
+    public double? Value { get; set; }
+    public double? Percentage { get; set; }
+    public string? Note { get; set; }
+    public string? RelatedCompany { get; set; }
+    public string? RelatedCompanyTicker { get; set; }   // enables the FMP/Yahoo create path
+    public ExtractionProof? Proof { get; set; }
+}
+
 /// <summary>Proof for one field, carried inside a <see cref="SaveRequest"/>.</summary>
 public class ProofInput
 {
@@ -197,6 +225,14 @@ public class LinkCounterpartyRequest
 
 /// <summary>One visible chat turn (the grounding/system context is added server-side, not here).</summary>
 public record ChatMessage(string Role, string Content);
+
+/// <summary>A detached follow-up reply for a scan job: the visible turns so far (the filing
+/// grounding is resolved server-side from the job). Generated on a background task so it survives
+/// the user navigating away; the widget polls for the result.</summary>
+public class ScanJobReplyRequest
+{
+    public List<ChatMessage> Messages { get; set; } = [];
+}
 
 /// <summary>A chat send: which filing grounds the conversation + the visible turns so far.</summary>
 public class ChatRequest

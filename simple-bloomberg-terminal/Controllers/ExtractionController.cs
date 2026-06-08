@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Text;
 using System.Text.Json;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Rendering;
@@ -33,6 +34,8 @@ public class ExtractionController : Controller
     private readonly IFmpApiClient _fmp;
     private readonly IYahooFinanceClient _yahoo;
     private readonly IExchangeRateApiClient _exchangeRate;
+    private readonly ScanJobStore _jobs;
+    private readonly IServiceScopeFactory _scopeFactory;
 
     public ExtractionController(
         IRevenueSourceRepository revenue,
@@ -48,7 +51,9 @@ public class ExtractionController : Controller
         ICounterpartyDiscovery discovery,
         IFmpApiClient fmp,
         IYahooFinanceClient yahoo,
-        IExchangeRateApiClient exchangeRate)
+        IExchangeRateApiClient exchangeRate,
+        ScanJobStore jobs,
+        IServiceScopeFactory scopeFactory)
     {
         _revenue = revenue;
         _cost = cost;
@@ -64,6 +69,8 @@ public class ExtractionController : Controller
         _fmp = fmp;
         _yahoo = yahoo;
         _exchangeRate = exchangeRate;
+        _jobs = jobs;
+        _scopeFactory = scopeFactory;
     }
 
     private static ExtractionNode ParseNode(string? node) =>
@@ -183,6 +190,77 @@ public class ExtractionController : Controller
             saved++;
         }
         return Json(new { revenueSourceId = rowId.Value, proofs = saved });
+    }
+
+    // Batch save from the notification widget's chat: persist every ticked AI ```save``` block in one
+    // call. Each item upserts its source row + per-field proof; items naming a counterparty resolve
+    // (or create via the FMP/Yahoo pipeline) that company and get a reciprocal mirror row — so the
+    // relationship is saved bidirectionally, the same way the discover→link flow does it.
+    [HttpPost, Route("save-batch")]
+    public async Task<IActionResult> SaveBatch([FromBody] SaveBatchRequest req)
+    {
+        if (req is null || req.CompanyId <= 0) return BadRequest("CompanyId required.");
+        var owner = _companies.GetById(req.CompanyId);
+        if (owner is null) return NotFound();
+        var node = ParseNode(req.Node);
+
+        var saved = 0;
+        var links = 0;
+        foreach (var item in req.Items ?? [])
+        {
+            if (string.IsNullOrWhiteSpace(item.Name)) continue;
+
+            // Counterparty objects (revenue customer / cost supplier) resolve like discover→link.
+            var hasCounterparty = node != ExtractionNode.RISK && !string.IsNullOrWhiteSpace(item.RelatedCompany);
+            long? counterpartyId = null;
+            if (hasCounterparty)
+            {
+                var linkReq = new LinkCounterpartyRequest
+                {
+                    CompanyId = req.CompanyId,
+                    Name = item.RelatedCompany!.Trim(),
+                    Side = node == ExtractionNode.COST ? "SUPPLIER" : "CUSTOMER",
+                    Classification = item.Classification,
+                    Ticker = item.RelatedCompanyTicker,
+                    Value = item.Value
+                };
+                counterpartyId = await GetOrCreateCompanyAsync(linkReq, owner);
+            }
+
+            var rowId = UpsertRowByNode(node, req.CompanyId, null, item.Classification, item.Name,
+                item.Value, item.Percentage, item.Note, counterpartyId);
+            if (rowId is null) continue;   // unparseable classification — skip this item
+            saved++;
+
+            // Per-field proof: the verbatim filing excerpts the model carried in the save block.
+            var filingId = ResolveFilingId(req.CompanyId, req.Accession, req.Form, null, null);
+            if (item.Proof is { } p)
+            {
+                UpsertAiProof(node, req.CompanyId, rowId.Value, ReviewableField.NAME, p.Name, item.Name, filingId);
+                UpsertAiProof(node, req.CompanyId, rowId.Value, ReviewableField.VALUE, p.Value, item.Value?.ToString(CultureInfo.InvariantCulture), filingId);
+                UpsertAiProof(node, req.CompanyId, rowId.Value, ReviewableField.PERCENTAGE, p.Percentage, item.Percentage?.ToString(CultureInfo.InvariantCulture), filingId);
+                UpsertAiProof(node, req.CompanyId, rowId.Value, ReviewableField.CLASSIFICATION, p.Classification, item.Classification, filingId);
+                UpsertAiProof(node, req.CompanyId, rowId.Value, ReviewableField.RELATED_COMPANY, p.RelatedCompany, item.RelatedCompany, filingId);
+                if (node == ExtractionNode.RISK)
+                    UpsertAiProof(node, req.CompanyId, rowId.Value, ReviewableField.NOTE, p.Note, item.Note, filingId);
+            }
+
+            if (hasCounterparty && counterpartyId is { } cid)
+            {
+                EnsureReciprocal(node, cid, req.CompanyId, owner.Name, item.Value);
+                links++;
+            }
+        }
+        return Json(new { saved, links });
+    }
+
+    // Upsert one AI-suggested field proof, skipping fields the model left without a snapshot.
+    private void UpsertAiProof(ExtractionNode node, long companyId, long rowId, ReviewableField field,
+        string? snapshot, string? referencedValue, long? filingId)
+    {
+        if (string.IsNullOrWhiteSpace(snapshot)) return;
+        UpsertReviewByNode(node, companyId, rowId, field, "AI extraction", "ai-suggested",
+            snapshot, referencedValue, filingId);
     }
 
     // Create or update the source row for the active node from the form values, returning its id.
@@ -383,6 +461,167 @@ public class ExtractionController : Controller
         {
             return StatusCode(StatusCodes.Status503ServiceUnavailable, "DeepSeek/SEC unreachable.");
         }
+    }
+
+    // Mode B (async) — same scan as scan-auto, but detached: register a job, fire the work on a
+    // background task, and return its id at once so the page doesn't block. The user can navigate
+    // away; the notification widget polls scan-jobs for the result. The background task opens its
+    // OWN DI scope — the request scope (and its DbContext) is gone the moment this returns.
+    [HttpPost, Route("scan-auto-async/{companyId:long}")]
+    public IActionResult ScanAutoAsync(
+        long companyId, [FromQuery] string accession, [FromQuery] string doc,
+        [FromQuery] string? node, [FromQuery] string? form,
+        [FromQuery] string? companyName, [FromQuery] string? filingLabel)
+    {
+        if (_companies.GetById(companyId) is null) return NotFound();
+        if (string.IsNullOrWhiteSpace(accession) || string.IsNullOrWhiteSpace(doc))
+            return BadRequest("accession and doc are required.");
+
+        var parsedNode = ParseNode(node);
+        var job = new ScanJob
+        {
+            CompanyId = companyId,
+            CompanyName = companyName ?? _companies.GetById(companyId)?.Name ?? "",
+            Accession = accession,
+            Doc = doc,
+            Node = parsedNode.ToString(),
+            Form = form,
+            FilingLabel = filingLabel ?? form ?? "filing"
+        };
+        _jobs.Add(job);
+
+        _ = Task.Run(async () =>
+        {
+            using var scope = _scopeFactory.CreateScope();
+            var extractor = scope.ServiceProvider.GetRequiredService<IFilingExtractionService>();
+            var chat = scope.ServiceProvider.GetRequiredService<IExtractionChatService>();
+            try
+            {
+                // Coarse phase reporting around the one awaited call — the widget polls Progress so
+                // the user sees the worker is alive and what it's doing (no per-chunk hook exists).
+                job.Progress = $"Reading the {job.FilingLabel} & triaging sections with parallel agents…";
+                job.Report = await extractor.ScanAutoAsync(companyId, accession, doc, parsedNode, form);
+                // Auto AI summary: one chat turn grounded on the digest the scan just cached, so the
+                // notification opens with a real answer rather than just counts.
+                job.Progress = $"Found {job.Report.Found} candidate(s) · writing summary…";
+                var seed = new List<ChatMessage>
+                {
+                    new("user", "Summarize the candidates you found in this filing.")
+                };
+                var sb = new StringBuilder();
+                await foreach (var d in chat.StreamReplyAsync(companyId, accession, doc, parsedNode, seed, form))
+                    if (d.Kind == "text") sb.Append(d.Text);
+                job.Summary = sb.ToString();
+                job.Progress = "";
+                job.Status = ScanJobStatus.Done;
+            }
+            catch (Exception ex)
+            {
+                job.Status = ScanJobStatus.Error;
+                job.Error = ex.Message;
+                job.Progress = "";
+            }
+            finally
+            {
+                job.CompletedAt = DateTimeOffset.UtcNow;
+            }
+        });
+
+        return Json(new { jobId = job.Id });
+    }
+
+    // Status of the jobs the browser is tracking (ids it holds in localStorage, comma-separated).
+    // Unknown ids are skipped — the store evicts nothing, but a dismissed/lost job just drops out.
+    [HttpGet, Route("scan-jobs")]
+    public IActionResult ScanJobs([FromQuery] string? ids)
+    {
+        var list = (ids ?? "")
+            .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Select(_jobs.Get)
+            .Where(j => j is not null)
+            .Select(j => new
+            {
+                id = j!.Id,
+                status = j.Status.ToString(),
+                progress = j.Progress,
+                replying = j.Replying,
+                createdAt = j.CreatedAt,
+                companyId = j.CompanyId,
+                companyName = j.CompanyName,
+                accession = j.Accession,
+                doc = j.Doc,
+                node = j.Node,
+                form = j.Form,
+                filingLabel = j.FilingLabel,
+                found = j.Report?.Found ?? 0,
+                summary = j.Summary,
+                error = j.Error
+            });
+        return Json(list);
+    }
+
+    // Drop a job the user dismissed from the widget.
+    [HttpPost, Route("scan-jobs/dismiss/{jobId}")]
+    public IActionResult DismissScanJob(string jobId)
+    {
+        _jobs.Remove(jobId);
+        return Ok();
+    }
+
+    // Start a detached follow-up chat reply for a finished scan: generate on a background task so
+    // the answer survives the user navigating away. The widget POSTs the conversation so far, then
+    // polls scan-jobs/{id}/reply for the streamed result. Reuses the existing chat grounding.
+    [HttpPost, Route("scan-jobs/{jobId}/reply")]
+    public IActionResult ScanJobReply(string jobId, [FromBody] ScanJobReplyRequest req)
+    {
+        var job = _jobs.Get(jobId);
+        if (job is null) return NotFound();
+        if (job.Status != ScanJobStatus.Done) return BadRequest("Scan hasn't finished.");
+        if (job.Replying) return Conflict("A reply is already in progress.");
+
+        var node = ParseNode(job.Node);
+        var history = req?.Messages ?? [];
+        job.Replying = true;
+        job.ReplyBuffer = "";
+        job.ReplyThink = "";
+        job.ReplyError = null;
+
+        _ = Task.Run(async () =>
+        {
+            using var scope = _scopeFactory.CreateScope();
+            var chat = scope.ServiceProvider.GetRequiredService<IExtractionChatService>();
+            try
+            {
+                await foreach (var d in chat.StreamReplyAsync(job.CompanyId, job.Accession, job.Doc, node, history, job.Form))
+                {
+                    if (d.Kind == "text") job.ReplyBuffer += d.Text;
+                    else if (d.Kind == "reasoning") job.ReplyThink += d.Text;
+                }
+            }
+            catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
+            {
+                job.ReplyError = "DeepSeek unreachable.";
+            }
+            catch (Exception ex)
+            {
+                job.ReplyError = ex.Message;
+            }
+            finally
+            {
+                job.Replying = false;
+            }
+        });
+
+        return Ok();
+    }
+
+    // Poll the in-flight (or just-finished) reply for a job.
+    [HttpGet, Route("scan-jobs/{jobId}/reply")]
+    public IActionResult ScanJobReplyState(string jobId)
+    {
+        var job = _jobs.Get(jobId);
+        if (job is null) return NotFound();
+        return Json(new { replying = job.Replying, reply = job.ReplyBuffer, think = job.ReplyThink, error = job.ReplyError });
     }
 
     // Mode B (conversational) — stream a chat grounded on the open filing. Emits NDJSON lines

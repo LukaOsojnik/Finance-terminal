@@ -293,11 +293,23 @@
         white-space: pre-wrap; word-break: break-word;
     }
     .ai-chat-body { font-family: var(--font-mono); font-size: .78rem; line-height: 1.5; }
-    /* The dim live "thinking" trace (v4 reasoning tokens). */
+    /* The dim live "thinking" trace (v4 reasoning tokens) — collapsible. */
     .ai-chat-think {
-        align-self: flex-start; max-width: 92%; font-family: var(--font-mono); font-size: .7rem;
-        line-height: 1.45; color: var(--muted); font-style: italic; white-space: pre-wrap;
-        word-break: break-word; border-left: 2px solid var(--border-subtle); padding: .1rem .5rem;
+        align-self: flex-start; max-width: 92%; border-left: 2px solid var(--border-subtle);
+    }
+    .ai-chat-think-summary {
+        cursor: pointer; list-style: none; font-family: var(--font-display); font-size: .6rem;
+        letter-spacing: .08em; text-transform: uppercase; color: var(--muted);
+        padding: .1rem .5rem; display: flex; align-items: center; gap: .3rem; user-select: none;
+    }
+    .ai-chat-think-summary::-webkit-details-marker { display: none; }
+    .ai-chat-think-summary::before {
+        content: '▾'; display: inline-block; transition: transform .15s ease;
+    }
+    .ai-chat-think:not([open]) .ai-chat-think-summary::before { transform: rotate(-90deg); }
+    .ai-chat-think-body {
+        font-family: var(--font-mono); font-size: .7rem; line-height: 1.45; color: var(--muted);
+        font-style: italic; white-space: pre-wrap; word-break: break-word; padding: .1rem .5rem .2rem;
         max-height: 120px; overflow: auto;
     }
     .ai-chat-input { display: flex; gap: .4rem; padding: .5rem; border-top: 1px solid var(--border-subtle); }
@@ -905,12 +917,15 @@
     function chatBubble(role) {
         const wrap = document.createElement('div');
         wrap.className = 'ai-chat-msg ai-chat-' + role;
-        const think = document.createElement('div'); think.className = 'ai-chat-think'; think.hidden = true;
+        const thinkWrap = document.createElement('details'); thinkWrap.className = 'ai-chat-think'; thinkWrap.hidden = true; thinkWrap.open = false;
+        const summary = document.createElement('summary'); summary.className = 'ai-chat-think-summary'; summary.textContent = 'Thinking';
+        const think = document.createElement('div'); think.className = 'ai-chat-think-body';
+        thinkWrap.append(summary, think);
         const body = document.createElement('div'); body.className = 'ai-chat-body';
-        wrap.append(think, body);
+        wrap.append(thinkWrap, body);
         aiChatLog.appendChild(wrap);
         aiChatLog.scrollTop = aiChatLog.scrollHeight;
-        return { think, body };
+        return { thinkWrap, think, body };
     }
 
     // Reply prose hides the raw save blocks; each becomes a clickable "fill the form" card.
@@ -975,7 +990,7 @@
                     if (!line) continue;
                     let ev; try { ev = JSON.parse(line); } catch { continue; }
                     if (ev.t === 'status') { if (!full) out.body.textContent = '⏳ ' + ev.c; }
-                    else if (ev.t === 'reasoning') { think += ev.c; out.think.hidden = false; out.think.textContent = think; }
+                    else if (ev.t === 'reasoning') { think += ev.c; out.thinkWrap.hidden = false; out.think.textContent = think; }
                     else if (ev.t === 'text') { full += ev.c; out.body.textContent = stripSave(full); }
                     else if (ev.t === 'error') { out.body.textContent += `\n[${ev.c}]`; }
                     aiChatLog.scrollTop = aiChatLog.scrollHeight;
@@ -1045,18 +1060,27 @@
         if (!currentFiling?.accessionNumber || !currentFiling?.primaryDocument) {
             uiAlert('Open a filing in the right pane first (Filings → pick one).'); return;
         }
+        // Detached scan: hand the job to the bottom-right notification widget and let the user keep
+        // browsing. The widget polls for completion, shows the AI summary, and lets them chat / return.
         const btn = $('autoScanBtn'), label = btn.textContent;
         btn.disabled = true; btn.textContent = 'Scanning…';
-        const qs = `accession=${encodeURIComponent(currentFiling.accessionNumber)}&doc=${encodeURIComponent(currentFiling.primaryDocument)}&node=${node}&form=${encodeURIComponent(currentFiling.form || '')}`;
+        const companyName = companyHidden()?.closest('.autocomplete')?.querySelector('.autocomplete-input')?.value || '';
+        const filingLabel = `${currentFiling.form || 'filing'} ${currentFiling.filingDate || ''}`.trim();
+        const qs = `accession=${encodeURIComponent(currentFiling.accessionNumber)}&doc=${encodeURIComponent(currentFiling.primaryDocument)}&node=${node}&form=${encodeURIComponent(currentFiling.form || '')}` +
+            `&companyName=${encodeURIComponent(companyName)}&filingLabel=${encodeURIComponent(filingLabel)}`;
         try {
-            const res = await fetch(`/extraction/scan-auto/${id}?${qs}`, {
+            const res = await fetch(`/extraction/scan-auto-async/${id}?${qs}`, {
                 method: 'POST',
                 headers: { 'RequestVerificationToken': token }
             });
             if (!res.ok) { uiAlert('Scan failed: ' + await res.text()); return; }
             const r = await res.json();
-            openChat(true);     // digest is now cached → the chat grounds on it
-            renderScanReport(r); // show every title + which ones the AI chose
+            if (window.startScanJob) window.startScanJob(r.jobId, {
+                companyId: Number(id), companyName, filingLabel, node,
+                accession: currentFiling.accessionNumber, doc: currentFiling.primaryDocument,
+                form: currentFiling.form || null, progress: 'Starting…'
+            });
+            $('loadStatus').textContent = 'Scan running in background — keep browsing; you’ll be notified (bottom-right) when it’s done.';
         } catch (e) { uiAlert('Network error: ' + e.message); }
         finally { btn.disabled = false; btn.textContent = label; }
     });
@@ -1092,6 +1116,37 @@
         rowPicker.value = row.id;
         fillCells(row);          // sets cells + currentRowId + loads existing refs
         loadFacts();             // open the right pane so the user can browse/select proof
+    })();
+
+    // ---- Rehydrate from a notification "Open in Extraction" link: reopen the scanned filing and
+    // replay the widget conversation so the proposed-save cards are ready to click. Company + node
+    // are restored server-side from the query string (see ExtractionController.Index). ----
+    (async function bootstrapFromScan() {
+        const q = new URLSearchParams(window.location.search);
+        const accession = q.get('accession'), doc = q.get('doc'), jobId = q.get('jobId');
+        const id = companyId();
+        if (!accession || !doc || !id) return;
+
+        await openFiling(id, {
+            accessionNumber: accession, primaryDocument: doc,
+            form: q.get('form') || '', filingDate: '', documentUrl: ''
+        });
+        if (!currentFiling) return;   // filing failed to load — leave the page as-is
+
+        // Reveal the chat panel without firing the seed question.
+        aiChat.hidden = false;
+        chatFiling = currentFiling.accessionNumber;
+        chatHistory = []; aiChatLog.innerHTML = ''; aiSaveList.innerHTML = '';
+        $('aiChatCtx').textContent = currentFiling.form ? `· ${currentFiling.form}` : '';
+
+        let stored = [];
+        if (jobId) { try { stored = JSON.parse(localStorage.getItem(`bbt.scanChat.${jobId}`)) ?? []; } catch { } }
+        stored.forEach(m => {
+            chatHistory.push(m);
+            chatBubble(m.role).body.textContent = stripSave(m.content);
+            if (m.role === 'assistant') renderSaveCards(m.content);
+        });
+        if (!stored.length) openChat(true);   // no widget history → behave like a fresh scan chat
     })();
 })();
 </script>

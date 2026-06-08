@@ -51,6 +51,9 @@ builder.Services.AddScoped<IExtractionChatService, ExtractionChatService>();
 builder.Services.AddHttpClient<ICounterpartyDiscovery, CounterpartyDiscoveryService>();
 // Caches a filing's cleaned section text so each chat turn doesn't re-download the document.
 builder.Services.AddMemoryCache();
+// Tracks detached auto-scan jobs (started on the extraction page, run in the background) so the
+// notification widget can poll their status from any page. Singleton: server-wide shared state.
+builder.Services.AddSingleton<ScanJobStore>();
 
 // Financial Modeling Prep: typed HttpClient feeding the New Company form (global fundamentals).
 builder.Services.AddHttpClient<IFmpApiClient, FmpApiClient>();

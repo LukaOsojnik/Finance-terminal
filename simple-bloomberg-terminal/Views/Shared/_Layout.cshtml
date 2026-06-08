@@ -90,6 +90,51 @@
     </div>
 </footer>
 
+<!-- Background-scan notifications: rebuilt from the server on every page (no SPA shell), so a
+     scan started on the extraction page survives navigation and pings here when it finishes. -->
+<div id="scanNotify" class="scan-notify" hidden>
+    <button id="scanNotifyChip" class="scan-notify-chip" type="button">
+        <span class="scan-notify-dot"></span>
+        <span>SCANS</span>
+        <span id="scanNotifyBadge" class="scan-notify-badge">0</span>
+    </button>
+    <div id="scanNotifyPanel" class="scan-notify-panel" hidden>
+        <div class="scan-notify-head">
+            <span>FILING SCANS</span>
+            <button id="scanNotifyClose" class="scan-notify-x" type="button" aria-label="Close">&times;</button>
+        </div>
+        <div id="scanNotifyList" class="scan-notify-list"></div>
+        <div id="scanNotifyChat" class="scan-notify-chat" hidden>
+            <button id="scanNotifyBack" class="scan-notify-back" type="button">&larr; All scans</button>
+            <div id="scanNotifyChatHead" class="scan-notify-chat-head"></div>
+            <div id="scanNotifyLog" class="scan-notify-log"></div>
+            <div id="scanNotifySavesGrip" class="scan-notify-grip" hidden title="Drag to resize"></div>
+            <div id="scanNotifySaves" class="scan-notify-saves" hidden></div>
+            <div class="scan-notify-compose">
+                <textarea id="scanNotifyInput" class="scan-notify-input" rows="2"
+                          placeholder="Ask about this filing…"></textarea>
+                <button id="scanNotifySend" class="scan-notify-send" type="button">Send</button>
+            </div>
+            <button id="scanNotifyOpen" class="scan-notify-open" type="button">Open in Extraction &rarr;</button>
+        </div>
+    </div>
+</div>
+
+<!-- Edit one proposed save before committing it — fields match the extraction form per node. -->
+<div id="scanEditModal" class="scan-edit-overlay" hidden>
+    <div class="scan-edit-box">
+        <div class="scan-edit-head">
+            <span id="scanEditTitle">Edit object</span>
+            <button id="scanEditClose" class="scan-notify-x" type="button" aria-label="Close">&times;</button>
+        </div>
+        <div id="scanEditBody" class="scan-edit-body"></div>
+        <div class="scan-edit-foot">
+            <button id="scanEditCancel" class="scan-edit-btn-ghost" type="button">Cancel</button>
+            <button id="scanEditApply" class="scan-notify-save-btn" type="button">Apply</button>
+        </div>
+    </div>
+</div>
+
 <script src="~/lib/jquery/dist/jquery.min.js"></script>
 <script src="~/lib/bootstrap/dist/js/bootstrap.bundle.min.js"></script>
 <script src="~/js/site.js" asp-append-version="true"></script>
