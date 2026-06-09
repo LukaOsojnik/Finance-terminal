@@ -152,6 +152,7 @@ public static class FmpMapper
         ["resortscasinos"] = GicsIndustry.HOTELS_RESTAURANTS_AND_LEISURE,
         ["travelservices"] = GicsIndustry.HOTELS_RESTAURANTS_AND_LEISURE,
         ["apparelmanufacturing"] = GicsIndustry.TEXTILES_APPAREL_AND_LUXURY_GOODS,
+        ["apparelmanufacturers"] = GicsIndustry.TEXTILES_APPAREL_AND_LUXURY_GOODS,
         ["luxurygoods"] = GicsIndustry.TEXTILES_APPAREL_AND_LUXURY_GOODS,
         ["footwearaccessories"] = GicsIndustry.TEXTILES_APPAREL_AND_LUXURY_GOODS,
         ["furnishingsfixturesappliances"] = GicsIndustry.HOUSEHOLD_DURABLES,

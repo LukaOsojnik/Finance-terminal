@@ -19,6 +19,7 @@
     <div class="detail-hero-top">
         <div class="detail-hero-name-row">
             <h1 class="detail-hero-name">@co.Name</h1>
+            <a asp-controller="Graph" asp-action="Index" asp-route-companyId="@co.Id" class="detail-graph-link" title="View relationship graph">◉ GRAPH →</a>
             <span class="detail-code-badge">@co.Sector.ToString().Replace("_", " ")</span>
             @if (co.Country != null)
             {

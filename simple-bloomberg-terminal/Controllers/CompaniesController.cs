@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Rendering;
 using simple_bloomberg_terminal.Models.Entities;
@@ -17,10 +18,13 @@ public class CompaniesController : Controller
     private readonly IRestCountriesClient _restCountries;
     private readonly IYahooFinanceClient _yahoo;
     private readonly IExchangeRateApiClient _exchangeRate;
+    private readonly IDeepSeekClient _deepSeek;
+    private readonly string _deepSeekModel;
 
     public CompaniesController(ICompanyRepository companies, ICountryRepository countries,
         IFmpApiClient fmp, IRestCountriesClient restCountries,
-        IYahooFinanceClient yahoo, IExchangeRateApiClient exchangeRate)
+        IYahooFinanceClient yahoo, IExchangeRateApiClient exchangeRate,
+        IDeepSeekClient deepSeek, IConfiguration config)
     {
         _companies = companies;
         _countries = countries;
@@ -28,6 +32,8 @@ public class CompaniesController : Controller
         _restCountries = restCountries;
         _yahoo = yahoo;
         _exchangeRate = exchangeRate;
+        _deepSeek = deepSeek;
+        _deepSeekModel = config["DeepSeek:ScanModel"] ?? "deepseek-v4-flash";
     }
 
     [HttpGet, Route("")]
@@ -113,6 +119,14 @@ public class CompaniesController : Controller
 
         var model = FmpMapper.ToCreateModel(profile, income);
 
+        // Stamp the fetch date so the row always has an "as of" without manual entry.
+        model.AsOf = DateOnly.FromDateTime(DateTime.Today);
+
+        // The static label map only covers common FMP/Yahoo labels; on a miss, let DeepSeek pick
+        // the industry within the already-resolved sector so the user doesn't have to choose.
+        if (model.Industry == null)
+            await ResolveIndustryWithLlm(model, profile);
+
         var country = await ResolveOrCreateCountry(profile.Country);
         if (country != null)
         {
@@ -125,6 +139,8 @@ public class CompaniesController : Controller
         else if (!string.Equals(income.ReportedCurrency, "USD", StringComparison.OrdinalIgnoreCase))
             ViewBag.FetchNote = $"Revenue is reported in {income.ReportedCurrency}; left blank — enter the USD value manually.";
 
+        // Flags the banner + per-field "auto-filled" glow on the Create view.
+        ViewBag.Fetched = true;
         return View("Create", model);
     }
 
@@ -200,6 +216,40 @@ public class CompaniesController : Controller
                 .Select(s => new { kind = "cost", direction = "inverse", id = s.Id, name = s.Name, type = s.CostBase.ToString(), value = s.Value, other = s.Company?.Name }));
 
         return Json(new { owned, inverse });
+    }
+
+    // Async fallback for industry: the static map missed FMP's free-form label, so ask DeepSeek to
+    // choose one GICS industry from those belonging to the already-resolved sector. Constraining the
+    // candidates to that sector keeps the model honest and the result self-consistent (industry's
+    // sector == model.Sector). Any failure leaves Industry null and the user picks it on review.
+    private async Task ResolveIndustryWithLlm(CompanyCreateModel model, FmpProfile profile)
+    {
+        var candidates = Enum.GetValues<GicsIndustry>()
+            .Where(i => i.GetSector() == model.Sector)
+            .ToList();
+        if (candidates.Count == 0) return;
+
+        var allowed = string.Join(", ", candidates.Select(c => c.ToString()));
+        var system = "You classify a company into exactly one GICS industry. Reply ONLY with JSON " +
+            "{\"industry\":\"ENUM_NAME\"} where ENUM_NAME is exactly one of the allowed values, " +
+            "or {\"industry\":null} if none fit.";
+        var user = $"Company: {profile.CompanyName}\nSector: {model.Sector}\n" +
+            $"Source industry label: {profile.Industry}\nAllowed industries: {allowed}";
+
+        string raw;
+        try { raw = await _deepSeek.CompleteAsync(_deepSeekModel, system, user, maxTokens: 100, jsonObject: true); }
+        catch (HttpRequestException) { return; }
+
+        try
+        {
+            using var doc = JsonDocument.Parse(raw);
+            if (doc.RootElement.TryGetProperty("industry", out var el) &&
+                el.ValueKind == JsonValueKind.String &&
+                Enum.TryParse<GicsIndustry>(el.GetString(), out var parsed) &&
+                parsed.GetSector() == model.Sector)
+                model.Industry = parsed;
+        }
+        catch (JsonException) { /* malformed reply -> leave Industry null */ }
     }
 
     // FMP income was premium-gated (non-US). Pull revenue + gross margin from Yahoo Finance,

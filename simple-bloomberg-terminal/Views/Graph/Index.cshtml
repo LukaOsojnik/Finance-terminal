@@ -242,7 +242,7 @@
                 if (network) network.destroy();
                 network = new vis.Network(canvas, { nodes: visNodes, edges: visEdges }, {
                     physics: {
-                        enabled: true,
+                        enabled: visEdges.length > 0,
                         barnesHut: { gravitationalConstant: -8000, springLength: 160, springConstant: 0.04, avoidOverlap: 0.2 },
                         stabilization: { iterations: 200 }
                     },

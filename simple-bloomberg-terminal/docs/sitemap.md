@@ -1136,6 +1136,34 @@
 
 ---
 
+## /impact/firms
+
+| Field | Value |
+|---|---|
+| Controller | ImpactController |
+| Action | Firms |
+| HTTP | GET |
+| Route source | `[Route("impact")]` + `[Route("firms", Name = "ImpactFirms")]` |
+| View | — (JSON: companies eligible to originate a firm-level shock, each with id, name, sector, supplierCount, customerCount) |
+| Parameters | — |
+| Notes | The list of companies that can originate a firm-level shock — companies with ≥1 quantified counterparty link. Feeds the firm picker on the Impact Simulator page |
+
+---
+
+## /impact/solve-firm
+
+| Field | Value |
+|---|---|
+| Controller | ImpactController |
+| Action | SolveFirm |
+| HTTP | POST |
+| Route source | `[Route("impact")]` + `[Route("solve-firm", Name = "ImpactSolveFirm")]` |
+| View | — (JSON: ranked firms and a round-by-round propagation trace) |
+| Parameters | JSON body (`FirmImpactRequest`) — { kind, companyId, magnitude } |
+| Notes | Runs one firm-level input-output cascade and returns the ranked firms plus a round-by-round trace. Responses: 200 OK; 400 (unknown `kind` or a `companyId` not in the firm graph) |
+
+---
+
 ## api/graph/company
 
 | Field | Value |

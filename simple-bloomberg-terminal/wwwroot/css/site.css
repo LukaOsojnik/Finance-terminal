@@ -668,6 +668,26 @@ main { animation: pageFadeIn 0.18s ease; }
   border-radius: var(--radius-sm);
 }
 
+.detail-graph-link {
+  font-family: var(--font-display);
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--accent);
+  background: #00d4ff12;
+  border: 1px solid var(--border-accent);
+  padding: 0.2rem 0.65rem;
+  border-radius: var(--radius-sm);
+  text-decoration: none;
+  transition: border-color var(--transition), box-shadow var(--transition);
+}
+
+.detail-graph-link:hover {
+  border-color: var(--accent);
+  box-shadow: var(--accent-glow);
+}
+
 .detail-region-tag {
   font-family: var(--font-mono);
   font-size: 0.72rem;
@@ -2149,3 +2169,134 @@ main { animation: pageFadeIn 0.18s ease; }
   transition: background var(--transition);
 }
 .scan-notify-open:hover { background: #00d4ff1a; }
+
+/* ─────────────────────────────────────────────────────────────
+   Company create — compact card grid + sticky action bar
+───────────────────────────────────────────────────────────── */
+.company-form { max-width: 1040px; }
+
+/* cards sit side-by-side so the form reads in columns, not one long stack */
+.form-cards {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+  align-items: start;
+}
+.form-cards .form-card { margin-bottom: 0; }
+.form-cards .card-span { grid-column: 1 / -1; }
+@media (max-width: 760px) {
+  .form-cards { grid-template-columns: 1fr; }
+}
+
+/* fields stacked inside a (now narrow) card */
+.form-stack > div { margin-bottom: 0.85rem; }
+.form-stack > div:last-child { margin-bottom: 0; }
+.form-stack .form-label { margin-bottom: 0.25rem; }
+
+/* fetch-by-ticker bar at the top of the form */
+.fetch-bar {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  margin-bottom: 1.25rem;
+  padding: 0.75rem 1rem;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-left: 3px solid var(--accent);
+  border-radius: var(--radius-md);
+}
+.fetch-bar .form-control { flex: 1; }
+.fetch-bar-label {
+  font-family: var(--font-display);
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--accent);
+  white-space: nowrap;
+  margin: 0;
+}
+
+/* "prefilled from API" confirmation banner */
+.fetch-banner {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  margin-bottom: 1.25rem;
+  padding: 0.6rem 0.9rem;
+  background: #0a1a2a;
+  border: 1px solid var(--accent-dim);
+  border-radius: var(--radius-sm);
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  color: var(--text-primary);
+}
+.fetch-banner .dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--green);
+  box-shadow: var(--green-glow);
+  flex-shrink: 0;
+}
+
+/* grouped field cards */
+.form-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  padding: 1rem 1.25rem 1.25rem;
+  margin-bottom: 1rem;
+}
+.form-card-title {
+  font-family: var(--font-display);
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+  margin-bottom: 0.9rem;
+  padding-bottom: 0.5rem;
+  border-bottom: 1px solid var(--border-subtle);
+}
+.form-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.85rem 1.25rem;
+}
+.form-grid .field-full { grid-column: 1 / -1; }
+.form-grid .form-label { margin-bottom: 0.25rem; }
+@media (max-width: 640px) {
+  .form-grid { grid-template-columns: 1fr; }
+}
+
+/* save bar that stays in view so the user never scrolls to find CREATE */
+.form-actions {
+  position: sticky;
+  bottom: 1.5rem;       /* clears the fixed terminal footer */
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-top: 1rem;
+  padding: 0.85rem 1rem;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  box-shadow: 0 -6px 20px rgba(5, 8, 12, 0.6);
+}
+.form-actions-hint {
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  color: var(--muted);
+  margin-left: auto;
+}
+
+/* one-time accent pulse on fields auto-filled by a fetch */
+@keyframes fieldFetchGlow {
+  0%, 35% { box-shadow: 0 0 0 2px var(--accent-dim), var(--accent-glow); }
+  100%    { box-shadow: 0 0 0 0 transparent; }
+}
+.was-fetched .field-glow {
+  border-radius: var(--radius-sm);
+  animation: fieldFetchGlow 2.4s ease-out;
+}
