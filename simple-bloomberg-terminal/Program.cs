@@ -2,6 +2,7 @@ using System.Globalization;
 using Microsoft.AspNetCore.Localization;
 using Microsoft.EntityFrameworkCore;
 using simple_bloomberg_terminal.Data;
+using simple_bloomberg_terminal.IoCore;
 using simple_bloomberg_terminal.Repositories;
 using simple_bloomberg_terminal.Services;
 
@@ -54,6 +55,14 @@ builder.Services.AddMemoryCache();
 // Tracks detached auto-scan jobs (started on the extraction page, run in the background) so the
 // notification widget can poll their status from any page. Singleton: server-wide shared state.
 builder.Services.AddSingleton<ScanJobStore>();
+
+// Input-output cascade model: load the matrix artifact once at startup and validate every
+// Section-6 invariant — a model that violates Hawkins–Simon fails the app loudly here rather than
+// producing nonsense rankings later. Singleton: the validated matrices/solver are immutable and
+// shared server-wide. EventImpactService is Scoped because it reads companies via the DbContext.
+builder.Services.AddSingleton(_ => IoModelLoader.LoadFromFile(
+    Path.Combine(builder.Environment.ContentRootPath, "IoCore", "Data", "io_model_v1.json")));
+builder.Services.AddScoped<EventImpactService>();
 
 // Financial Modeling Prep: typed HttpClient feeding the New Company form (global fundamentals).
 builder.Services.AddHttpClient<IFmpApiClient, FmpApiClient>();

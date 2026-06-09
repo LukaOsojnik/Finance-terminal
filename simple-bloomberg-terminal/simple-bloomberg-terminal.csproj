@@ -19,8 +19,14 @@
     </ItemGroup>
 
     <ItemGroup>
+      <!-- I-O model artifacts the loader reads from ContentRoot at startup. -->
+      <Content Update="IoCore\Data\*.json" CopyToOutputDirectory="PreserveNewest" />
+    </ItemGroup>
+
+    <ItemGroup>
       <PackageReference Include="AutoMapper" Version="16.1.1" />
       <PackageReference Include="HtmlAgilityPack" Version="1.12.4" />
+      <PackageReference Include="MathNet.Numerics" Version="5.0.0" />
       <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="9.0.0">
         <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
         <PrivateAssets>all</PrivateAssets>

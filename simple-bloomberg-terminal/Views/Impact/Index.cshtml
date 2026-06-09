@@ -1,0 +1,297 @@
+@using simple_bloomberg_terminal.Models.Enums
+@using simple_bloomberg_terminal.Services
+@using System.Globalization
+@{
+    ViewData["Title"] = "Impact Simulator";
+    var profiles = (IReadOnlyDictionary<Sector, SectorProfile>)ViewBag.Profiles;
+}
+
+<div class="page-header">
+    <h2><span class="page-header-accent">//</span> Impact Simulator</h2>
+    <div class="page-subtitle">INPUT–OUTPUT CASCADE — PICK ORIGIN SECTOR · TRACE SHOCK · RANK EXPOSED COMPANIES</div>
+</div>
+
+<section class="impact-controls">
+    <div class="impact-field">
+        <label class="impact-label" for="impact-sector">ORIGIN SECTOR</label>
+        <select id="impact-sector" class="impact-select">
+            @foreach (var s in Enum.GetValues<Sector>())
+            {
+                var p = profiles[s];
+                <option value="@s"
+                        data-share="@p.FinalDemandShare.ToString("0.####", CultureInfo.InvariantCulture)"
+                        data-orient="@p.Orientation"
+                        data-kind="@p.SuggestedKind">@s.ToString().Replace('_', ' ')</option>
+            }
+        </select>
+    </div>
+    <div class="impact-field">
+        <label class="impact-label" for="impact-kind">SHOCK TYPE</label>
+        <select id="impact-kind" class="impact-select">
+            <option value="Demand">Demand collapse / surge (backward)</option>
+            <option value="Supply">Supply outage (forward)</option>
+            <option value="Cost">Cost-push (price)</option>
+        </select>
+    </div>
+    <div class="impact-field">
+        <label class="impact-label" for="impact-magnitude">MAGNITUDE</label>
+        <input id="impact-magnitude" class="impact-input" type="number" step="any" value="-1000"/>
+        <span id="impact-hint" class="impact-hint"></span>
+    </div>
+    <button id="impact-run" class="btn btn-primary">RUN ►</button>
+</section>
+
+<div id="impact-orient" class="impact-orient"></div>
+
+<div id="impact-summary" class="impact-summary" hidden></div>
+<div id="impact-interpret" class="impact-interpret" hidden></div>
+
+<div class="impact-grid" hidden id="impact-results">
+    <div class="impact-panel">
+        <div class="impact-panel-head">RANKED IMPACT BY SECTOR</div>
+        <div class="impact-chart-wrap"><canvas id="impact-chart"></canvas></div>
+        <table class="terminal-table impact-table" id="impact-table">
+            <thead>
+            <tr><th></th><th>Sector</th><th style="text-align:right;" id="impact-valcol">Δ Output</th><th style="text-align:right;">Companies</th></tr>
+            </thead>
+            <tbody id="impact-tbody"></tbody>
+        </table>
+    </div>
+    <div class="impact-panel">
+        <div class="impact-panel-head">CASCADE TRACE <span class="impact-panel-sub">— how the shock propagates, round by round</span></div>
+        <div id="impact-trace" class="impact-trace"></div>
+    </div>
+</div>
+
+<style>
+    .impact-controls { display:flex; gap:1rem; align-items:flex-end; flex-wrap:wrap; margin-bottom:1rem;
+        background:var(--bg-surface); border:1px solid var(--border-subtle); border-radius:var(--radius-md); padding:1rem; }
+    .impact-field { display:flex; flex-direction:column; gap:0.35rem; }
+    .impact-label { font-family:var(--font-display); font-size:0.72rem; letter-spacing:1.5px; color:var(--text-secondary); }
+    .impact-select, .impact-input { background:var(--bg-base); border:1px solid var(--border-subtle); color:var(--text-primary);
+        padding:0.45rem 0.6rem; font-family:var(--font-mono); border-radius:var(--radius-sm); min-width:240px; }
+    .impact-input { min-width:140px; }
+    .impact-select:focus, .impact-input:focus { outline:none; border-color:var(--accent); box-shadow:0 0 0 2px var(--accent-dim); }
+    .impact-hint { font-family:var(--font-mono); font-size:0.68rem; color:var(--muted); margin-top:0.2rem; max-width:240px; }
+    .impact-orient { font-family:var(--font-mono); font-size:0.74rem; color:var(--text-secondary);
+        margin-bottom:1rem; padding:0.5rem 0.8rem; background:var(--bg-card); border-radius:var(--radius-sm);
+        border-left:3px solid var(--muted); }
+    .impact-orient b { color:var(--text-primary); }
+    .impact-orient .tag { color:var(--accent); }
+
+    .impact-summary { font-family:var(--font-mono); font-size:0.82rem; color:var(--text-secondary);
+        background:var(--bg-card); border-left:3px solid var(--accent); padding:0.6rem 0.9rem; border-radius:var(--radius-sm); margin-bottom:1rem; }
+    .impact-summary b { color:var(--text-primary); }
+    .impact-interpret { font-family:var(--font-mono); font-size:0.72rem; color:var(--muted); line-height:1.5;
+        margin:-0.5rem 0 1rem; padding-left:0.9rem; }
+    .impact-interpret div::before { content:'— '; }
+
+    .impact-grid { display:grid; grid-template-columns:1.4fr 1fr; gap:1rem; align-items:start; }
+    @@media (max-width:980px) { .impact-grid { grid-template-columns:1fr; } }
+    .impact-panel { background:var(--bg-surface); border:1px solid var(--border-subtle); border-radius:var(--radius-md); padding:0.9rem 1rem; }
+    .impact-panel-head { font-family:var(--font-display); font-size:0.8rem; letter-spacing:1.5px; color:var(--accent); margin-bottom:0.6rem; }
+    .impact-panel-sub { color:var(--muted); letter-spacing:0.5px; font-weight:400; }
+    .impact-chart-wrap { height:300px; margin-bottom:0.5rem; }
+
+    .impact-table td, .impact-table th { vertical-align:middle; }
+    .impact-row { cursor:pointer; }
+    .impact-row:hover { background:var(--bg-row-hover); }
+    .impact-toggle { color:var(--accent); font-family:var(--font-mono); width:1rem; display:inline-block; }
+    .impact-val-pos { color:var(--green); } .impact-val-neg { color:var(--red); }
+    .impact-companies td { background:var(--bg-base); }
+    .impact-industry-row { display:flex; justify-content:space-between; gap:1rem; padding:0.32rem 0.4rem 0.12rem 1.1rem;
+        font-family:var(--font-mono); font-size:0.74rem; color:var(--text-primary); letter-spacing:0.4px; }
+    .impact-industry-row::before { content:'└ '; color:var(--muted); margin-right:0.15rem; }
+    .impact-company-row { display:flex; justify-content:space-between; gap:1rem; padding:0.2rem 0.4rem 0.2rem 2.4rem;
+        font-family:var(--font-mono); font-size:0.78rem; color:var(--text-secondary); }
+    .impact-company-row .cw { color:var(--muted); }
+    .impact-empty { color:var(--muted); font-family:var(--font-mono); font-size:0.78rem; padding:0.3rem 2rem; }
+
+    .impact-trace-round { margin-bottom:0.55rem; }
+    .impact-trace-label { font-family:var(--font-mono); font-size:0.7rem; color:var(--text-secondary); margin-bottom:0.2rem; }
+    .impact-bar-row { display:flex; align-items:center; gap:0.5rem; margin:0.12rem 0; font-family:var(--font-mono); font-size:0.72rem; }
+    .impact-bar-name { width:130px; color:var(--text-secondary); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+    .impact-bar-track { display:block; flex:1; height:10px; background:var(--bg-base); border-radius:2px; overflow:hidden; }
+    .impact-bar-fill { display:block; height:100%; min-width:1px; }
+    .impact-bar-val { width:78px; text-align:right; color:var(--text-secondary); }
+</style>
+
+@section Scripts {
+    <script>
+        (function () {
+            const $ = id => document.getElementById(id);
+            const kindSel = $('impact-kind'), magInput = $('impact-magnitude'), hint = $('impact-hint');
+            const HINTS = {
+                Demand: { hint: 'Δ final demand ($M). Negative = collapse, positive = surge.', def: -1000 },
+                Supply: { hint: 'Δ primary input ($M). Negative = capacity loss / outage.', def: -1000 },
+                Cost:   { hint: 'Unit-cost rise as a fraction (0.10 = +10%). Drives price cascade.', def: 0.10 }
+            };
+            function syncHint() { const h = HINTS[kindSel.value]; hint.textContent = h.hint; magInput.value = h.def; }
+            kindSel.addEventListener('change', syncHint);
+
+            // When a sector is picked, show its data-derived orientation and default the shock type
+            // to the natural one (guidance, not a lock — the user can still change it).
+            const sectorSel = $('impact-sector'), orientBox = $('impact-orient');
+            const KIND_LABEL = { Demand: 'Demand shock', Supply: 'Supply outage', Cost: 'Cost-push' };
+            function syncSector() {
+                const opt = sectorSel.options[sectorSel.selectedIndex];
+                const share = (parseFloat(opt.dataset.share) * 100).toFixed(1);
+                const orient = opt.dataset.orient, kind = opt.dataset.kind;
+                orientBox.innerHTML = `<b>${opt.textContent}</b> — ${orient} ` +
+                    `(final-demand share ${share}%). Suggested: <span class="tag">${KIND_LABEL[kind]}</span>. ` +
+                    `<span style="color:var(--muted)">Cost-push applies to any sector; override freely.</span>`;
+                kindSel.value = kind;
+                syncHint();
+            }
+            sectorSel.addEventListener('change', syncSector);
+            syncSector();
+
+            // Short interpretation lines per shock type (shown above the results).
+            const INTERP = {
+                Demand: [
+                    'Δ Output = change in each sector’s total gross output (direct + indirect). Negative = contraction.',
+                    'Per-company = sector Δ split by the company’s revenue share of its sector.'
+                ],
+                Supply: [
+                    'Δ Output = downstream output lost as an upstream input goes offline (forward/Ghosh push).',
+                    'Per-company = sector Δ split by the company’s revenue share of its sector.'
+                ],
+                Cost: [
+                    'Δ Price = rise in each sector’s unit cost/price (fraction; 0.0034 = +0.34%), as the cost shock propagates.',
+                    'Companies listed by revenue share only — the $ hit depends on each firm’s cost structure and pass-through, so it is not estimated here.'
+                ]
+            };
+
+            let chart = null;
+            const cls = v => v < 0 ? 'impact-val-neg' : 'impact-val-pos';
+            // For a quantity shock a fall (negative) is the bad outcome; for a price shock a rise
+            // (positive) is the bad outcome. Colour by "bad = red" accordingly.
+            const colorFor = (v, isPrice) => {
+                const bad = isPrice ? v > 0 : v < 0;
+                return bad ? '#f85149' : '#39d353';
+            };
+            const fmt = v => (v >= 0 ? '+' : '') + v.toLocaleString(undefined, { maximumFractionDigits: 2 });
+            // Trace contributions can be tiny fractions (price rounds) or large $ (quantity rounds).
+            const ftrace = v => {
+                const a = Math.abs(v);
+                const digits = a !== 0 && a < 1 ? 4 : 1;
+                return (v >= 0 ? '+' : '') + v.toLocaleString(undefined, { maximumFractionDigits: digits });
+            };
+
+            $('impact-run').addEventListener('click', run);
+
+            async function run() {
+                const body = { kind: kindSel.value, sector: $('impact-sector').value, magnitude: parseFloat(magInput.value) };
+                const res = await fetch('/impact/solve', {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body)
+                });
+                if (!res.ok) { alert('Solve failed: ' + await res.text()); return; }
+                render(await res.json(), body);
+            }
+
+            function render(r, body) {
+                const isPrice = r.isPrice;
+                $('impact-results').hidden = false;
+                const sum = $('impact-summary'); sum.hidden = false;
+                const origin = body.sector.replace(/_/g, ' ');
+                sum.innerHTML = `Shock: <b>${kindSel.options[kindSel.selectedIndex].text}</b> on <b>${origin}</b>, ` +
+                    `magnitude <b>${fmt(body.magnitude)}</b>. ${r.sectors.length} sectors moved. ` +
+                    `Solver condition #(I−A) = <b>${r.conditionNumber.toFixed(2)}</b>.`;
+                $('impact-valcol').textContent = isPrice ? 'Δ Price' : 'Δ Output';
+                const interp = $('impact-interpret'); interp.hidden = false;
+                interp.innerHTML = INTERP[body.kind].map(l => `<div>${l}</div>`).join('');
+                renderChart(r, isPrice);
+                renderTable(r, isPrice);
+                renderTrace(r, isPrice);
+            }
+
+            function renderChart(r, isPrice) {
+                const labels = r.sectors.map(s => s.sector);
+                const data = r.sectors.map(s => s.value);
+                const colors = data.map(v => colorFor(v, isPrice));
+                if (chart) chart.destroy();
+                chart = new Chart($('impact-chart'), {
+                    type: 'bar',
+                    data: { labels, datasets: [{ data, backgroundColor: colors, borderWidth: 0 }] },
+                    options: {
+                        indexAxis: 'y', responsive: true, maintainAspectRatio: false,
+                        plugins: { legend: { display: false } },
+                        scales: {
+                            x: { grid: { color: '#1c2738' }, ticks: { color: '#7a9ab5', font: { family: 'JetBrains Mono', size: 10 } } },
+                            y: { grid: { display: false }, ticks: { color: '#c9d8e8', font: { family: 'JetBrains Mono', size: 10 } } }
+                        }
+                    }
+                });
+            }
+
+            function renderTable(r, isPrice) {
+                const tb = $('impact-tbody'); tb.innerHTML = '';
+                r.sectors.forEach((s, i) => {
+                    const tr = document.createElement('tr');
+                    tr.className = 'impact-row';
+                    tr.innerHTML = `<td class="impact-toggle">▸</td><td>${s.sector}</td>` +
+                        `<td style="text-align:right;" class="${cls(s.value)}">${fmt(s.value)}</td>` +
+                        `<td style="text-align:right;">${s.companies.length}</td>`;
+                    const detail = document.createElement('tr');
+                    detail.className = 'impact-companies'; detail.hidden = true;
+                    const td = document.createElement('td'); td.colSpan = 4;
+                    const companyRow = c => {
+                        // Price shock: show revenue share only (no fabricated $). Quantity shock:
+                        // show the apportioned Δ output alongside the share.
+                        const right = isPrice
+                            ? `<span class="cw">${(c.weight * 100).toFixed(1)}% of sector revenue</span>`
+                            : `<span><span class="cw">${(c.weight * 100).toFixed(1)}% · </span>` +
+                              `<span class="${cls(c.value)}">${fmt(c.value)}</span></span>`;
+                        return `<div class="impact-company-row"><span>${c.name}</span>${right}</div>`;
+                    };
+                    // GICS-industry sub-grouping: each industry header carries its summed Δ (quantity
+                    // shocks); for cost shocks it stays label-only (no fabricated $). Companies nest under it.
+                    td.innerHTML = s.industries && s.industries.length
+                        ? s.industries.map(ig => {
+                            const head = isPrice
+                                ? `<div class="impact-industry-row"><span>${ig.industry}</span></div>`
+                                : `<div class="impact-industry-row"><span>${ig.industry}</span>` +
+                                  `<span class="${cls(ig.value)}">${fmt(ig.value)}</span></div>`;
+                            return head + ig.companies.map(companyRow).join('');
+                        }).join('')
+                        : '<div class="impact-empty">No companies recorded in this sector.</div>';
+                    detail.appendChild(td);
+                    tr.addEventListener('click', () => {
+                        detail.hidden = !detail.hidden;
+                        tr.querySelector('.impact-toggle').textContent = detail.hidden ? '▸' : '▾';
+                    });
+                    tb.appendChild(tr); tb.appendChild(detail);
+                });
+            }
+
+            function renderTrace(r, isPrice) {
+                const box = $('impact-trace'); box.innerHTML = '';
+                if (!r.trace || r.trace.length === 0) {
+                    box.innerHTML = '<div class="impact-empty">Round-by-round trace is available for demand and cost shocks.</div>';
+                    return;
+                }
+                // Scale bars against the largest single contribution across all rounds.
+                let peak = 0;
+                r.trace.forEach(rd => rd.contributions.forEach(v => peak = Math.max(peak, Math.abs(v))));
+                peak = peak || 1;
+                const labelRound = n => n === 0 ? 'Round 0 — direct shock' : `Round ${n} — ${n === 1 ? 'direct suppliers' : 'indirect, tier ' + n}`;
+                r.trace.forEach(rd => {
+                    const movers = rd.contributions
+                        .map((v, idx) => ({ v, name: r.sectors.find(s => s.sectorIndex === idx)?.sector || ('S' + idx) }))
+                        .filter(m => Math.abs(m.v) > 1e-6)
+                        .sort((a, b) => Math.abs(b.v) - Math.abs(a.v)).slice(0, 6);
+                    if (!movers.length) return;
+                    const div = document.createElement('div'); div.className = 'impact-trace-round';
+                    div.innerHTML = `<div class="impact-trace-label">${labelRound(rd.round)}</div>` +
+                        movers.map(m => {
+                            const w = Math.max(Math.abs(m.v) / peak * 100, 0.5).toFixed(1);
+                            return `<div class="impact-bar-row"><span class="impact-bar-name">${m.name}</span>` +
+                                `<span class="impact-bar-track"><span class="impact-bar-fill" style="width:${w}%;background:${colorFor(m.v, isPrice)}"></span></span>` +
+                                `<span class="impact-bar-val ${cls(m.v)}">${ftrace(m.v)}</span></div>`;
+                        }).join('');
+                    box.appendChild(div);
+                });
+            }
+        })();
+    </script>
+}

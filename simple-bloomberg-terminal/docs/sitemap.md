@@ -1108,6 +1108,34 @@
 
 ---
 
+## /impact
+
+| Field | Value |
+|---|---|
+| Controller | ImpactController |
+| Action | Index |
+| HTTP | GET |
+| Route source | `[Route("impact")]` + `[Route("", Name = "ImpactIndex")]` |
+| View | Views/Impact/Index.cshtml |
+| Parameters | — |
+| Notes | The Impact Simulator page — an input-output cascade simulator. Follows the GraphController pattern: one MVC controller that both renders the interactive view and serves its JSON data action. ViewModel: none (returns `View()`) |
+
+---
+
+## /impact/solve
+
+| Field | Value |
+|---|---|
+| Controller | ImpactController |
+| Action | Solve |
+| HTTP | POST |
+| Route source | `[Route("impact")]` + `[Route("solve", Name = "ImpactSolve")]` |
+| View | — (JSON: ranked sector impacts, per-sector companies, and a propagation trace) |
+| Parameters | JSON body (`ImpactRequest`) — { kind, sector, magnitude } |
+| Notes | Runs one input-output cascade (`EventImpactService.Solve`) and returns the ranked sector impacts, per-sector companies, and propagation trace. Responses: 200 OK; 400 (unknown `sector` or `kind`) |
+
+---
+
 ## api/graph/company
 
 | Field | Value |
