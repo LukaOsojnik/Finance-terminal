@@ -17,11 +17,13 @@ public class Company
     public long Id { get; set; }
     public string Name { get; set; }
     public string? Cik { get; set; }
+    public CompanyType Type { get; set; } = CompanyType.PUBLIC;
     public long CountryId { get; set; }
     public Sector Sector { get; set; }
     public GicsIndustry? Industry { get; set; }
     public double? RevenueTotal { get; set; }
     public double? GrossMargin { get; set; }
+    public double? MarketCap { get; set; }
     public DateOnly? AsOf { get; set; }
     public string? Notes { get; set; }
     public DateTime? DeletedAt { get; set; }
@@ -37,6 +39,9 @@ public class Company
 
     [InverseProperty("Company")]
     public virtual ICollection<CompanyRisk> CompanyRisks { get; set; } = [];
+
+    [InverseProperty("Company")]
+    public virtual ICollection<CompanyFinancial> Financials { get; set; } = [];
 
     [InverseProperty("RelatedCompany")]
     public virtual ICollection<RevenueSource> RevenueFromDependents { get; set; } = [];

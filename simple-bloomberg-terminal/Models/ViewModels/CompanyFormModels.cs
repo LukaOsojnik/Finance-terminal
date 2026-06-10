@@ -17,14 +17,23 @@ public class CompanyCreateModel
     [Required]
     public Sector Sector { get; set; }
 
+    // PUBLIC by default; the private (AI-discovery) create path sets PRIVATE. Carried hidden through
+    // the discover -> Create POST round-trip like Symbol.
+    public CompanyType Type { get; set; } = CompanyType.PUBLIC;
+
     public GicsIndustry? Industry { get; set; }
     public double? RevenueTotal { get; set; }
+    public double? MarketCap { get; set; }
 
     [Range(-1, 1)]
     public double? GrossMargin { get; set; }
 
     public DateOnly? AsOf { get; set; }
     public string? Notes { get; set; }
+
+    // Carried hidden from the FMP prefill (Fetch) through to the Create POST so the save step can
+    // re-fetch the full financial history by ticker. Null for a purely manual create.
+    public string? Symbol { get; set; }
 }
 
 public class CompanyEditModel : CompanyCreateModel

@@ -601,6 +601,8 @@ document.addEventListener('submit', async e => {
     const write = (k, v) => localStorage.setItem(k, JSON.stringify(v));
     const escapeHtml = s => String(s ?? '').replace(/[&<>"']/g, c =>
         ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+    // Pretty hostname for a citation link (strip scheme + www.), falling back to the raw URL.
+    const srcHost = u => { try { return new URL(u).hostname.replace(/^www\./, ''); } catch { return u; } };
     // Hide ```save {json}``` blocks from the prose shown in bubbles (kept verbatim in history).
     // Collapse the blank lines the removed blocks leave behind so stacked saves don't gap the text.
     const stripSave = t => t.replace(/```save[\s\S]*?```/g, '').replace(/\n{3,}/g, '\n\n').trim();
@@ -641,6 +643,8 @@ document.addEventListener('submit', async e => {
         // Detect a fresh scan completion or a fresh reply completion, to notify the user.
         let justDone = false, replyDone = false;
         for (const j of jobs) {
+            // Re-discovery completion no longer auto-refreshes the page: it's now a proposal the user
+            // ACCEPTs in the widget (acceptRediscover does the in-place refresh). Just surface the panel.
             if (prevStatus[j.id] === 'Running' && j.status !== 'Running') justDone = true;
             if (prevReplying[j.id] && !j.replying) { replyDone = true; refreshReply(j.id); } // pull the final answer into history
             prevStatus[j.id] = j.status;
@@ -687,7 +691,9 @@ document.addEventListener('submit', async e => {
             const statusLabel = replying ? 'REPLYING…' : j.status;
             const running = j.status === 'Running';
             const meta = replying ? 'AI is answering…'
-                : j.status === 'Done' ? `${j.found} found`
+                : j.status === 'Done' ? (j.kind === 'rediscover'
+                        ? (j.applied ? 'accepted ✓' : 'review & accept')
+                        : `${j.found} found`)
                 : j.status === 'Error' ? (j.error || 'failed') : 'live';
             // While running, show the worker's current phase + a live elapsed timer.
             const startMs = j.createdAt ? Date.parse(j.createdAt) : Date.now();
@@ -695,6 +701,26 @@ document.addEventListener('submit', async e => {
                 ? `<span class="scan-notify-elapsed" data-start="${startMs}">${escapeHtml(fmtElapsed(Date.now() - startMs))}</span>` : '';
             const progress = running
                 ? `<div class="scan-notify-progress">${escapeHtml(j.progress || 'starting…')}</div>` : '';
+            // Re-discovery shows what sonar returned + the saved row's before→after, so you can see if a
+            // new value came back and whether it overwrote the old one.
+            const result = (!running && j.kind === 'rediscover' && j.result)
+                ? `<div class="scan-notify-progress">${escapeHtml(j.result)}</div>` : '';
+            // A re-discovery awaiting a verdict shows its proposed values + ACCEPT/REJECT. Nothing is
+            // saved until ACCEPT; REJECT just dismisses the job (reuses the dismiss handler/endpoint).
+            // Sonar's cited sources, collapsed behind "Sources (N)" so the user can open the pages the
+            // figures came from and judge them. Only on re-discovery rows that have citations.
+            const sources = (j.kind === 'rediscover' && j.sources && j.sources.length)
+                ? `<details class="scan-notify-srcs" style="margin-top:.35rem;">
+                       <summary style="cursor:pointer;font-size:.72rem;opacity:.85;">Sources (${j.sources.length})</summary>
+                       <div style="display:flex;flex-direction:column;gap:.15rem;margin-top:.25rem;">
+                           ${j.sources.map(u => `<a href="${escapeHtml(u)}" target="_blank" rel="noopener" style="font-size:.72rem;">${escapeHtml(srcHost(u))} ↗</a>`).join('')}
+                       </div>
+                   </details>` : '';
+            const verdict = (j.kind === 'rediscover' && j.proposed)
+                ? `<div class="scan-notify-verdict" style="display:flex;gap:.4rem;margin-top:.4rem;">
+                       <button class="btn-detail" data-accept="${j.id}">ACCEPT →</button>
+                       <button class="btn-detail" data-reject="${j.id}" data-dismiss="${j.id}">REJECT</button>
+                   </div>` : '';
             return `<div class="scan-notify-job" data-id="${j.id}">
                 <div class="scan-notify-job-title">${escapeHtml(j.companyName || 'Company')} · ${escapeHtml(j.filingLabel)}
                     <span class="scan-notify-node">${escapeHtml(j.node || '')}</span></div>
@@ -704,7 +730,7 @@ document.addEventListener('submit', async e => {
                     ${elapsed}
                     <button class="scan-notify-job-x" data-dismiss="${j.id}" title="Dismiss">&times;</button>
                 </div>
-                ${progress}
+                ${progress}${result}${sources}${verdict}
             </div>`;
         }).join('');
     }
@@ -931,7 +957,24 @@ document.addEventListener('submit', async e => {
     $('scanNotifyClose').addEventListener('click', () => { panel.hidden = true; });
     $('scanNotifyBack').addEventListener('click', () => { openJobId = null; stopChatPoll(); render(); });
 
+    // ACCEPT a re-discovery proposal: apply it server-side, then refresh the Details page values in
+    // place (if open) and re-poll so the row flips to "accepted ✓" and the buttons drop.
+    async function acceptRediscover(id) {
+        const job = jobById(id);
+        try {
+            const res = await fetch(`/companies/rediscover/${id}/accept`, {
+                method: 'POST', headers: { 'RequestVerificationToken': token() }
+            });
+            if (!res.ok) return;
+            if (job && location.pathname === `/companies/${job.companyId}/profile` && window.refreshCompanyProfile)
+                window.refreshCompanyProfile(job.companyId);
+            poll();
+        } catch { /* leave the proposal in place to retry */ }
+    }
+
     listEl.addEventListener('click', e => {
+        const accept = e.target.closest('[data-accept]');
+        if (accept) { e.stopPropagation(); acceptRediscover(accept.getAttribute('data-accept')); return; }
         const dismiss = e.target.closest('[data-dismiss]');
         if (dismiss) {
             e.stopPropagation();
@@ -948,6 +991,8 @@ document.addEventListener('submit', async e => {
         }
         const card = e.target.closest('.scan-notify-job');
         if (card) {
+            const j = jobById(card.getAttribute('data-id'));
+            if (j && j.kind === 'rediscover') return;   // re-discovery is fire-and-forget — no chat thread
             openJobId = card.getAttribute('data-id');
             forceBottom = true;        // opening a job starts at the latest message
             render();

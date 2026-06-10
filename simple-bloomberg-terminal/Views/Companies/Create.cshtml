@@ -2,16 +2,31 @@
 @{
     ViewData["Title"] = "New Company";
     var fetched = ViewBag.Fetched == true;
+    var privateMode = ViewBag.PrivateMode == true;
 }
 
 <div class="page-header"><h2><span class="page-header-accent">//</span> New Company</h2></div>
 
 <div class="company-form">
-    <form asp-action="Fetch" method="post" class="fetch-bar">
+    <div class="fetch-mode-tabs" style="display:flex; gap:0.5rem; margin-bottom:0.75rem;">
+        <button type="button" class="btn btn-sm @(privateMode ? "btn-secondary" : "btn-primary")" data-mode-tab="public">PUBLIC · TICKER</button>
+        <button type="button" class="btn btn-sm @(privateMode ? "btn-primary" : "btn-secondary")" data-mode-tab="private">PRIVATE · AI</button>
+    </div>
+
+    @* Public: fetch real profile + financials from FMP/Yahoo by ticker. *@
+    <form asp-action="Fetch" method="post" class="fetch-bar" data-mode-panel="public" style="@(privateMode ? "display:none" : null)">
         @Html.AntiForgeryToken()
         <label class="fetch-bar-label" for="symbol">Fetch from API</label>
-        <input id="symbol" name="symbol" class="form-control" placeholder="Ticker — e.g. RL" autofocus/>
+        <input id="symbol" name="symbol" class="form-control" placeholder="Ticker — e.g. RL"/>
         <button type="submit" class="btn btn-secondary">FETCH</button>
+    </form>
+
+    @* Private: discover profile + estimated financials from the web (Perplexity) by company name. *@
+    <form asp-action="DiscoverPrivate" method="post" class="fetch-bar" data-mode-panel="private" style="@(privateMode ? null : "display:none")">
+        @Html.AntiForgeryToken()
+        <label class="fetch-bar-label" for="private-name">Discover with AI</label>
+        <input id="private-name" name="name" class="form-control" placeholder="Private company name — e.g. OpenAI"/>
+        <button type="submit" class="btn btn-secondary">DISCOVER</button>
     </form>
 
     @if (fetched)
@@ -25,6 +40,8 @@
 
     <form asp-route="CompaniesCreate" method="post" class="@(fetched ? "was-fetched" : null)">
         @Html.AntiForgeryToken()
+        <input asp-for="Symbol" type="hidden"/>
+        <input asp-for="Type" type="hidden"/>
         <div asp-validation-summary="ModelOnly" class="text-danger"></div>
 
         <div class="form-cards">
@@ -89,6 +106,11 @@
                         <input asp-for="RevenueTotal" class="form-control" type="number" step="any"/>
                         <span asp-validation-for="RevenueTotal" class="text-danger"></span>
                     </div>
+                    <div class="@(Model.MarketCap.HasValue ? "field-glow" : null)">
+                        <label asp-for="MarketCap" class="form-label">Market Cap (USD)</label>
+                        <input asp-for="MarketCap" class="form-control" type="number" step="any"/>
+                        <span asp-validation-for="MarketCap" class="text-danger"></span>
+                    </div>
                     <div class="@(Model.GrossMargin.HasValue ? "field-glow" : null)">
                         <label asp-for="GrossMargin" class="form-label">Gross Margin (0–1)</label>
                         <input asp-for="GrossMargin" class="form-control" type="number" step="0.01"/>
@@ -114,4 +136,22 @@
     </form>
 </div>
 
-@section Scripts { <partial name="_ValidationScriptsPartial"/> }
+@section Scripts {
+<partial name="_ValidationScriptsPartial"/>
+<script>
+// Public/Private fetch-mode toggle: show the matching fetch bar, highlight the active tab.
+document.querySelectorAll('[data-mode-tab]').forEach(tab => {
+    tab.addEventListener('click', () => {
+        const mode = tab.dataset.modeTab;
+        document.querySelectorAll('[data-mode-tab]').forEach(t => {
+            const on = t === tab;
+            t.classList.toggle('btn-primary', on);
+            t.classList.toggle('btn-secondary', !on);
+        });
+        document.querySelectorAll('[data-mode-panel]').forEach(p => {
+            p.style.display = p.dataset.modePanel === mode ? '' : 'none';
+        });
+    });
+});
+</script>
+}

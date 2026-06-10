@@ -22,6 +22,7 @@ public static class FmpMapper
             Industry = industry,
             // Prefer the sector implied by the (more specific) industry; fall back to FMP's sector.
             Sector = industry?.GetSector() ?? MapSector(p.Sector) ?? Sector.INFORMATION_TECHNOLOGY,
+            MarketCap = p.MarketCap,
             Notes = Truncate(p.Description, 2000)
         };
 

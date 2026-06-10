@@ -7,8 +7,11 @@
 }
 @foreach (var company in Model)
 {
-    <tr>
-        <td class="name-cell" style="font-weight:500;">@company.Name</td>
+    <tr data-type="@company.Type">
+        <td class="name-cell" style="font-weight:500;">
+            @company.Name
+            <span class="type-badge type-@company.Type.ToString().ToLowerInvariant()">@(company.Type == simple_bloomberg_terminal.Models.Enums.CompanyType.PRIVATE ? "PVT" : "PUB")</span>
+        </td>
         <td class="tag-cell">@(company.Country?.Name ?? "—")</td>
         <td class="tag-cell">@company.Sector</td>
         <td class="muted-cell" style="font-size:0.75rem;">@(company.Industry.HasValue ? company.Industry.Value.ToString().Replace("_", " ") : "—")</td>

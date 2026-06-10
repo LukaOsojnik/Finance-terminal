@@ -17,4 +17,13 @@ public interface ICompanyRepository
     void Add(Company entity);
     void Update(Company entity);
     void SoftDelete(long id);
+
+    // Replace a company's financial history with a freshly-fetched set (clear-reinsert, like EDGAR
+    // sources). Derived API data, so old rows are hard-deleted; a no-op if rows is empty.
+    void ReplaceFinancials(long companyId, IReadOnlyList<CompanyFinancial> rows);
+
+    // Ids of active companies that already have FMP-sourced financials — the backfill's "done" marker.
+    // Companies with only YAHOO rows (a quota-degraded fallback) stay eligible so a later run upgrades
+    // them to full FMP data once the daily quota resets.
+    HashSet<long> CompanyIdsWithFmpFinancials();
 }

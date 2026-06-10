@@ -1,3 +1,4 @@
+@using simple_bloomberg_terminal.Models.Enums
 @model simple_bloomberg_terminal.Models.ViewModels.CompanyEditModel
 @{
     ViewData["Title"] = "Edit Company";
@@ -12,6 +13,7 @@
 
     <div class="mb-3"><label asp-for="Name" class="form-label"></label><input asp-for="Name" class="form-control"/><span asp-validation-for="Name" class="text-danger"></span></div>
     <div class="mb-3"><label asp-for="Cik" class="form-label"></label><input asp-for="Cik" class="form-control"/><span asp-validation-for="Cik" class="text-danger"></span></div>
+    <div class="mb-3"><label asp-for="Type" class="form-label">Company Type</label><select asp-for="Type" asp-items="Html.GetEnumSelectList<CompanyType>()" class="form-control"></select><span asp-validation-for="Type" class="text-danger"></span></div>
     <div class="mb-3">
         <label asp-for="CountryId" class="form-label">Country</label>
         @await Html.PartialAsync("_AutocompletePicker", new AutocompletePickerModel {
@@ -27,6 +29,7 @@
     <div class="mb-3"><label asp-for="Sector" class="form-label"></label><select asp-for="Sector" asp-items="ViewBag.Sectors" class="form-control"></select><span asp-validation-for="Sector" class="text-danger"></span></div>
     <div class="mb-3"><label asp-for="Industry" class="form-label"></label><select asp-for="Industry" asp-items="ViewBag.Industries" class="form-control"><option value="">— none —</option></select><span asp-validation-for="Industry" class="text-danger"></span></div>
     <div class="mb-3"><label asp-for="RevenueTotal" class="form-label"></label><input asp-for="RevenueTotal" class="form-control" type="number" step="any"/><span asp-validation-for="RevenueTotal" class="text-danger"></span></div>
+    <div class="mb-3"><label asp-for="MarketCap" class="form-label">Market Cap (USD)</label><input asp-for="MarketCap" class="form-control" type="number" step="any"/><span asp-validation-for="MarketCap" class="text-danger"></span></div>
     <div class="mb-3"><label asp-for="GrossMargin" class="form-label">Gross Margin (0–1)</label><input asp-for="GrossMargin" class="form-control" type="number" step="0.01"/><span asp-validation-for="GrossMargin" class="text-danger"></span></div>
     <div class="mb-3">
         <label asp-for="AsOf" class="form-label"></label>

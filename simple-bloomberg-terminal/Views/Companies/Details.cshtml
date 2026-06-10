@@ -21,17 +21,29 @@
             <h1 class="detail-hero-name">@co.Name</h1>
             <a asp-controller="Graph" asp-action="Index" asp-route-companyId="@co.Id" class="detail-graph-link" title="View relationship graph">◉ GRAPH →</a>
             <span class="detail-code-badge">@co.Sector.ToString().Replace("_", " ")</span>
+            <span class="type-badge type-@co.Type.ToString().ToLowerInvariant()">@co.Type</span>
             @if (co.Country != null)
             {
                 <span class="detail-region-tag">@co.Country.Code</span>
             }
+            @* Private companies have no ticker, so FMP/Yahoo can't refresh them — re-pull the profile
+               + estimated financials from Perplexity sonar-pro instead. Runs as a detached job handed
+               to the bottom-right widget; the page reloads itself when it finishes. *@
+            @if (co.Type == CompanyType.PRIVATE)
+            {
+                @Html.AntiForgeryToken()
+                <button type="button" class="btn-detail js-rediscover" data-company="@co.Id" data-name="@co.Name"
+                        data-confirm="Repopulate this company's profile and financials from a Perplexity (sonar-pro) web search? It runs in the background; current values are overwritten when it finishes.">
+                    ⟲ RE-DISCOVER (PERPLEXITY) →
+                </button>
+            }
         </div>
-        <div class="detail-hero-sub">
+        <div class="detail-hero-sub" id="cvHeroSub">
             INDUSTRY: <span class="detail-hero-accent">@Model.IndustryLabel</span>
         </div>
     </div>
 
-    <div class="detail-metrics-row">
+    <div class="detail-metrics-row" id="cvHeroMetrics">
         <div class="detail-metric-card">
             <div class="detail-metric-label">REVENUE</div>
             <div class="detail-metric-value">
@@ -51,6 +63,19 @@
                 @if (co.GrossMargin.HasValue)
                 {
                     <span>@((co.GrossMargin.Value * 100).ToString("F1"))%</span>
+                }
+                else
+                {
+                    <span class="muted-cell">—</span>
+                }
+            </div>
+        </div>
+        <div class="detail-metric-card">
+            <div class="detail-metric-label">MARKET CAP</div>
+            <div class="detail-metric-value">
+                @if (co.MarketCap.HasValue)
+                {
+                    <span>$@((co.MarketCap.Value / 1e9).ToString("F1"))B</span>
                 }
                 else
                 {
@@ -84,12 +109,12 @@
 
 @* ── Financial Overview ── *@
 <div class="detail-section-label">// FINANCIAL OVERVIEW</div>
-<div class="row g-3 mb-4">
+<div class="row g-3 mb-4" id="cvCompanyData">
     <div class="col-12">
         <div class="detail-card">
             <div class="detail-card-title">COMPANY DATA</div>
             @{
-                var hasAnyData = co.RevenueTotal.HasValue || co.GrossMargin.HasValue ||
+                var hasAnyData = co.RevenueTotal.HasValue || co.GrossMargin.HasValue || co.MarketCap.HasValue ||
                                  co.Country != null || co.AsOf.HasValue || !string.IsNullOrEmpty(co.Cik);
             }
             @if (!hasAnyData)
@@ -119,6 +144,19 @@
                                 @if (co.GrossMargin.HasValue)
                                 {
                                     <span>@((co.GrossMargin.Value * 100).ToString("F1"))%</span>
+                                }
+                                else
+                                {
+                                    <span class="muted-cell">—</span>
+                                }
+                            </td>
+                        </tr>
+                        <tr>
+                            <td class="tag-cell">Market Cap</td>
+                            <td class="num-cell">
+                                @if (co.MarketCap.HasValue)
+                                {
+                                    <span>$@((co.MarketCap.Value / 1e9).ToString("F2"))B</span>
                                 }
                                 else
                                 {
@@ -166,6 +204,90 @@
                         </tr>
                     </tbody>
                 </table>
+            }
+        </div>
+    </div>
+</div>
+
+@* ── Financial History ── *@
+@{
+    var annual = Model.Financials.Where(f => f.Period == FiscalPeriod.FY).ToList();
+    var quarterly = Model.Financials.Where(f => f.Period != FiscalPeriod.FY).ToList();
+
+    // Value formatters shared by every cell.
+    Func<double?, string> money = v => v.HasValue ? "$" + (v.Value / 1e9).ToString("F2") + "B" : "—";
+    Func<double?, string> pct = v => v.HasValue ? (v.Value * 100).ToString("F1") + "%" : "—";
+    Func<double?, string> eps = v => v.HasValue ? v.Value.ToString("F2") : "—";
+
+    // Industry-standard layout: metrics down the rows, each fiscal period its own column.
+    var metrics = new (string Label, Func<CompanyFinancial, string> Cell)[]
+    {
+        ("Revenue", f => money(f.Revenue)),
+        ("Gross Margin", f => pct(f.GrossMargin)),
+        ("Operating Margin", f => pct(f.OperatingMargin)),
+        ("EBITDA", f => money(f.Ebitda)),
+        ("Net Income", f => money(f.NetIncome)),
+        ("Net Margin", f => pct(f.NetMargin)),
+        ("EPS", f => eps(f.Eps)),
+        ("Free Cash Flow", f => money(f.FreeCashFlow)),
+        ("Total Cash", f => money(f.TotalCash)),
+        ("Total Debt", f => money(f.TotalDebt)),
+    };
+    // Column header per period: "FY2025" for annual, "Q2 2026" for a quarter.
+    Func<CompanyFinancial, string> colHead = f => f.Period == FiscalPeriod.FY ? "FY" + f.FiscalYear : f.Period + " " + f.FiscalYear;
+}
+<div class="detail-section-label">// FINANCIAL HISTORY</div>
+<div class="row g-3 mb-4" id="cvFinHistory">
+    <div class="col-12">
+        <div class="detail-card">
+            @if (!Model.Financials.Any())
+            {
+                <div class="detail-pending">NO FINANCIAL HISTORY — PENDING</div>
+            }
+            else
+            {
+                <div class="fin-history-toggle mb-2">
+                    <button type="button" class="btn btn-sm btn-secondary active" data-fin-tab="annual">ANNUAL</button>
+                    <button type="button" class="btn btn-sm btn-secondary @(quarterly.Any() ? null : "d-none")" data-fin-tab="quarterly">QUARTERLY</button>
+                </div>
+                @foreach (var (rows, tab) in new[] { (annual, "annual"), (quarterly, "quarterly") })
+                {
+                    <div class="fin-history-panel" data-fin-panel="@tab" style="@(tab == "annual" ? "" : "display:none")">
+                        @if (!rows.Any())
+                        {
+                            <div class="detail-pending">NO @tab.ToUpper() DATA</div>
+                        }
+                        else
+                        {
+                            <div class="fin-matrix-scroll">
+                                <table class="terminal-table fin-matrix">
+                                    <thead>
+                                        <tr>
+                                            <th>Metric</th>
+                                            @foreach (var f in rows)
+                                            {
+                                                <th class="num-cell">@colHead(f)</th>
+                                            }
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        @foreach (var m in metrics)
+                                        {
+                                            <tr>
+                                                <td class="tag-cell">@m.Label</td>
+                                                @foreach (var f in rows)
+                                                {
+                                                    <td class="num-cell">@m.Cell(f)</td>
+                                                }
+                                            </tr>
+                                        }
+                                    </tbody>
+                                </table>
+                            </div>
+                            <div class="fin-source-note muted-cell">Source: @string.Join(", ", rows.Select(r => r.Source.ToString()).Distinct())</div>
+                        }
+                    </div>
+                }
             }
         </div>
     </div>
@@ -543,6 +665,62 @@
 
 @section Scripts {
 <script>
+// RE-DISCOVER (private companies): fire the detached re-discovery, hand the job id to the bottom-right
+// widget, and let the page reload itself when the widget sees the job finish (see site.js poll()).
+document.querySelectorAll('.js-rediscover').forEach(btn => {
+    const original = btn.textContent;
+    btn.addEventListener('click', async () => {
+        if (window.uiConfirm && !(await uiConfirm(btn.dataset.confirm, { danger: true }))) return;
+        btn.disabled = true;
+        btn.textContent = 'STARTING…';
+        try {
+            const token = document.querySelector('input[name="__RequestVerificationToken"]')?.value;
+            const res = await fetch(`/companies/${btn.dataset.company}/rediscover`, {
+                method: 'POST', headers: { 'RequestVerificationToken': token }
+            });
+            if (!res.ok) { btn.textContent = 'FAILED — ' + (await res.text() || res.status); btn.disabled = false; return; }
+            const { jobId } = await res.json();
+            if (window.startScanJob) window.startScanJob(jobId, {
+                kind: 'rediscover', companyId: Number(btn.dataset.company), companyName: btn.dataset.name,
+                filingLabel: 'Profile re-discovery', node: 'PROFILE', progress: 'Searching the web with sonar-pro…'
+            });
+            // The widget now owns progress + the accept/reject verdict — restore the button so it's not
+            // stuck on a stale "running" label and can be fired again.
+            btn.textContent = original;
+            btn.disabled = false;
+        } catch (e) { btn.textContent = 'FAILED — ' + e.message; btn.disabled = false; }
+    });
+});
+
+// Financial-history annual/quarterly toggle: show the matching panel, mark the button active.
+function bindFinTabs() {
+    document.querySelectorAll('[data-fin-tab]').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const tab = btn.dataset.finTab;
+            document.querySelectorAll('[data-fin-tab]').forEach(b => b.classList.toggle('active', b === btn));
+            document.querySelectorAll('[data-fin-panel]').forEach(p => {
+                p.style.display = p.dataset.finPanel === tab ? '' : 'none';
+            });
+        });
+    });
+}
+bindFinTabs();
+
+// Re-discovery finished -> pull the fresh Details HTML and swap just the value regions in place, so the
+// page doesn't fully reload (scroll/widget stay put). The bottom-right widget calls this on completion.
+// Re-binds the fin-history tabs since replacing that region's HTML drops their listeners.
+window.refreshCompanyProfile = async function (companyId) {
+    try {
+        const res = await fetch(`/companies/${companyId}/profile`);
+        if (!res.ok) return;
+        const doc = new DOMParser().parseFromString(await res.text(), 'text/html');
+        for (const id of ['cvHeroSub', 'cvHeroMetrics', 'cvCompanyData', 'cvFinHistory']) {
+            const fresh = doc.getElementById(id), cur = document.getElementById(id);
+            if (fresh && cur) cur.innerHTML = fresh.innerHTML;
+        }
+        bindFinTabs();
+    } catch { /* leave the page as-is on a fetch error */ }
+};
 (function () {
     // One handler for both section buttons: collect the section's segment names from its table, ask
     // sonar for the named counterparties per segment, render grouped, and link on confirm.

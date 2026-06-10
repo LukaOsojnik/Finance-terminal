@@ -14,6 +14,7 @@ public class AppDbContext : DbContext
     public DbSet<RevenueSource> RevenueSources { get; set; }
     public DbSet<CostSource> CostSources { get; set; }
     public DbSet<CompanyRisk> CompanyRisks { get; set; }
+    public DbSet<CompanyFinancial> CompanyFinancials { get; set; }
     public DbSet<CountryDetails> CountryDetails { get; set; }
     public DbSet<CountryAdvantage> CountryAdvantages { get; set; }
     public DbSet<CountryChallenge> CountryChallenges { get; set; }
@@ -70,6 +71,18 @@ public class AppDbContext : DbContext
             e.ToTable(t => t.HasCheckConstraint(
                 "CK_SourceFieldReview_OneSource",
                 "((RevenueSourceId IS NOT NULL) + (CostSourceId IS NOT NULL) + (CompanyRiskId IS NOT NULL)) = 1"));
+        });
+
+        modelBuilder.Entity<CompanyFinancial>(e =>
+        {
+            e.HasOne(f => f.Company)
+                .WithMany(c => c.Financials)
+                .HasForeignKey(f => f.CompanyId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            // One row per company per fiscal period — the upsert key. Re-fetching a company
+            // refreshes these rows in place instead of duplicating history.
+            e.HasIndex(f => new { f.CompanyId, f.FiscalYear, f.Period }).IsUnique();
         });
 
         modelBuilder.Entity<Filing>(e =>

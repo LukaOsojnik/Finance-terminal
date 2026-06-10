@@ -34,7 +34,10 @@ public class ExtractionController : Controller
     private readonly IFmpApiClient _fmp;
     private readonly IYahooFinanceClient _yahoo;
     private readonly IExchangeRateApiClient _exchangeRate;
+    private readonly ICompanyFinancialsService _financials;
+    private readonly IIndustryClassifier _industryClassifier;
     private readonly ScanJobStore _jobs;
+    private readonly RediscoverJobStore _rediscoverJobs;
     private readonly IServiceScopeFactory _scopeFactory;
 
     public ExtractionController(
@@ -52,7 +55,10 @@ public class ExtractionController : Controller
         IFmpApiClient fmp,
         IYahooFinanceClient yahoo,
         IExchangeRateApiClient exchangeRate,
+        ICompanyFinancialsService financials,
+        IIndustryClassifier industryClassifier,
         ScanJobStore jobs,
+        RediscoverJobStore rediscoverJobs,
         IServiceScopeFactory scopeFactory)
     {
         _revenue = revenue;
@@ -69,7 +75,10 @@ public class ExtractionController : Controller
         _fmp = fmp;
         _yahoo = yahoo;
         _exchangeRate = exchangeRate;
+        _financials = financials;
+        _industryClassifier = industryClassifier;
         _jobs = jobs;
+        _rediscoverJobs = rediscoverJobs;
         _scopeFactory = scopeFactory;
     }
 
@@ -535,36 +544,70 @@ public class ExtractionController : Controller
     [HttpGet, Route("scan-jobs")]
     public IActionResult ScanJobs([FromQuery] string? ids)
     {
+        // The browser tracks both filing-scan and private-company re-discovery job ids in one list;
+        // resolve each against whichever store holds it. Both shapes carry a `kind` so the widget can
+        // tell a chat-capable scan from a fire-and-forget re-discovery.
         var list = (ids ?? "")
             .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-            .Select(_jobs.Get)
-            .Where(j => j is not null)
-            .Select(j => new
-            {
-                id = j!.Id,
-                status = j.Status.ToString(),
-                progress = j.Progress,
-                replying = j.Replying,
-                createdAt = j.CreatedAt,
-                companyId = j.CompanyId,
-                companyName = j.CompanyName,
-                accession = j.Accession,
-                doc = j.Doc,
-                node = j.Node,
-                form = j.Form,
-                filingLabel = j.FilingLabel,
-                found = j.Report?.Found ?? 0,
-                summary = j.Summary,
-                error = j.Error
-            });
+            .Select(id => _jobs.Get(id) is { } s ? ScanDto(s)
+                        : _rediscoverJobs.Get(id) is { } r ? RediscoverDto(r)
+                        : null)
+            .Where(j => j is not null);
         return Json(list);
     }
 
-    // Drop a job the user dismissed from the widget.
+    private static object ScanDto(ScanJob j) => new
+    {
+        kind = "scan",
+        id = j.Id,
+        status = j.Status.ToString(),
+        progress = j.Progress,
+        replying = j.Replying,
+        createdAt = j.CreatedAt,
+        companyId = j.CompanyId,
+        companyName = j.CompanyName,
+        accession = j.Accession,
+        doc = j.Doc,
+        node = j.Node,
+        form = j.Form,
+        filingLabel = j.FilingLabel,
+        found = j.Report?.Found ?? 0,
+        summary = j.Summary,
+        error = j.Error
+    };
+
+    // Project a re-discovery job into the same shape the widget consumes, with the chat-only fields
+    // blanked. filingLabel/node fill the widget's title slots with a sensible label.
+    private static object RediscoverDto(RediscoverJob j) => new
+    {
+        kind = "rediscover",
+        id = j.Id,
+        status = j.Status.ToString(),
+        progress = j.Progress,
+        replying = false,
+        createdAt = j.CreatedAt,
+        companyId = j.CompanyId,
+        companyName = j.CompanyName,
+        accession = "",
+        doc = "",
+        node = "PROFILE",
+        form = (string?)null,
+        filingLabel = "Profile re-discovery",
+        found = 0,
+        summary = "",
+        result = j.Result,
+        proposed = j.Proposed != null && !j.Applied,   // awaiting the user's accept/reject
+        applied = j.Applied,
+        sources = j.Sources,
+        error = j.Error
+    };
+
+    // Drop a job the user dismissed from the widget. Try both stores — the id is from either.
     [HttpPost, Route("scan-jobs/dismiss/{jobId}")]
     public IActionResult DismissScanJob(string jobId)
     {
         _jobs.Remove(jobId);
+        _rediscoverJobs.Remove(jobId);
         return Ok();
     }
 
@@ -790,17 +833,29 @@ public class ExtractionController : Controller
                     Industry = model.Industry,
                     RevenueTotal = model.RevenueTotal,
                     GrossMargin = model.GrossMargin,
+                    MarketCap = model.MarketCap,
                     AsOf = model.AsOf,
                     Notes = model.Notes
                 };
                 _companies.Add(entity);
+
+                // Same dated financial history the New Company form pulls. Best-effort: a failure
+                // (premium-gated, unreachable) must not block linking the counterparty.
+                try { _companies.ReplaceFinancials(entity.Id, await _financials.BuildAsync(entity.Id, req.Ticker.Trim())); }
+                catch (HttpRequestException) { /* financials unavailable — company still created */ }
                 return entity.Id;
             }
         }
 
-        // No ticker / FMP miss: minimal company so the link still works.
+        // No ticker / FMP miss: minimal company so the link still works. Previously this left Industry
+        // null; resolve it within the sector (the same classifier the New Company form uses) so
+        // ticker-less companies aren't stuck unclassified. No ticker => treat as private.
         var sec = ParseSector(req.Sector) ?? owner.Sector;
-        var stub = new Company(req.Name, ResolveCountryId(req.CountryCode, owner), sec);
+        var stub = new Company(req.Name, ResolveCountryId(req.CountryCode, owner), sec)
+        {
+            Type = string.IsNullOrWhiteSpace(req.Ticker) ? CompanyType.PRIVATE : CompanyType.PUBLIC,
+            Industry = await _industryClassifier.ClassifyAsync(sec, req.Name, null)
+        };
         _companies.Add(stub);
         return stub.Id;
     }

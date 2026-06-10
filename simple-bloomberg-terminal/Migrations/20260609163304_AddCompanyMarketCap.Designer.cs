@@ -3,6 +3,7 @@ using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using simple_bloomberg_terminal.Data;
 
@@ -11,9 +12,11 @@ using simple_bloomberg_terminal.Data;
 namespace simple_bloomberg_terminal.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260609163304_AddCompanyMarketCap")]
+    partial class AddCompanyMarketCap
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -124,102 +127,11 @@ namespace simple_bloomberg_terminal.Migrations
                     b.Property<int>("Sector")
                         .HasColumnType("int");
 
-                    b.Property<int>("Type")
-                        .HasColumnType("int");
-
                     b.HasKey("Id");
 
                     b.HasIndex("CountryId");
 
                     b.ToTable("Companies");
-                });
-
-            modelBuilder.Entity("simple_bloomberg_terminal.Models.Entities.CompanyFinancial", b =>
-                {
-                    b.Property<long>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("bigint");
-
-                    MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b.Property<long>("Id"));
-
-                    b.Property<DateTime>("CapturedAt")
-                        .HasColumnType("datetime(6)");
-
-                    b.Property<long>("CompanyId")
-                        .HasColumnType("bigint");
-
-                    b.Property<double?>("CostOfRevenue")
-                        .HasColumnType("double");
-
-                    b.Property<double?>("CurrentRatio")
-                        .HasColumnType("double");
-
-                    b.Property<double?>("DebtToEquity")
-                        .HasColumnType("double");
-
-                    b.Property<DateTime?>("DeletedAt")
-                        .HasColumnType("datetime(6)");
-
-                    b.Property<double?>("Ebitda")
-                        .HasColumnType("double");
-
-                    b.Property<DateOnly?>("EndDate")
-                        .HasColumnType("date");
-
-                    b.Property<double?>("Eps")
-                        .HasColumnType("double");
-
-                    b.Property<int>("FiscalYear")
-                        .HasColumnType("int");
-
-                    b.Property<double?>("FreeCashFlow")
-                        .HasColumnType("double");
-
-                    b.Property<double?>("GrossMargin")
-                        .HasColumnType("double");
-
-                    b.Property<double?>("GrossProfit")
-                        .HasColumnType("double");
-
-                    b.Property<double?>("NetIncome")
-                        .HasColumnType("double");
-
-                    b.Property<double?>("NetMargin")
-                        .HasColumnType("double");
-
-                    b.Property<double?>("OperatingCashFlow")
-                        .HasColumnType("double");
-
-                    b.Property<double?>("OperatingIncome")
-                        .HasColumnType("double");
-
-                    b.Property<double?>("OperatingMargin")
-                        .HasColumnType("double");
-
-                    b.Property<int>("Period")
-                        .HasColumnType("int");
-
-                    b.Property<string>("ReportedCurrency")
-                        .HasColumnType("longtext");
-
-                    b.Property<double?>("Revenue")
-                        .HasColumnType("double");
-
-                    b.Property<int>("Source")
-                        .HasColumnType("int");
-
-                    b.Property<double?>("TotalCash")
-                        .HasColumnType("double");
-
-                    b.Property<double?>("TotalDebt")
-                        .HasColumnType("double");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("CompanyId", "FiscalYear", "Period")
-                        .IsUnique();
-
-                    b.ToTable("CompanyFinancials");
                 });
 
             modelBuilder.Entity("simple_bloomberg_terminal.Models.Entities.CompanyRisk", b =>
@@ -746,17 +658,6 @@ namespace simple_bloomberg_terminal.Migrations
                     b.Navigation("Country");
                 });
 
-            modelBuilder.Entity("simple_bloomberg_terminal.Models.Entities.CompanyFinancial", b =>
-                {
-                    b.HasOne("simple_bloomberg_terminal.Models.Entities.Company", "Company")
-                        .WithMany("Financials")
-                        .HasForeignKey("CompanyId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("Company");
-                });
-
             modelBuilder.Entity("simple_bloomberg_terminal.Models.Entities.CompanyRisk", b =>
                 {
                     b.HasOne("simple_bloomberg_terminal.Models.Entities.Company", "Company")
@@ -915,8 +816,6 @@ namespace simple_bloomberg_terminal.Migrations
                     b.Navigation("CostFromDependents");
 
                     b.Navigation("CostSources");
-
-                    b.Navigation("Financials");
 
                     b.Navigation("RevenueFromDependents");
 

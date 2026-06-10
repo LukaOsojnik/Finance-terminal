@@ -11,9 +11,18 @@
 
 @if (TempData["Error"] != null) { <div class="alert alert-danger">@TempData["Error"]</div> }
 
+@* Token for the backfill POST (read by the inline script, sent as the RequestVerificationToken header). *@
+@Html.AntiForgeryToken()
+
 <div class="d-flex" style="margin-bottom:1rem; gap:0.75rem; align-items:center;">
     <input type="text" class="form-control search-input" placeholder="Search name / cik / country..." data-search-url="@Url.Action("Search")" style="max-width:420px;"/>
     <a asp-route="CompaniesCreate" class="btn btn-primary">+ NEW</a>
+    <button type="button" id="backfill-btn" class="btn btn-secondary" title="Fetch real profile + financials from FMP/Yahoo for companies that don't have it yet">⟳ BACKFILL FROM APIs</button>
+    <div class="type-filter" style="margin-left:auto; display:flex; gap:0.4rem;">
+        <button type="button" class="btn btn-sm btn-primary" data-type-filter="all">ALL</button>
+        <button type="button" class="btn btn-sm btn-secondary" data-type-filter="PUBLIC">PUBLIC</button>
+        <button type="button" class="btn btn-sm btn-secondary" data-type-filter="PRIVATE">PRIVATE</button>
+    </div>
 </div>
 
 <table class="terminal-table">
@@ -51,3 +60,87 @@
         </div>
     </div>
 </div>
+
+@* Backfill results popup: lists which companies were refilled from the real APIs. Driven by the
+   inline script below. Hidden until the backfill button is clicked. *@
+<div id="backfill-modal" class="modal-overlay" hidden>
+    <div class="modal-box" role="dialog" aria-modal="true" aria-labelledby="backfill-modal-title" style="max-width:680px;">
+        <div class="modal-header">
+            <h3 id="backfill-modal-title">Backfill from APIs</h3>
+            <button type="button" class="modal-close" data-modal-close aria-label="Close">&times;</button>
+        </div>
+        <div id="backfill-modal-body" class="modal-body"></div>
+        <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" data-modal-close>Close</button>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+<script>
+// Public/Private row filter. Client-side so it composes with search; a MutationObserver re-applies
+// the active filter after the search swaps the table body (#table-body) out.
+(function () {
+    const tbody = document.getElementById('table-body');
+    if (!tbody) return;
+    let active = 'all';
+    const apply = () => tbody.querySelectorAll('tr[data-type]').forEach(tr => {
+        tr.style.display = (active === 'all' || tr.dataset.type === active) ? '' : 'none';
+    });
+    document.querySelectorAll('[data-type-filter]').forEach(b => b.addEventListener('click', () => {
+        active = b.dataset.typeFilter;
+        document.querySelectorAll('[data-type-filter]').forEach(x => {
+            const on = x === b;
+            x.classList.toggle('btn-primary', on);
+            x.classList.toggle('btn-secondary', !on);
+        });
+        apply();
+    }));
+    new MutationObserver(apply).observe(tbody, { childList: true });
+})();
+(function () {
+    const btn = document.getElementById('backfill-btn');
+    const overlay = document.getElementById('backfill-modal');
+    if (!btn || !overlay) return;
+    const body = document.getElementById('backfill-modal-body');
+    const token = () => document.querySelector('input[name="__RequestVerificationToken"]')?.value;
+    const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;' }[c]));
+    let changed = false;
+
+    const close = () => {
+        overlay.setAttribute('hidden', '');
+        // Profile fields were overwritten, so reload to show the refreshed table.
+        if (changed) location.reload();
+    };
+    overlay.addEventListener('click', e => {
+        if (e.target === overlay || e.target.closest('[data-modal-close]')) close();
+    });
+    document.addEventListener('keydown', e => { if (e.key === 'Escape' && !overlay.hidden) close(); });
+
+    btn.addEventListener('click', async () => {
+        overlay.removeAttribute('hidden');
+        body.innerHTML = '<div class="muted-cell">Fetching profile + financials from FMP / Yahoo — this can take a minute…</div>';
+        btn.disabled = true;
+        try {
+            const res = await fetch('@Url.Action("Backfill")', { method: 'POST', headers: { 'RequestVerificationToken': token() } });
+            if (!res.ok) { body.innerHTML = `<div class="text-danger">${esc(await res.text()) || ('Error ' + res.status)}</div>`; return; }
+            const d = await res.json();
+            changed = d.filled.length > 0;
+            const rows = d.filled.map(f =>
+                `<tr><td class="name-cell">${esc(f.name)}</td><td class="tag-cell">${esc(f.ticker)}</td><td class="num-cell">${f.rows}</td><td class="tag-cell">${esc(f.source)}</td></tr>`).join('');
+            const table = rows
+                ? `<table class="terminal-table"><thead><tr><th>Company</th><th>Ticker</th><th class="num-cell">Rows</th><th>Source</th></tr></thead><tbody>${rows}</tbody></table>`
+                : '<div class="muted-cell">No companies were refilled.</div>';
+            const failed = d.failed.length
+                ? `<div class="muted-cell" style="margin-top:.7rem;">Skipped/failed: ${d.failed.map(f => esc(f.name) + ' (' + esc(f.reason) + ')').join(', ')}</div>`
+                : '';
+            body.innerHTML = `<div style="margin-bottom:.6rem;">${esc(d.message)}</div>${table}${failed}`;
+        } catch (e) {
+            body.innerHTML = `<div class="text-danger">Request failed: ${esc(e)}</div>`;
+        } finally {
+            btn.disabled = false;
+        }
+    });
+})();
+</script>
+}

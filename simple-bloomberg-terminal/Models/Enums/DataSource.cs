@@ -5,5 +5,7 @@ public enum DataSource
     EDGAR,
     MANUAL,
     CLAUDE_ESTIMATED,
-    OPENBB
+    OPENBB,
+    FMP,
+    YAHOO
 }

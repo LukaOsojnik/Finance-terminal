@@ -9,4 +9,11 @@ public interface IFmpApiClient
 {
     Task<FmpProfile?> GetProfileAsync(string symbol);
     Task<FmpIncome?> GetLatestIncomeAsync(string symbol);
+
+    // Multi-period statements for building CompanyFinancial history. period is "annual" or "quarter".
+    // A 404 / empty array surfaces as null; premium-gated symbols (non-US) throw 402 like the rest.
+    Task<List<FmpIncome>?> GetIncomeStatementsAsync(string symbol, string period, int limit);
+    Task<List<FmpRatio>?> GetRatiosAsync(string symbol, string period, int limit);
+    Task<List<FmpBalance>?> GetBalanceSheetsAsync(string symbol, string period, int limit);
+    Task<List<FmpCashFlow>?> GetCashFlowsAsync(string symbol, string period, int limit);
 }

@@ -50,11 +50,18 @@ builder.Services.AddScoped<IExtractionChatService, ExtractionChatService>();
 // Perplexity sonar: typed HttpClient that web-searches a company's named suppliers/customers — the
 // counterparties SEC filings don't disclose. Feeds the "Discover related companies" action.
 builder.Services.AddHttpClient<ICounterpartyDiscovery, CounterpartyDiscoveryService>();
+// Perplexity sonar: typed HttpClient that web-searches a single private company's profile (sector,
+// industry, country, description, estimated financials) — the New Company "Private (AI)" path.
+builder.Services.AddHttpClient<ICompanyProfileDiscovery, CompanyProfileDiscoveryService>();
+// Shared DeepSeek-backed GICS industry classifier (New Company fetch, private discovery, and the
+// ticker-less counterparty stub all need to pick an industry within a sector).
+builder.Services.AddScoped<IIndustryClassifier, IndustryClassifier>();
 // Caches a filing's cleaned section text so each chat turn doesn't re-download the document.
 builder.Services.AddMemoryCache();
 // Tracks detached auto-scan jobs (started on the extraction page, run in the background) so the
 // notification widget can poll their status from any page. Singleton: server-wide shared state.
 builder.Services.AddSingleton<ScanJobStore>();
+builder.Services.AddSingleton<RediscoverJobStore>();
 
 // Input-output cascade model: load the matrix artifact once at startup and validate every
 // Section-6 invariant — a model that violates Hawkins–Simon fails the app loudly here rather than
@@ -75,6 +82,9 @@ builder.Services.AddHttpClient<IYahooFinanceClient, YahooFinanceClient>()
         new HttpClientHandler { UseCookies = true, CookieContainer = new System.Net.CookieContainer() });
 // ExchangeRate-API: converts non-US revenue to USD (~160 currencies, no key).
 builder.Services.AddHttpClient<IExchangeRateApiClient, ExchangeRateApiClient>();
+// Assembles dated financial history from FMP's statements (Yahoo fallback). Consumes the typed
+// FMP/Yahoo clients above, so a plain scoped service — not its own HttpClient.
+builder.Services.AddScoped<ICompanyFinancialsService, CompanyFinancialsService>();
 
 var app = builder.Build();
 

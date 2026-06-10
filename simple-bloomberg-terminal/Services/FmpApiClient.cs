@@ -34,6 +34,21 @@ public class FmpApiClient : IFmpApiClient
         return list?.FirstOrDefault();
     }
 
+    public Task<List<FmpIncome>?> GetIncomeStatementsAsync(string symbol, string period, int limit) =>
+        GetArray<FmpIncome>(Statement("income-statement", symbol, period, limit));
+
+    public Task<List<FmpRatio>?> GetRatiosAsync(string symbol, string period, int limit) =>
+        GetArray<FmpRatio>(Statement("ratios", symbol, period, limit));
+
+    public Task<List<FmpBalance>?> GetBalanceSheetsAsync(string symbol, string period, int limit) =>
+        GetArray<FmpBalance>(Statement("balance-sheet-statement", symbol, period, limit));
+
+    public Task<List<FmpCashFlow>?> GetCashFlowsAsync(string symbol, string period, int limit) =>
+        GetArray<FmpCashFlow>(Statement("cash-flow-statement", symbol, period, limit));
+
+    private string Statement(string endpoint, string symbol, string period, int limit) =>
+        $"/stable/{endpoint}?symbol={Uri.EscapeDataString(symbol)}&period={period}&limit={limit}&apikey={_apiKey}";
+
     private async Task<List<T>?> GetArray<T>(string url)
     {
         var resp = await _http.GetAsync(url);

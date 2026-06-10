@@ -185,6 +185,34 @@
 
 ---
 
+## /companies/discover-private
+
+| Field | Value |
+|---|---|
+| Controller | CompaniesController |
+| Action | DiscoverPrivate |
+| HTTP | POST |
+| Route source | `[Route("companies")]` + `[Route("discover-private")]` (ValidateAntiForgeryToken) |
+| View | Views/Companies/Create.cshtml (returned as view name "Create") |
+| Parameters | name: string (form) |
+| Notes | The "PRIVATE · AI" tab of the New Company page: web-searches (Perplexity sonar) a private company's profile by name and returns the Create view prefilled with Type=PRIVATE plus AI-estimated sector/industry/country/description and estimated revenue & gross margin, for the user to review before submitting the normal `POST /companies/create`. Persists nothing itself |
+
+---
+
+## /companies/backfill
+
+| Field | Value |
+|---|---|
+| Controller | CompaniesController |
+| Action | Backfill |
+| HTTP | POST |
+| Route source | `[Route("companies")]` + `[Route("backfill")]` (ValidateAntiForgeryToken) |
+| View | — (JSON `{ filled:[{name,ticker,rows,source}], failed:[{name,ticker,reason}], rateLimited:bool, remaining:int, message }`) |
+| Parameters | — |
+| Notes | Bulk-refreshes existing companies from the real APIs: resolves a ticker from each company's SEC CIK (via the SEC company_tickers.json map), skips companies that already have FMP-sourced financials, then re-runs the profile+financials fetch (overwriting AI-seeded profile fields and replacing the dated CompanyFinancial history). Stops cleanly when FMP's daily quota (HTTP 429) is reached so a later run resumes. Driven by the "⟳ BACKFILL FROM APIs" button + results modal on the Companies index page |
+
+---
+
 ## /companies/{id}/profile
 
 | Field | Value |
@@ -208,6 +236,20 @@
 | Route source | `[Route("companies")]` + `[Route("{id:long}/edit")]` |
 | View | Views/Companies/Edit.cshtml |
 | Parameters | id: long (route, constrained); form fields (POST) |
+
+---
+
+## /companies/{id}/rediscover
+
+| Field | Value |
+|---|---|
+| Controller | CompaniesController |
+| Action | Rediscover |
+| HTTP | POST |
+| Route source | `[Route("companies")]` + `[Route("{id:long}/rediscover")]` (named route `CompanyRediscover`, ValidateAntiForgeryToken) |
+| View | — (JSON `{ jobId }`, HTTP 200 — fire-and-forget, no redirect) |
+| Parameters | id: long (route, constrained) |
+| Notes | Asynchronous re-discovery for an existing PRIVATE company: registers a detached `RediscoverJob` in the singleton in-memory `RediscoverJobStore`, then fires the Perplexity `sonar-pro` profile discovery + mapping + save (overwriting profile fields and re-stamping the single estimated financial row) on a background `Task.Run` with a fresh DI scope, and returns the `jobId` at once so the request doesn't block. Public companies are rejected with 400 BadRequest; missing company → 404. Triggered by the "RE-DISCOVER (PERPLEXITY)" button on the Details view (Views/Companies/Details.cshtml) for private companies; the browser hands the `jobId` to the bottom-right notification widget, which polls `GET /extraction/scan-jobs`. When the job finishes, if the user is still on that company's Details page it auto-reloads to show the updated profile + financials |
 
 ---
 
@@ -1006,7 +1048,7 @@
 | Route source | `[Route("extraction")]` + `[Route("scan-jobs")]` |
 | View | — (JSON array of jobs: `{ id, status, companyId, companyName, accession, doc, node, form, filingLabel, found, summary, error, replying }`) |
 | Parameters | ids: string? (query string — comma-separated job ids the browser is tracking) |
-| Notes | Returns the status/found-count/AI summary of the background scan jobs whose ids the browser holds (in localStorage). Unknown/dismissed ids are skipped. Backs the global bottom-right notification widget, which shows the summary, lets the user chat (via `POST /extraction/chat`), and links back to `/extraction` to save the yielded objects |
+| Notes | Returns the status/found-count/AI summary of the background jobs whose ids the browser holds (in localStorage). Resolves each id against both the `ScanJobStore` and the `RediscoverJobStore`, MERGING filing-scan and private-company re-discovery jobs into one list — each entry carries a `kind` (`"scan"` or `"rediscover"`) so the widget can tell a chat-capable scan from a fire-and-forget re-discovery. Unknown/dismissed ids are skipped. Backs the global bottom-right notification widget, which shows the summary, lets the user chat (via `POST /extraction/chat`), and links back to `/extraction` to save the yielded objects |
 
 ---
 
@@ -1020,7 +1062,7 @@
 | Route source | `[Route("extraction")]` + `[Route("scan-jobs/dismiss/{jobId}")]` |
 | View | — (200 OK, no body) |
 | Parameters | jobId: string (route) |
-| Notes | Removes a job from the in-memory `ScanJobStore` when the user dismisses it in the notification widget |
+| Notes | Removes a job when the user dismisses it in the notification widget — clears the id from both the `ScanJobStore` and the `RediscoverJobStore`, so it dismisses filing-scan and re-discovery jobs alike |
 
 ---
 

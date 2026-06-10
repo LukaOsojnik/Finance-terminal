@@ -29,6 +29,28 @@ public class YahooFinanceClient : IYahooFinanceClient
 
     public async Task<YahooFinancials?> GetFinancialsAsync(string symbol)
     {
+        var fd = (await QuerySummaryAsync<YahooEnvelope>(symbol, "financialData"))
+            ?.QuoteSummary?.Result?.FirstOrDefault()?.FinancialData;
+        return fd == null ? null : new YahooFinancials(fd.TotalRevenue?.Raw, fd.GrossMargins?.Raw, fd.FinancialCurrency);
+    }
+
+    public async Task<IReadOnlyList<YahooAnnualIncome>?> GetAnnualIncomeAsync(string symbol)
+    {
+        var rows = (await QuerySummaryAsync<YahooIncomeEnvelope>(symbol, "incomeStatementHistory"))
+            ?.QuoteSummary?.Result?.FirstOrDefault()?.IncomeStatementHistory?.IncomeStatementHistory;
+        if (rows == null) return null;
+
+        return rows.Select(r => new YahooAnnualIncome(
+            r.EndDate?.Raw is { } raw ? DateOnly.FromDateTime(DateTimeOffset.FromUnixTimeSeconds(raw).UtcDateTime) : null,
+            r.TotalRevenue?.Raw,
+            r.NetIncome?.Raw)).ToList();
+    }
+
+    // Shared quoteSummary call: ensure a crumb, query the given modules, deserialize to T. Handles the
+    // stale-crumb re-handshake (401 -> drop crumb, retry once) and swallows transport/parse failures to
+    // null so callers fall back to manual entry. T is whichever module envelope the caller needs.
+    private async Task<T?> QuerySummaryAsync<T>(string symbol, string modules) where T : class
+    {
         try
         {
             for (var attempt = 0; attempt < 2; attempt++)
@@ -37,16 +59,13 @@ public class YahooFinanceClient : IYahooFinanceClient
                 if (string.IsNullOrEmpty(crumb)) return null;
 
                 var resp = await _http.GetAsync(
-                    $"/v10/finance/quoteSummary/{Uri.EscapeDataString(symbol)}?modules=financialData&crumb={Uri.EscapeDataString(crumb)}");
+                    $"/v10/finance/quoteSummary/{Uri.EscapeDataString(symbol)}?modules={modules}&crumb={Uri.EscapeDataString(crumb)}");
 
                 // Stale crumb -> clear it and re-handshake once.
                 if (resp.StatusCode == HttpStatusCode.Unauthorized) { _crumb = null; continue; }
                 if (!resp.IsSuccessStatusCode) return null;
 
-                var env = await resp.Content.ReadFromJsonAsync<YahooEnvelope>();
-                var fd = env?.QuoteSummary?.Result?.FirstOrDefault()?.FinancialData;
-                if (fd == null) return null;
-                return new YahooFinancials(fd.TotalRevenue?.Raw, fd.GrossMargins?.Raw, fd.FinancialCurrency);
+                return await resp.Content.ReadFromJsonAsync<T>();
             }
             return null;
         }

@@ -34,6 +34,7 @@ public class CompanyRepository(AppDbContext db) : ICompanyRepository
             .Include(c => c.CompanyRisks).ThenInclude(r => r.Reviews).ThenInclude(rv => rv.Filing)
             .Include(c => c.RevenueFromDependents).ThenInclude(r => r.Company)
             .Include(c => c.CostFromDependents).ThenInclude(c2 => c2.Company)
+            .Include(c => c.Financials.Where(f => f.DeletedAt == null))
             .AsSplitQuery()
             .FirstOrDefault(c => c.Id == id && c.DeletedAt == null);
 
@@ -120,6 +121,18 @@ public class CompanyRepository(AppDbContext db) : ICompanyRepository
         db.Companies.Update(entity);
         db.SaveChanges();
     }
+
+    public void ReplaceFinancials(long companyId, IReadOnlyList<CompanyFinancial> rows)
+    {
+        if (rows.Count == 0) return;
+        db.CompanyFinancials.RemoveRange(db.CompanyFinancials.Where(f => f.CompanyId == companyId));
+        db.CompanyFinancials.AddRange(rows);
+        db.SaveChanges();
+    }
+
+    public HashSet<long> CompanyIdsWithFmpFinancials() =>
+        db.CompanyFinancials.Where(f => f.DeletedAt == null && f.Source == Models.Enums.DataSource.FMP)
+            .Select(f => f.CompanyId).Distinct().ToHashSet();
 
     public void SoftDelete(long id)
     {

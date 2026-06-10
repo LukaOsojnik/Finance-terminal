@@ -8,6 +8,7 @@
 |---|---|---|
 | Countries | Country | Core geographic/economic entity |
 | Companies | Company | Corporation linked to a country |
+| CompanyFinancials | CompanyFinancial | Dated per-fiscal-period financial history for a Company (time series) |
 | Events | Event | Market event (earnings, sanctions, etc.) |
 | TradeBlocs | TradeBloc | Economic bloc (EU, NAFTA, etc.) |
 | CountryDetails | CountryDetails | 1:1 extended profile for a Country |
@@ -48,9 +49,44 @@
 | Industry | GicsIndustry? | GICS industry enum |
 | RevenueTotal | double? | |
 | GrossMargin | double? | |
+| MarketCap | double? | USD market capitalization, sourced from FMP profile |
 | AsOf | DateOnly? | |
 | Cik | string? | SEC identifier |
+| Type | CompanyType | PUBLIC (ticker-backed, real FMP/Yahoo data) / PRIVATE (no ticker, profile + estimated financials from web search); default PUBLIC |
 | DeletedAt | DateTime? | Soft-delete timestamp |
+
+Nav: `Financials` (ICollection<CompanyFinancial>) — the dated per-period history; Company itself keeps only the latest denormalized snapshot.
+
+### CompanyFinancial
+| Property | Type | Notes |
+|---|---|---|
+| Id | long | PK |
+| CompanyId | long | FK → Companies (cascade delete) |
+| FiscalYear | int | |
+| Period | FiscalPeriod | FY, Q1, Q2, Q3, Q4 |
+| EndDate | DateOnly? | |
+| ReportedCurrency | string? | |
+| Source | DataSource | FMP (US filers, full data) / YAHOO (non-US fallback) / CLAUDE_ESTIMATED (private companies' AI-estimated financials) |
+| CapturedAt | DateTime | |
+| Revenue | double? | |
+| CostOfRevenue | double? | |
+| GrossProfit | double? | |
+| OperatingIncome | double? | |
+| Ebitda | double? | |
+| NetIncome | double? | |
+| Eps | double? | |
+| GrossMargin | double? | |
+| OperatingMargin | double? | |
+| NetMargin | double? | |
+| CurrentRatio | double? | |
+| DebtToEquity | double? | |
+| TotalCash | double? | |
+| TotalDebt | double? | |
+| OperatingCashFlow | double? | |
+| FreeCashFlow | double? | |
+| DeletedAt | DateTime? | Soft-delete timestamp |
+
+Dated per-fiscal-period financial time series for a Company (Company holds only the latest denormalized snapshot). Unique index on `(CompanyId, FiscalYear, Period)`. Source = FMP for US filers (full data); YAHOO for non-US fallback (only Revenue + NetIncome, annual).
 
 ### Event
 | Property | Type | Notes |
@@ -190,6 +226,7 @@ CountryDetails ────────── GdpSnapshot       (1:N, FK Country
 Note: Country.Advantages / Country.Challenges / Country.GdpHistory nav props exist as shortcuts.
       CountryDetails.Advantages / .Challenges / .GdpHistory are the same rows via a different path.
 
+Company ──────────────── CompanyFinancial   (1:N, FK CompanyId, Cascade — nav: Financials)
 Company ──────────────── RevenueSource      (1:N, FK CompanyId — owner)
 Company ──────────────── CostSource         (1:N, FK CompanyId — owner)
 Company ──────────────── CompanyRisk        (1:N, FK CompanyId — owner)
@@ -215,11 +252,13 @@ Event   ◄──────────────► TradeBloc          (N:M
 | Enum | Values (abbreviated) |
 |---|---|
 | Sector | ENERGY, MATERIALS, FINANCIALS, INFORMATION_TECHNOLOGY, … (11 total) |
+| CompanyType | PUBLIC, PRIVATE |
 | GicsIndustry | SOFTWARE, AUTOMOBILES, SEMICONDUCTORS…, … (99 total) |
 | EventType | EARNINGS, CENTRAL_BANK, MACRO_DATA, TRADE_DEAL, SANCTIONS, … |
 | SourceType | CUSTOMER, SEGMENT, REGION, PRODUCT |
 | CostBase | COGS, OPEX, TOTAL_COSTS |
-| DataSource | EDGAR, MANUAL, CLAUDE_ESTIMATED, OPENBB |
+| DataSource | EDGAR, MANUAL, CLAUDE_ESTIMATED, OPENBB, FMP, YAHOO |
+| FiscalPeriod | FY, Q1, Q2, Q3, Q4 |
 | RelationKind | COST, REVENUE, RISK |
 | ReviewableField | VALUE, PERCENTAGE, NAME, RELATED_COMPANY, CLASSIFICATION, NOTE |
 | RiskScope | MACROECONOMIC, INDUSTRY, BUSINESS, LEGAL_REGULATORY, FINANCIAL, GENERAL |

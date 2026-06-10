@@ -8,4 +8,10 @@ namespace simple_bloomberg_terminal.Services;
 public interface IYahooFinanceClient
 {
     Task<YahooFinancials?> GetFinancialsAsync(string symbol);
+
+    /// <summary>
+    /// Annual income history (one row per fiscal year, newest first) for the non-US fallback when
+    /// FMP is premium-gated. Yahoo only reliably reports revenue + net income here. null on any failure.
+    /// </summary>
+    Task<IReadOnlyList<YahooAnnualIncome>?> GetAnnualIncomeAsync(string symbol);
 }

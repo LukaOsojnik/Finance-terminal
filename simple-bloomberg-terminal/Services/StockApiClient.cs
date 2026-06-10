@@ -48,6 +48,16 @@ public class StockApiClient : IStockApiClient
         return match is null ? null : match.CikStr.ToString().PadLeft(10, '0');
     }
 
+    public async Task<IReadOnlyDictionary<string, string>> GetCikTickerMap()
+    {
+        var map = await _http.GetFromJsonAsync<Dictionary<string, EdgarTicker>>(TickerMapUrl);
+        var byCik = new Dictionary<string, string>();
+        if (map != null)
+            foreach (var t in map.Values)
+                byCik.TryAdd(t.CikStr.ToString().PadLeft(10, '0'), t.Ticker);  // first share class wins
+        return byCik;
+    }
+
     public async Task<string?> GetCompanyFactsJson(string cik10)
     {
         var resp = await _http.GetAsync($"/api/xbrl/companyfacts/CIK{cik10}.json");

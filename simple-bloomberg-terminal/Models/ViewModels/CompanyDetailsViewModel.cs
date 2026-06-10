@@ -16,6 +16,9 @@ public class CompanyDetailsViewModel
     public IEnumerable<CostSource> CostSources { get; set; } = [];
     public IEnumerable<CompanyRisk> CompanyRisks { get; set; } = [];
 
+    // Dated financial history (one per fiscal period), newest first, for the history table.
+    public IEnumerable<CompanyFinancial> Financials { get; set; } = [];
+
     // Sector enum formatted for display (underscores → spaces)
     public required string SectorLabel { get; set; }
 
