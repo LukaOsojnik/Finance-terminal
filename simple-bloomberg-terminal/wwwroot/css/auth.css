@@ -1,0 +1,131 @@
+/* Auth pages (Login / Register / external login) — a compact centered card that matches the
+   terminal theme (dark surfaces, cyan accent) instead of the wide stock Identity forms. */
+
+.auth-wrap {
+    display: flex;
+    justify-content: center;
+    padding: 3rem 1rem 4rem;
+}
+
+.auth-card {
+    width: 100%;
+    max-width: 380px;
+    background: var(--bg-card);
+    border: 1px solid var(--border-subtle);
+    border-radius: 14px;
+    padding: 2rem 1.75rem;
+    box-shadow: 0 18px 40px #0006;
+}
+
+.auth-title {
+    margin: 0 0 1.5rem;
+    text-align: center;
+    font-size: 1.35rem;
+    letter-spacing: 0.02em;
+    color: var(--accent);
+}
+
+.auth-form { display: flex; flex-direction: column; gap: 1rem; }
+
+.auth-field { display: flex; flex-direction: column; gap: 0.35rem; }
+
+.auth-field label {
+    font-size: 0.72rem;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--muted);
+}
+
+/* Smaller, themed inputs (the stock ones were oversized form-floating fields). */
+.auth-field .form-control {
+    background: var(--bg-surface);
+    border: 1px solid var(--border-subtle);
+    border-radius: 8px;
+    padding: 0.5rem 0.7rem;
+    font-size: 0.9rem;
+    color: #d7e3ef;
+}
+.auth-field .form-control:focus {
+    background: var(--bg-surface);
+    border-color: var(--accent-dim);
+    box-shadow: 0 0 0 2px var(--border-accent);
+    color: #eaf3fb;
+}
+.auth-field .form-control::placeholder { color: #3a4b5e; }
+
+.auth-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-size: 0.8rem;
+}
+.auth-check { display: flex; align-items: center; gap: 0.4rem; color: var(--muted); margin: 0; }
+.auth-link { color: var(--accent); text-decoration: none; }
+.auth-link:hover { text-decoration: underline; }
+
+.auth-btn-primary {
+    margin-top: 0.25rem;
+    width: 100%;
+    padding: 0.6rem;
+    border: none;
+    border-radius: 8px;
+    background: var(--accent);
+    color: #06121b;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    cursor: pointer;
+    transition: filter 0.15s ease, box-shadow 0.15s ease;
+}
+.auth-btn-primary:hover { filter: brightness(1.08); box-shadow: var(--accent-glow); }
+
+/* "or" divider between local and external sign-in. */
+.auth-divider {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    margin: 1.25rem 0;
+    color: var(--muted);
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+}
+.auth-divider::before,
+.auth-divider::after {
+    content: "";
+    flex: 1;
+    height: 1px;
+    background: var(--border-subtle);
+}
+
+.auth-external { display: flex; flex-direction: column; gap: 0.6rem; margin: 0; }
+
+/* Google button: small wide rounded white box, logo + label, no section header. */
+.google-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.6rem;
+    width: 100%;
+    padding: 0.55rem 0.9rem;
+    background: #ffffff;
+    color: #3c4043;
+    border: 1px solid #dadce0;
+    border-radius: 10px;
+    font-size: 0.88rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: box-shadow 0.15s ease, background 0.15s ease;
+}
+.google-btn:hover { background: #f7f8f8; box-shadow: 0 1px 4px #00000026; }
+.google-btn svg { width: 18px; height: 18px; flex: 0 0 18px; }
+
+.auth-foot {
+    margin: 1.5rem 0 0;
+    text-align: center;
+    font-size: 0.82rem;
+    color: var(--muted);
+}
+.auth-foot a { color: var(--accent); text-decoration: none; }
+.auth-foot a:hover { text-decoration: underline; }
+
+.auth-validation { color: #ff6b6b; font-size: 0.78rem; }

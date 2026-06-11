@@ -1,0 +1,9 @@
+@page
+@model ExternalLoginModel
+@{
+    // This page never renders on the happy path — every handler redirects (straight into the app on
+    // success, or back to Login with an error). The minimal body only shows if a redirect is missed.
+    ViewData["Title"] = "External login";
+    Layout = null;
+}
+<p>@Model.ErrorMessage</p>
