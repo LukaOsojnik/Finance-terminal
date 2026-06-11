@@ -32,7 +32,10 @@
       "Bash(dotnet add *)",
       "Bash(mysql -uluka -pKrokodil123! myappdb -e \"SELECT Id,Name,Type,RevenueTotal,Industry,Sector,Cik FROM Companies WHERE Name LIKE '%Mortenson%' OR Name LIKE '%NTT%' OR Name LIKE '%Eaton%' OR Name LIKE '%Lumen%' OR Name LIKE '%Schneider%' OR Name LIKE '%Verizon%' OR Name LIKE '%OpenAI%';\")",
       "PowerShell(dotnet ef migrations *)",
-      "PowerShell(dotnet user-secrets init *)"
+      "PowerShell(dotnet user-secrets init *)",
+      "Read(//c/Program Files/MySQL/**)",
+      "Read(//c/Program Files/**)",
+      "Read(//c/xampp/mysql/bin/**)"
     ]
   },
   "outputStyle": "Learning"

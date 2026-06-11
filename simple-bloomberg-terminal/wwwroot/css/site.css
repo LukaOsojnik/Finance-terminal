@@ -133,6 +133,89 @@ a:hover { color: #fff; }
   border-bottom-color: var(--accent);
 }
 
+/* ── User dropdown ── */
+.nav-link.dropdown-toggle { text-transform: none; }
+
+/* GitHub-style circular avatar toggle */
+.nav-avatar {
+  display: flex;
+  align-items: center;
+  padding: 0.3rem 0.5rem !important;
+}
+
+.nav-avatar.dropdown-toggle::after { display: none; }
+
+.avatar-img,
+.avatar-fallback {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  border: 1px solid var(--border-subtle);
+  transition: border-color var(--transition), box-shadow var(--transition);
+}
+
+.avatar-img { object-fit: cover; }
+
+.avatar-fallback {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg-card);
+  color: var(--accent);
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 0.85rem;
+}
+
+.nav-avatar:hover .avatar-img,
+.nav-avatar:hover .avatar-fallback,
+.nav-avatar[aria-expanded="true"] .avatar-img,
+.nav-avatar[aria-expanded="true"] .avatar-fallback {
+  border-color: var(--accent);
+  box-shadow: var(--accent-glow);
+}
+
+.terminal-dropdown {
+  background: var(--bg-card);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  box-shadow: 0 8px 24px #00000066, var(--accent-glow);
+  padding: 0.35rem 0;
+  margin-top: 0.4rem;
+  min-width: 12rem;
+}
+
+.terminal-dropdown .dropdown-header {
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  color: var(--text-secondary);
+  letter-spacing: 0.04em;
+  padding: 0.4rem 1rem;
+}
+
+.terminal-dropdown .dropdown-divider {
+  border-top: 1px solid var(--border-subtle);
+  margin: 0.25rem 0;
+  opacity: 1;
+}
+
+.terminal-dropdown .dropdown-item {
+  font-family: var(--font-display);
+  font-weight: 500;
+  font-size: 0.82rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+  padding: 0.5rem 1rem;
+  transition: color var(--transition), background var(--transition);
+}
+
+.terminal-dropdown .dropdown-item:hover,
+.terminal-dropdown .dropdown-item:focus {
+  background: var(--bg-row-hover);
+  color: var(--accent);
+}
+
 /* ── Ticker bar (decorative) ── */
 .ticker-bar {
   background: var(--bg-surface);

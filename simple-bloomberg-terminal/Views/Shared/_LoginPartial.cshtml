@@ -6,20 +6,43 @@
 <ul class="navbar-nav">
 @if (SignInManager.IsSignedIn(User))
 {
-    <li class="nav-item">
-        <a class="nav-link" asp-controller="Account" asp-action="Profile">@User.Identity?.Name</a>
-    </li>
-    @if (User.IsInRole("Admin"))
-    {
-        <li class="nav-item">
-            <a class="nav-link" asp-controller="Admin" asp-action="Index">Admin</a>
-        </li>
-    }
-    <li class="nav-item">
-        <form class="form-inline" asp-area="Identity" asp-page="/Account/Logout"
-              asp-route-returnUrl="@Url.Action("Index", "Home", new { area = "" })" method="post">
-            <button type="submit" class="nav-link btn btn-link">Logout</button>
-        </form>
+    var email = User.Identity?.Name ?? "";
+    var username = email.Contains('@') ? email[..email.IndexOf('@')] : email;
+    var appUser = await UserManager.GetUserAsync(User);
+    var pfp = appUser?.ProfilePicturePath;
+
+    <li class="nav-item dropdown">
+        <a class="nav-link dropdown-toggle nav-avatar" href="#" id="userMenu" role="button"
+           data-bs-toggle="dropdown" aria-expanded="false" title="@email">
+            @if (!string.IsNullOrEmpty(pfp))
+            {
+                <img class="avatar-img" src="@pfp" alt="@username"/>
+            }
+            else
+            {
+                <span class="avatar-fallback">@(username.Length > 0 ? char.ToUpper(username[0]) : '?')</span>
+            }
+        </a>
+        <ul class="dropdown-menu dropdown-menu-end terminal-dropdown" aria-labelledby="userMenu">
+            <li class="dropdown-header">@email</li>
+            <li><hr class="dropdown-divider"/></li>
+            <li>
+                <a class="dropdown-item" asp-controller="Account" asp-action="Profile">Profile</a>
+            </li>
+            @if (User.IsInRole("Admin"))
+            {
+                <li>
+                    <a class="dropdown-item" asp-controller="Admin" asp-action="Index">Admin</a>
+                </li>
+            }
+            <li><hr class="dropdown-divider"/></li>
+            <li>
+                <form asp-area="Identity" asp-page="/Account/Logout"
+                      asp-route-returnUrl="@Url.Action("Index", "Home", new { area = "" })" method="post">
+                    <button type="submit" class="dropdown-item">Logout</button>
+                </form>
+            </li>
+        </ul>
     </li>
 }
 else
