@@ -20,6 +20,9 @@
 | CompanyRisks | CompanyRisk | Disclosed risk for a Company (SEC Item 1A/7A); Name + Scope + Note, no money figures |
 | SourceFieldReviews | SourceFieldReview | Per-field provenance (incl. the filing link) + AI verdict for one cell of a revenue/cost/risk source |
 | Filings | Filing | A SEC EDGAR filing used as proof for a cost/revenue source; identity is the EDGAR accession number |
+| AspNetUsers | AppUser | Application user (ASP.NET Core Identity), extended with profile-picture metadata |
+
+> **Identity layer:** `AppDbContext` derives from `IdentityDbContext<AppUser>` (was plain `DbContext`). This adds the standard ASP.NET Core Identity tables: **AspNetUsers** (mapped to `AppUser`), **AspNetRoles**, **AspNetUserRoles**, **AspNetUserClaims**, **AspNetRoleClaims**, **AspNetUserLogins**, **AspNetUserTokens**. Roles **Admin**, **Manager**, **User** are seeded at startup.
 
 ---
 
@@ -208,6 +211,19 @@ Constraints: check `CK_SourceFieldReview_OneSource` enforces exactly one of Reve
 | DeletedAt | DateTime? | Soft-delete timestamp |
 
 Constraints: unique index on `AccessionNumber` — EDGAR accession numbers are globally unique, so there is one Filing row per filing, shared by every SourceFieldReview that cites it (upsert-by-accession). The filing link is per-field on SourceFieldReview, so one source can cite multiple filings across its reviews. Migration: `20260603210530_AddFiling`; link moved to SourceFieldReview in `20260603213908_MoveFilingLinkToReview`.
+
+### AppUser
+Extends ASP.NET Core Identity's `IdentityUser` (maps to **AspNetUsers**). Standard Identity columns (Id, UserName, NormalizedUserName, Email, NormalizedEmail, PasswordHash, SecurityStamp, etc.) come from the base class; only the added columns are listed below.
+
+| Property | Type | Notes |
+|---|---|---|
+| ProfilePicturePath | string? | Web-relative path to the uploaded profile image on disk (e.g. `/uploads/profiles/{userId}/{guid}.png`); null = no picture |
+| OriginalFileName | string? | Original uploaded file name |
+| ContentType | string? | MIME content type of the upload |
+| SizeBytes | long? | File size in bytes |
+| UploadedAt | DateTime? | Upload timestamp |
+
+Stores a single profile-picture file's metadata + path; the image bytes live on disk under `wwwroot/uploads/profiles/{userId}/`, not in the database. Note: AppUser does not use the soft-delete `DeletedAt` pattern (Identity-managed).
 
 ---
 

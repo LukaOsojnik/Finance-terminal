@@ -1,9 +1,11 @@
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using simple_bloomberg_terminal.Repositories;
 
 namespace simple_bloomberg_terminal.Controllers;
 
 [Route("api/ticker")]
+[AllowAnonymous]
 public class TickerController : Controller
 {
     private readonly ICompanyRepository _companies;

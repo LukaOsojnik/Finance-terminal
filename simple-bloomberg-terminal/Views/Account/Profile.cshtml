@@ -1,0 +1,97 @@
+@model simple_bloomberg_terminal.Models.Entities.AppUser
+@{
+    ViewData["Title"] = "Profile";
+}
+
+<h2>Profile</h2>
+<p class="text-muted">@Model.Email</p>
+
+<div class="row">
+    <div class="col-md-4">
+        <h5>Current picture</h5>
+        <div id="currentPicture">
+            <partial name="_ProfilePicture" model="Model"/>
+        </div>
+        <dl id="pictureMeta" class="mt-2 small" style="@(Model.ProfilePicturePath is null ? "display:none" : "")">
+            <dt>File</dt><dd id="metaName">@Model.OriginalFileName</dd>
+            <dt>Type</dt><dd id="metaType">@Model.ContentType</dd>
+            <dt>Size</dt><dd id="metaSize">@(Model.SizeBytes is { } b ? $"{b / 1024.0:F1} KB" : "")</dd>
+            <dt>Uploaded</dt><dd id="metaDate">@Model.UploadedAt?.ToString("u")</dd>
+        </dl>
+        <button id="deleteBtn" type="button" class="btn btn-sm btn-outline-danger mt-2"
+                style="@(Model.ProfilePicturePath is null ? "display:none" : "")">Delete picture</button>
+    </div>
+    <div class="col-md-8">
+        <h5>Upload a new picture</h5>
+        <p class="small text-muted">JPEG, PNG, GIF or WebP, max 5 MB. A new upload replaces the current picture.</p>
+        @* Antiforgery token: Dropzone reads it from this hidden field and sends it as a header. *@
+        @Html.AntiForgeryToken()
+        <form id="pictureDropzone" class="dropzone"
+              action="@Url.Action("UploadProfilePicture", "Account")"></form>
+    </div>
+</div>
+
+@section Scripts {
+    <link rel="stylesheet" href="~/lib/dropzone/dropzone.min.css"/>
+    <script src="~/lib/dropzone/dropzone.min.js"></script>
+    <script>
+        Dropzone.autoDiscover = false;
+        const token = document.querySelector('input[name="__RequestVerificationToken"]').value;
+
+        const dz = new Dropzone("#pictureDropzone", {
+            paramName: "file",
+            maxFiles: 1,
+            maxFilesize: 5, // MB
+            acceptedFiles: "image/jpeg,image/png,image/gif,image/webp",
+            addRemoveLinks: false,
+            dictDefaultMessage: "Drop an image here or click to upload",
+            headers: { "RequestVerificationToken": token }
+        });
+
+        // One file at a time: drop the previous preview before adding a new one.
+        dz.on("addedfile", function () {
+            if (dz.files.length > 1) dz.removeFile(dz.files[0]);
+        });
+
+        dz.on("success", function (file, resp) {
+            renderPicture(resp.path, resp.name, file.type, resp.size, new Date().toISOString());
+            dz.removeAllFiles(true);
+        });
+
+        dz.on("error", function (file, msg) {
+            // msg is the controller's BadRequest string (or Dropzone's client-side validation text).
+            alert(typeof msg === "string" ? msg : (msg.error || "Upload failed."));
+            dz.removeFile(file);
+        });
+
+        document.getElementById("deleteBtn").addEventListener("click", async function () {
+            if (!confirm("Delete your profile picture?")) return;
+            const res = await fetch('@Url.Action("DeleteProfilePicture", "Account")', {
+                method: "POST",
+                headers: { "RequestVerificationToken": token }
+            });
+            if (res.ok) clearPicture();
+            else alert("Delete failed.");
+        });
+
+        function renderPicture(path, name, type, size, uploadedAt) {
+            document.getElementById("currentPicture").innerHTML =
+                '<img src="' + path + '" alt="Profile picture" ' +
+                'style="width:128px;height:128px;object-fit:cover;border-radius:8px;border:1px solid #333;"/>';
+            document.getElementById("metaName").textContent = name || "";
+            document.getElementById("metaType").textContent = type || "";
+            document.getElementById("metaSize").textContent = size ? (size / 1024).toFixed(1) + " KB" : "";
+            document.getElementById("metaDate").textContent = uploadedAt || "";
+            document.getElementById("pictureMeta").style.display = "";
+            document.getElementById("deleteBtn").style.display = "";
+        }
+
+        function clearPicture() {
+            document.getElementById("currentPicture").innerHTML =
+                '<div style="width:128px;height:128px;display:flex;align-items:center;justify-content:center;' +
+                'border-radius:8px;border:1px dashed #555;color:#888;">No picture</div>';
+            document.getElementById("pictureMeta").style.display = "none";
+            document.getElementById("deleteBtn").style.display = "none";
+        }
+    </script>
+}

@@ -1,4 +1,5 @@
 using AutoMapper;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using simple_bloomberg_terminal.Dtos;
 using simple_bloomberg_terminal.Models.Entities;
@@ -8,6 +9,7 @@ namespace simple_bloomberg_terminal.Controllers.Api;
 
 [ApiController]
 [Route("api/[controller]")]
+[Authorize]
 public class TradeBlocsController : ControllerBase
 {
     private readonly ITradeBlocRepository _repo;
@@ -34,6 +36,7 @@ public class TradeBlocsController : ControllerBase
     }
 
     [HttpPost]
+    [Authorize(Roles = "Admin,Manager")]
     public ActionResult<TradeBlocDto> Create(TradeBlocRequestDto dto)
     {
         var entity = _mapper.Map<TradeBloc>(dto);
@@ -42,6 +45,7 @@ public class TradeBlocsController : ControllerBase
     }
 
     [HttpPut("{id:long}")]
+    [Authorize(Roles = "Admin,Manager")]
     public ActionResult<TradeBlocDto> Update(long id, TradeBlocRequestDto dto)
     {
         var entity = _repo.GetById(id);
@@ -52,6 +56,7 @@ public class TradeBlocsController : ControllerBase
     }
 
     [HttpDelete("{id:long}")]
+    [Authorize(Roles = "Admin,Manager")]
     public IActionResult Delete(long id)
     {
         if (_repo.GetById(id) is null) return NotFound();

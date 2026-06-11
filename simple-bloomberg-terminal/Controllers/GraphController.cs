@@ -1,4 +1,5 @@
 using AutoMapper;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using simple_bloomberg_terminal.Models.ViewModels;
 using simple_bloomberg_terminal.Repositories;
@@ -6,6 +7,7 @@ using simple_bloomberg_terminal.Repositories;
 namespace simple_bloomberg_terminal.Controllers;
 
 [Route("graph")]
+[AllowAnonymous]
 public class GraphController : Controller
 {
     private readonly ICompanyRepository _companies;

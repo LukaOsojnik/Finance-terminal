@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using simple_bloomberg_terminal.Dtos;
 using simple_bloomberg_terminal.Repositories;
@@ -7,6 +8,7 @@ namespace simple_bloomberg_terminal.Controllers.Api;
 
 [ApiController]
 [Route("api/stock")]
+[Authorize]
 public class StockController : ControllerBase
 {
     private readonly ICompanyRepository _companies;
@@ -22,6 +24,7 @@ public class StockController : ControllerBase
 
     // Fetch EDGAR data for a seeded company and (re)persist its EDGAR-tagged source/event rows.
     [HttpPost("refresh/{companyId:long}")]
+    [Authorize(Roles = "Admin,Manager")]
     public async Task<ActionResult<CompanyDto>> Refresh(long companyId)
     {
         var company = _companies.GetById(companyId);

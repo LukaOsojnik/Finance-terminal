@@ -1290,6 +1290,139 @@
 
 ---
 
+## /Account/Profile
+
+| Field | Value |
+|---|---|
+| Controller | AccountController |
+| Action | Profile |
+| HTTP | GET |
+| Route source | Convention (`/{controller}/{action}/{id?}`) |
+| View | Views/Account/Profile.cshtml |
+| Parameters | — |
+| Auth | `[Authorize]` (any authenticated user) |
+| Notes | The signed-in user's own account page — profile details plus a Dropzone profile-picture upload (single-file model). Backed by `AppUser` |
+
+---
+
+## /Account/CurrentPicture
+
+| Field | Value |
+|---|---|
+| Controller | AccountController |
+| Action | CurrentPicture |
+| HTTP | GET |
+| Route source | Convention (`/{controller}/{action}/{id?}`) |
+| View | — (JSON `{ hasPicture }` or `{ hasPicture, path, name, contentType, size, uploadedAt }`) |
+| Parameters | — |
+| Auth | `[Authorize]` (any authenticated user) |
+| Notes | AJAX metadata for the current profile picture, consumed by the Profile page's Dropzone to render the existing file. Returns `{ hasPicture: false }` (not 404) when there's no picture |
+
+---
+
+## /Account/UploadProfilePicture
+
+| Field | Value |
+|---|---|
+| Controller | AccountController |
+| Action | UploadProfilePicture |
+| HTTP | POST |
+| Route source | Convention (`/{controller}/{action}/{id?}`) (ValidateAntiForgeryToken) |
+| View | — (JSON `{ path, name, size }`) |
+| Parameters | file: IFormFile (Dropzone field name "file") |
+| Auth | `[Authorize]` (any authenticated user) |
+| Notes | Dropzone upload — saves to `wwwroot/uploads/profiles/{userId}/{guid}{ext}`, records metadata on `AppUser`, and replaces any existing picture. Validates JPEG/PNG/GIF/WebP only and a 5 MB limit. Responses: 200 OK; 400 (no file / over limit / disallowed type) |
+
+---
+
+## /Account/DeleteProfilePicture
+
+| Field | Value |
+|---|---|
+| Controller | AccountController |
+| Action | DeleteProfilePicture |
+| HTTP | POST |
+| Route source | Convention (`/{controller}/{action}/{id?}`) (ValidateAntiForgeryToken) |
+| View | — (200 OK, no body) |
+| Parameters | — |
+| Auth | `[Authorize]` (any authenticated user) |
+| Notes | Deletes the current profile picture (physical file + `AppUser` metadata) |
+
+---
+
+## /Admin
+
+| Field | Value |
+|---|---|
+| Controller | AdminController |
+| Action | Index |
+| HTTP | GET |
+| Route source | Convention (`/{controller}/{action}/{id?}`, defaults action Index) |
+| View | Views/Admin/Index.cshtml |
+| Parameters | — |
+| Auth | `[Authorize(Roles = "Admin")]` |
+| Notes | Admin-only user list — each row shows email, username, profile picture, and assigned roles (`AdminUserRow`) |
+
+---
+
+## /Admin/EditRoles
+
+| Field | Value |
+|---|---|
+| Controller | AdminController |
+| Action | EditRoles |
+| HTTP | GET, POST |
+| Route source | Convention (`/{controller}/{action}/{id?}`) (POST is ValidateAntiForgeryToken) |
+| View | Views/Admin/EditRoles.cshtml |
+| Parameters | GET: userId: string (query); POST: `EditRolesViewModel` (form) |
+| Auth | `[Authorize(Roles = "Admin")]` |
+| Notes | Role-assignment form for one user — GET renders a checkbox per role; POST diffs current vs selected and only adds/removes the roles that changed, then redirects to Index. 404 when the user id is unknown |
+
+---
+
+## /Admin/Delete
+
+| Field | Value |
+|---|---|
+| Controller | AdminController |
+| Action | Delete |
+| HTTP | POST |
+| Route source | Convention (`/{controller}/{action}/{id?}`) (ValidateAntiForgeryToken) |
+| View | — (redirects to Index) |
+| Parameters | userId: string (query/form) |
+| Auth | `[Authorize(Roles = "Admin")]` |
+| Notes | Deletes a user. 404 when the user id is unknown; 400 when an admin tries to delete their own account |
+
+---
+
+## /Identity/Account/* (ASP.NET Core Identity default UI)
+
+| Field | Value |
+|---|---|
+| Controller | Identity default UI Razor Pages (area `Identity`) |
+| Action | Register, Login, Logout, ExternalLogin (Google), etc. |
+| HTTP | GET, POST |
+| Route source | Razor Pages, area `Identity` (`/Identity/Account/{page}`) |
+| View | Scaffolded Identity Razor Pages (default UI) |
+| Parameters | per-page (form fields) |
+| Auth | Anonymous (Register/Login/ExternalLogin); authenticated (Logout/Manage) |
+| Notes | The built-in Identity UI — `/Identity/Account/Register`, `/Identity/Account/Login`, `/Identity/Account/Logout`, `/Identity/Account/ExternalLogin` (Google sign-in), and the other default account pages |
+
+---
+
+## Authorization model
+
+ASP.NET Core Identity now gates the existing controllers as follows:
+
+- **MVC entity controllers** (Countries, Companies, Events, TradeBlocs, CountryDetails, CountryAdvantages, CountryChallenges, GdpSnapshots, RevenueSources, CostSources): read GETs (`Index`/`Search`/`Details`/`Lookup`/`ValidateCountry` and the like) are `[AllowAnonymous]`; `Create`/`Edit`/`Delete` (and the other mutating actions) require `[Authorize(Roles = "Admin,Manager")]`.
+- **API controllers** (Controllers/Api — GraphController, StockController): `GET` requires `[Authorize]` (any authenticated user); `POST`/`PUT`/`DELETE` require `[Authorize(Roles = "Admin,Manager")]`.
+- **Public** (no auth): Home, Ticker, Graph, Impact.
+- **ExtractionController**: `[Authorize(Roles = "Admin,Manager")]` for the whole controller.
+- **AccountController**: `[Authorize]` (any authenticated user).
+- **AdminController**: `[Authorize(Roles = "Admin")]`.
+
+---
+
 ## /Home/Error
 
 | Field | Value |

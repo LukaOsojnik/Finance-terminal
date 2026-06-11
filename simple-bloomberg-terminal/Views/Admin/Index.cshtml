@@ -1,0 +1,41 @@
+@model List<simple_bloomberg_terminal.Models.ViewModels.AdminUserRow>
+@{
+    ViewData["Title"] = "User administration";
+}
+
+<h2>Users</h2>
+
+<table class="table table-sm align-middle">
+    <thead>
+    <tr>
+        <th></th>
+        <th>Email</th>
+        <th>Username</th>
+        <th>Roles</th>
+        <th></th>
+    </tr>
+    </thead>
+    <tbody>
+    @foreach (var u in Model)
+    {
+        <tr>
+            <td>
+                @if (u.ProfilePicturePath is not null)
+                {
+                    <img src="@u.ProfilePicturePath" alt="" style="width:32px;height:32px;object-fit:cover;border-radius:4px;"/>
+                }
+            </td>
+            <td>@u.Email</td>
+            <td>@u.UserName</td>
+            <td>@(u.Roles.Any() ? string.Join(", ", u.Roles) : "—")</td>
+            <td class="text-end">
+                <a class="btn btn-sm btn-outline-primary" asp-action="EditRoles" asp-route-userId="@u.Id">Roles</a>
+                <form asp-action="Delete" asp-route-userId="@u.Id" method="post" class="d-inline"
+                      onsubmit="return confirm('Delete this user?');">
+                    <button type="submit" class="btn btn-sm btn-outline-danger">Delete</button>
+                </form>
+            </td>
+        </tr>
+    }
+    </tbody>
+</table>

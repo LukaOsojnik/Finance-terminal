@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Text;
 using System.Text.Json;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Rendering;
 using simple_bloomberg_terminal.Models.Entities;
@@ -18,6 +19,7 @@ namespace simple_bloomberg_terminal.Controllers;
 /// <see cref="SourceFieldReview"/> (one per cell, <c>Mark=null</c> for the phase-2 reviewer).
 /// </summary>
 [Route("extraction")]
+[Authorize(Roles = "Admin,Manager")]
 public class ExtractionController : Controller
 {
     private readonly IRevenueSourceRepository _revenue;

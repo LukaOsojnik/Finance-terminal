@@ -125,7 +125,7 @@
             const res = await fetch('@Url.Action("Backfill")', { method: 'POST', headers: { 'RequestVerificationToken': token() } });
             if (!res.ok) { body.innerHTML = `<div class="text-danger">${esc(await res.text()) || ('Error ' + res.status)}</div>`; return; }
             const d = await res.json();
-            changed = d.filled.length > 0;
+            changed = d.filled.length > 0 || (d.industriesFilled && d.industriesFilled.length > 0);
             const rows = d.filled.map(f =>
                 `<tr><td class="name-cell">${esc(f.name)}</td><td class="tag-cell">${esc(f.ticker)}</td><td class="num-cell">${f.rows}</td><td class="tag-cell">${esc(f.source)}</td></tr>`).join('');
             const table = rows
@@ -134,7 +134,10 @@
             const failed = d.failed.length
                 ? `<div class="muted-cell" style="margin-top:.7rem;">Skipped/failed: ${d.failed.map(f => esc(f.name) + ' (' + esc(f.reason) + ')').join(', ')}</div>`
                 : '';
-            body.innerHTML = `<div style="margin-bottom:.6rem;">${esc(d.message)}</div>${table}${failed}`;
+            const industries = (d.industriesFilled && d.industriesFilled.length)
+                ? `<div class="muted-cell" style="margin-top:.7rem;">Industries resolved: ${d.industriesFilled.map(f => esc(f.name) + ' → ' + esc(f.industry)).join(', ')}</div>`
+                : '';
+            body.innerHTML = `<div style="margin-bottom:.6rem;">${esc(d.message)}</div>${table}${industries}${failed}`;
         } catch (e) {
             body.innerHTML = `<div class="text-danger">Request failed: ${esc(e)}</div>`;
         } finally {

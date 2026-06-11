@@ -1,4 +1,5 @@
 using AutoMapper;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using simple_bloomberg_terminal.Dtos;
 using simple_bloomberg_terminal.Models.Entities;
@@ -8,6 +9,7 @@ namespace simple_bloomberg_terminal.Controllers.Api;
 
 [ApiController]
 [Route("api/[controller]")]
+[Authorize]
 public class EventsController : ControllerBase
 {
     private readonly IEventRepository _repo;
@@ -34,6 +36,7 @@ public class EventsController : ControllerBase
     }
 
     [HttpPost]
+    [Authorize(Roles = "Admin,Manager")]
     public ActionResult<EventDto> Create(EventRequestDto dto)
     {
         var entity = _mapper.Map<Event>(dto);
@@ -42,6 +45,7 @@ public class EventsController : ControllerBase
     }
 
     [HttpPut("{id:long}")]
+    [Authorize(Roles = "Admin,Manager")]
     public ActionResult<EventDto> Update(long id, EventRequestDto dto)
     {
         var entity = _repo.GetById(id);
@@ -52,6 +56,7 @@ public class EventsController : ControllerBase
     }
 
     [HttpDelete("{id:long}")]
+    [Authorize(Roles = "Admin,Manager")]
     public IActionResult Delete(long id)
     {
         if (_repo.GetById(id) is null) return NotFound();

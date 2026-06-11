@@ -29,8 +29,12 @@ public class IndustryClassifier : IIndustryClassifier
         var user = $"Company: {companyName}\nSector: {sector}\n" +
             $"Source industry label: {sourceLabel}\nAllowed industries: {allowed}";
 
+        // deepseek-v4-flash is a reasoning model: it spends tokens on reasoning_content BEFORE the
+        // answer, and reasoning alone runs ~65-122 tokens here. A tight budget (e.g. 100) gets cut off
+        // mid-reasoning -> empty/truncated content -> JSON parse fails -> null. 400 leaves headroom for
+        // the reasoning plus the one-line JSON answer so finish_reason is "stop", not "length".
         string raw;
-        try { raw = await _deepSeek.CompleteAsync(_model, system, user, maxTokens: 100, jsonObject: true, ct); }
+        try { raw = await _deepSeek.CompleteAsync(_model, system, user, maxTokens: 400, jsonObject: true, ct); }
         catch (HttpRequestException) { return null; }
 
         try

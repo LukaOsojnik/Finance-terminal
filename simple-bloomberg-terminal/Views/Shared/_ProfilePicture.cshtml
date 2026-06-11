@@ -1,0 +1,14 @@
+@model simple_bloomberg_terminal.Models.Entities.AppUser
+
+@if (Model.ProfilePicturePath is not null)
+{
+    <img src="@Model.ProfilePicturePath" alt="Profile picture"
+         style="width:128px;height:128px;object-fit:cover;border-radius:8px;border:1px solid var(--border, #333);"/>
+}
+else
+{
+    <div style="width:128px;height:128px;display:flex;align-items:center;justify-content:center;
+                border-radius:8px;border:1px dashed var(--border, #555);color:var(--muted, #888);">
+        No picture
+    </div>
+}

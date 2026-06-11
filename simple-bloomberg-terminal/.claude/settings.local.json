@@ -29,7 +29,10 @@
       "Bash(Select-Object FullName, Mode)",
       "Bash(Get-ChildItem -Recurse -Depth 1 -Directory -Path \"C:\\\\Users\\\\luka.osojnik\\\\Documents\\\\Coding\\\\simple-bloomberg-terminal\\\\simple-bloomberg-terminal\")",
       "WebFetch(domain:tldrfiling.com)",
-      "Bash(dotnet add *)"
+      "Bash(dotnet add *)",
+      "Bash(mysql -uluka -pKrokodil123! myappdb -e \"SELECT Id,Name,Type,RevenueTotal,Industry,Sector,Cik FROM Companies WHERE Name LIKE '%Mortenson%' OR Name LIKE '%NTT%' OR Name LIKE '%Eaton%' OR Name LIKE '%Lumen%' OR Name LIKE '%Schneider%' OR Name LIKE '%Verizon%' OR Name LIKE '%OpenAI%';\")",
+      "PowerShell(dotnet ef migrations *)",
+      "PowerShell(dotnet user-secrets init *)"
     ]
   },
   "outputStyle": "Learning"

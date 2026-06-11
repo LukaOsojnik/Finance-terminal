@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using simple_bloomberg_terminal.Models.Enums;
 using simple_bloomberg_terminal.Services;
@@ -10,6 +11,7 @@ namespace simple_bloomberg_terminal.Controllers;
 /// controller-name collision that would route links to an API verb).
 /// </summary>
 [Route("impact")]
+[AllowAnonymous]
 public class ImpactController(EventImpactService impact) : Controller
 {
     [HttpGet, Route("", Name = "ImpactIndex")]

@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using simple_bloomberg_terminal.Models.Entities;
 using simple_bloomberg_terminal.Models.ViewModels;
@@ -6,6 +7,7 @@ using simple_bloomberg_terminal.Repositories;
 namespace simple_bloomberg_terminal.Controllers;
 
 [Route("trade-blocs")]
+[Authorize(Roles = "Admin,Manager")]
 public class TradeBlocsController : Controller
 {
     private readonly ITradeBlocRepository _tradeBlocs;
@@ -17,12 +19,15 @@ public class TradeBlocsController : Controller
         _countries = countries;
     }
 
+    [AllowAnonymous]
     [HttpGet, Route("")]
     public IActionResult Index() => View(_tradeBlocs.GetAll());
 
+    [AllowAnonymous]
     [HttpGet, Route("search")]
     public IActionResult Search(string? term) => PartialView("_TableBody", _tradeBlocs.Search(term));
 
+    [AllowAnonymous]
     [HttpGet, Route("{id:long}/overview")]
     public IActionResult Details(long id)
     {

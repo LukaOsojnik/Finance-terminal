@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Rendering;
 using simple_bloomberg_terminal.Models.Entities;
@@ -7,6 +8,7 @@ using simple_bloomberg_terminal.Repositories;
 namespace simple_bloomberg_terminal.Controllers;
 
 [Route("country-challenges")]
+[Authorize(Roles = "Admin,Manager")]
 public class CountryChallengesController : Controller
 {
     private readonly ICountryChallengeRepository _repo;
@@ -18,9 +20,11 @@ public class CountryChallengesController : Controller
         _countries = countries;
     }
 
+    [AllowAnonymous]
     [HttpGet, Route("")]
     public IActionResult Index() => View(_repo.GetAll());
 
+    [AllowAnonymous]
     [HttpGet, Route("search")]
     public IActionResult Search(string? term) => PartialView("_TableBody", _repo.Search(term));
 

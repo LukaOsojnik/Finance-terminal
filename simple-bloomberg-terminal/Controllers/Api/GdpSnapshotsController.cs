@@ -1,4 +1,5 @@
 using AutoMapper;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using simple_bloomberg_terminal.Dtos;
 using simple_bloomberg_terminal.Models.Entities;
@@ -8,6 +9,7 @@ namespace simple_bloomberg_terminal.Controllers.Api;
 
 [ApiController]
 [Route("api/[controller]")]
+[Authorize]
 public class GdpSnapshotsController : ControllerBase
 {
     private readonly IGdpSnapshotRepository _repo;
@@ -34,6 +36,7 @@ public class GdpSnapshotsController : ControllerBase
     }
 
     [HttpPost]
+    [Authorize(Roles = "Admin,Manager")]
     public ActionResult<GdpSnapshotDto> Create(GdpSnapshotRequestDto dto)
     {
         var entity = _mapper.Map<GdpSnapshot>(dto);
@@ -42,6 +45,7 @@ public class GdpSnapshotsController : ControllerBase
     }
 
     [HttpPut("{id:long}")]
+    [Authorize(Roles = "Admin,Manager")]
     public ActionResult<GdpSnapshotDto> Update(long id, GdpSnapshotRequestDto dto)
     {
         var entity = _repo.GetById(id);
@@ -52,6 +56,7 @@ public class GdpSnapshotsController : ControllerBase
     }
 
     [HttpDelete("{id:long}")]
+    [Authorize(Roles = "Admin,Manager")]
     public IActionResult Delete(long id)
     {
         if (_repo.GetById(id) is null) return NotFound();

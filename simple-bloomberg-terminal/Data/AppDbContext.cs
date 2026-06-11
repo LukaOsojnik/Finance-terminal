@@ -1,9 +1,10 @@
+using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore;
 using simple_bloomberg_terminal.Models.Entities;
 
 namespace simple_bloomberg_terminal.Data;
 
-public class AppDbContext : DbContext
+public class AppDbContext : IdentityDbContext<AppUser>
 {
     public AppDbContext(DbContextOptions<AppDbContext> options) : base(options) { }
 
@@ -21,6 +22,8 @@ public class AppDbContext : DbContext
     public DbSet<GdpSnapshot> GdpSnapshots { get; set; }
     public DbSet<SourceFieldReview> SourceFieldReviews { get; set; }
     public DbSet<Filing> Filings { get; set; }
+    public DbSet<Scenario> Scenarios { get; set; }
+    public DbSet<ScenarioShock> ScenarioShocks { get; set; }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

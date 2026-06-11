@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Rendering;
 using simple_bloomberg_terminal.Models.Entities;
@@ -8,6 +9,7 @@ using simple_bloomberg_terminal.Repositories;
 namespace simple_bloomberg_terminal.Controllers;
 
 [Route("cost-sources")]
+[Authorize(Roles = "Admin,Manager")]
 public class CostSourcesController : Controller
 {
     private readonly ICostSourceRepository _repo;
@@ -21,12 +23,15 @@ public class CostSourcesController : Controller
         _filings = filings;
     }
 
+    [AllowAnonymous]
     [HttpGet, Route("")]
     public IActionResult Index() => View(_repo.GetAll());
 
+    [AllowAnonymous]
     [HttpGet, Route("search")]
     public IActionResult Search(string? term) => PartialView("_TableBody", _repo.Search(term));
 
+    [AllowAnonymous]
     [HttpGet, Route("{id:long}/breakdown")]
     public IActionResult Details(long id)
     {

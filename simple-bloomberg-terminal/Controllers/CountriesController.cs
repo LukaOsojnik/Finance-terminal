@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Rendering;
 using simple_bloomberg_terminal.Models.Entities;
@@ -7,6 +8,7 @@ using simple_bloomberg_terminal.Repositories;
 namespace simple_bloomberg_terminal.Controllers;
 
 [Route("countries")]
+[Authorize(Roles = "Admin,Manager")]
 public class CountriesController : Controller
 {
     private readonly ICountryRepository _countries;
@@ -23,10 +25,12 @@ public class CountriesController : Controller
         _companies = companies;
     }
 
+    [AllowAnonymous]
     [HttpGet, Route("")]
     public IActionResult Index() =>
         View(_countries.GetAll().Select(CountryRowViewModel.From));
 
+    [AllowAnonymous]
     [HttpGet, Route("search")]
     public IActionResult Search(string? term)
     {
@@ -34,10 +38,12 @@ public class CountriesController : Controller
         return PartialView("_TableBody", rows);
     }
 
+    [AllowAnonymous]
     [HttpGet, Route("lookup")]
     public IActionResult Lookup(string? term) =>
         Json(_countries.Lookup(term).Take(10).Select(c => new { id = c.Id, label = c.Name }));
 
+    [AllowAnonymous]
     [HttpGet, Route("{id:long}/overview")]
     public IActionResult Details(long id)
     {

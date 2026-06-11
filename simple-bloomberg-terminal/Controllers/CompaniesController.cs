@@ -1,5 +1,6 @@
 using System.Net;
 using System.Text.Json;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Rendering;
 using simple_bloomberg_terminal.Models.Entities;
@@ -11,6 +12,7 @@ using simple_bloomberg_terminal.Services;
 namespace simple_bloomberg_terminal.Controllers;
 
 [Route("companies")]
+[Authorize(Roles = "Admin,Manager")]
 public class CompaniesController : Controller
 {
     private readonly ICompanyRepository _companies;
@@ -47,17 +49,21 @@ public class CompaniesController : Controller
         _industryClassifier = industryClassifier;
     }
 
+    [AllowAnonymous]
     [HttpGet, Route("")]
     public IActionResult Index() => View(_companies.GetAll());
 
+    [AllowAnonymous]
     [HttpGet, Route("search")]
     public IActionResult Search(string? term) =>
         PartialView("_TableBody", _companies.Search(term));
 
+    [AllowAnonymous]
     [HttpGet, Route("lookup")]
     public IActionResult Lookup(string? term) =>
         Json(_companies.Lookup(term).Take(10).Select(c => new { id = c.Id, label = c.Name }));
 
+    [AllowAnonymous]
     [HttpGet, Route("{id:long}/profile")]
     public IActionResult Details(long id)
     {
@@ -434,15 +440,33 @@ public class CompaniesController : Controller
         }
 
         var remaining = eligible.Count - filled.Count - failed.Count;
+
+        // Industry is independent of the FMP fetch: the LLM classifier works from name + sector alone,
+        // so resolve it for EVERY company still missing one — including those the loop above never
+        // touched (already-financialed and thus skipped, or non-US / no SEC CIK so no ticker, or left
+        // unprocessed when an FMP 429 broke the loop). Constrained to the sector's GICS industries, so
+        // it can only land a valid in-sector value. Best-effort per company; a classify miss leaves null.
+        var industriesFilled = new List<object>();
+        foreach (var c in _companies.GetAll().Where(c => c.Industry == null))
+        {
+            if (await _industryClassifier.ClassifyAsync(c.Sector, c.Name, null) is { } ind)
+            {
+                c.Industry = ind;
+                _companies.Update(c);
+                industriesFilled.Add(new { c.Name, industry = ind.ToString().Replace('_', ' ') });
+            }
+        }
+
         return Json(new
         {
             filled,
             failed,
+            industriesFilled,
             rateLimited,
             remaining,
             message = rateLimited
-                ? $"Filled {filled.Count}. FMP daily limit reached — {remaining} eligible companies remain; click again tomorrow."
-                : $"Filled {filled.Count}, {failed.Count} failed, {remaining} eligible remaining."
+                ? $"Filled {filled.Count}. FMP daily limit reached — {remaining} eligible companies remain; click again tomorrow. Resolved {industriesFilled.Count} industries."
+                : $"Filled {filled.Count}, {failed.Count} failed, {remaining} eligible remaining. Resolved {industriesFilled.Count} industries."
         });
     }
 
@@ -509,6 +533,7 @@ public class CompaniesController : Controller
     // Feeds the "linked sources" popup shown when a delete is blocked. Returns both directions:
     // "owned" = this company's own sources (these block deletion); "inverse" = sources owned by
     // OTHER companies that point at this one. Both are soft-deleted via the source APIs from the UI.
+    [AllowAnonymous]
     [HttpGet, Route("{id:long}/linked-sources")]
     public IActionResult LinkedSources(long id)
     {

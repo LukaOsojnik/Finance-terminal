@@ -1,4 +1,5 @@
 using AutoMapper;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using simple_bloomberg_terminal.Dtos;
 using simple_bloomberg_terminal.Models.Entities;
@@ -8,6 +9,7 @@ namespace simple_bloomberg_terminal.Controllers.Api;
 
 [ApiController]
 [Route("api/[controller]")]
+[Authorize]
 public class CostSourcesController : ControllerBase
 {
     private readonly ICostSourceRepository _repo;
@@ -34,6 +36,7 @@ public class CostSourcesController : ControllerBase
     }
 
     [HttpPost]
+    [Authorize(Roles = "Admin,Manager")]
     public ActionResult<CostSourceDto> Create(CostSourceRequestDto dto)
     {
         var entity = _mapper.Map<CostSource>(dto);
@@ -42,6 +45,7 @@ public class CostSourcesController : ControllerBase
     }
 
     [HttpPut("{id:long}")]
+    [Authorize(Roles = "Admin,Manager")]
     public ActionResult<CostSourceDto> Update(long id, CostSourceRequestDto dto)
     {
         var entity = _repo.GetById(id);
@@ -52,6 +56,7 @@ public class CostSourcesController : ControllerBase
     }
 
     [HttpDelete("{id:long}")]
+    [Authorize(Roles = "Admin,Manager")]
     public IActionResult Delete(long id)
     {
         if (_repo.GetById(id) is null) return NotFound();

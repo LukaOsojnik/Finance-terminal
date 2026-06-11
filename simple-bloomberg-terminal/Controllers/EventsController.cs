@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Rendering;
 using simple_bloomberg_terminal.Models.Entities;
@@ -8,6 +9,7 @@ using simple_bloomberg_terminal.Repositories;
 namespace simple_bloomberg_terminal.Controllers;
 
 [Route("events")]
+[Authorize(Roles = "Admin,Manager")]
 public class EventsController : Controller
 {
     private readonly IEventRepository _events;
@@ -28,10 +30,12 @@ public class EventsController : Controller
         _tradeBlocs = tradeBlocs;
     }
 
+    [AllowAnonymous]
     [HttpGet, Route("feed")]
     public IActionResult Index() =>
         View(_events.GetAll().Select(ToRow));
 
+    [AllowAnonymous]
     [HttpGet, Route("search")]
     public IActionResult Search(string? term) =>
         PartialView("_TableBody", _events.Search(term).Select(ToRow));
@@ -45,6 +49,7 @@ public class EventsController : Controller
         return row;
     }
 
+    [AllowAnonymous]
     [HttpGet, Route("{id:long}/summary")]
     public IActionResult Details(long id)
     {

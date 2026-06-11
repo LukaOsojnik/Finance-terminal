@@ -1,4 +1,5 @@
 using System.Globalization;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Rendering;
 using simple_bloomberg_terminal.Models.Entities;
@@ -9,6 +10,7 @@ using simple_bloomberg_terminal.Repositories;
 namespace simple_bloomberg_terminal.Controllers;
 
 [Route("revenue-sources")]
+[Authorize(Roles = "Admin,Manager")]
 public class RevenueSourcesController : Controller
 {
     private readonly IRevenueSourceRepository _repo;
@@ -28,12 +30,15 @@ public class RevenueSourcesController : Controller
         _reviews = reviews;
     }
 
+    [AllowAnonymous]
     [HttpGet, Route("")]
     public IActionResult Index() => View(_repo.GetAll());
 
+    [AllowAnonymous]
     [HttpGet, Route("search")]
     public IActionResult Search(string? term) => PartialView("_TableBody", _repo.Search(term));
 
+    [AllowAnonymous]
     [HttpGet, Route("{id:long}/breakdown")]
     public IActionResult Details(long id)
     {

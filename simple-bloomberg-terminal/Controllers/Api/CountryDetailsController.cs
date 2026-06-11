@@ -1,4 +1,5 @@
 using AutoMapper;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using simple_bloomberg_terminal.Dtos;
 using simple_bloomberg_terminal.Models.Entities;
@@ -8,6 +9,7 @@ namespace simple_bloomberg_terminal.Controllers.Api;
 
 [ApiController]
 [Route("api/[controller]")]
+[Authorize]
 public class CountryDetailsController : ControllerBase
 {
     private readonly ICountryDetailsRepository _repo;
@@ -35,6 +37,7 @@ public class CountryDetailsController : ControllerBase
     }
 
     [HttpPost]
+    [Authorize(Roles = "Admin,Manager")]
     public ActionResult<CountryDetailsDto> Create(CountryDetailsRequestDto dto)
     {
         var entity = _mapper.Map<CountryDetails>(dto);
@@ -43,6 +46,7 @@ public class CountryDetailsController : ControllerBase
     }
 
     [HttpPut("{countryId:long}")]
+    [Authorize(Roles = "Admin,Manager")]
     public ActionResult<CountryDetailsDto> Update(long countryId, CountryDetailsRequestDto dto)
     {
         var entity = _repo.GetById(countryId);
@@ -53,6 +57,7 @@ public class CountryDetailsController : ControllerBase
     }
 
     [HttpDelete("{countryId:long}")]
+    [Authorize(Roles = "Admin,Manager")]
     public IActionResult Delete(long countryId)
     {
         if (_repo.GetById(countryId) is null) return NotFound();

@@ -1,8 +1,10 @@
 using System.Globalization;
+using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Localization;
 using Microsoft.EntityFrameworkCore;
 using simple_bloomberg_terminal.Data;
 using simple_bloomberg_terminal.IoCore;
+using simple_bloomberg_terminal.Models.Entities;
 using simple_bloomberg_terminal.Repositories;
 using simple_bloomberg_terminal.Services;
 
@@ -18,6 +20,38 @@ var serverVersion = builder.Environment.IsEnvironment("Testing")
     : ServerVersion.AutoDetect(connectionString);
 builder.Services.AddDbContext<AppDbContext>(options =>
     options.UseMySql(connectionString, serverVersion));
+
+// ASP.NET Core Identity: cookie auth + EF user/role stores backed by AppDbContext (now an
+// IdentityDbContext). AddDefaultIdentity wires the default Razor UI (Register/Login/Logout/
+// ExternalLogin under /Identity/Account/*); AddRoles enables role-based [Authorize]. Relaxed
+// password + no email confirmation so local register/login works out of the box for this lab.
+builder.Services
+    .AddDefaultIdentity<AppUser>(options =>
+    {
+        options.SignIn.RequireConfirmedAccount = false;
+        options.Password.RequireNonAlphanumeric = false;
+        options.Password.RequireUppercase = false;
+        options.Password.RequiredLength = 6;
+    })
+    .AddRoles<IdentityRole>()
+    .AddEntityFrameworkStores<AppDbContext>();
+
+// Google external login. Credentials come from user-secrets / config under Authentication:Google;
+// only registered when both are present so the app still boots without them (the Google button
+// just won't appear).
+var googleClientId = builder.Configuration["Authentication:Google:ClientId"];
+var googleClientSecret = builder.Configuration["Authentication:Google:ClientSecret"];
+if (!string.IsNullOrWhiteSpace(googleClientId) && !string.IsNullOrWhiteSpace(googleClientSecret))
+{
+    builder.Services.AddAuthentication()
+        .AddGoogle(options =>
+        {
+            options.ClientId = googleClientId;
+            options.ClientSecret = googleClientSecret;
+        });
+}
+
+builder.Services.AddRazorPages();
 
 // Scoped = one instance per HTTP request (was Singleton — Singleton cannot hold a Scoped DbContext).
 // Spring equivalent: @Transactional method scope vs application-scoped bean.
@@ -109,12 +143,26 @@ app.UseRequestLocalization(new RequestLocalizationOptions
 });
 
 app.UseRouting();
+app.UseAuthentication();
 app.UseAuthorization();
 app.MapStaticAssets();
 app.MapControllerRoute(
         name: "default",
         pattern: "{controller=Home}/{action=Index}/{id?}")
     .WithStaticAssets();
+app.MapRazorPages();
+
+// Seed the three roles (Admin, Manager, User) once at startup so role-based [Authorize] has
+// something to match. Idempotent — skips any role that already exists.
+using (var scope = app.Services.CreateScope())
+{
+    var roleManager = scope.ServiceProvider.GetRequiredService<RoleManager<IdentityRole>>();
+    foreach (var role in new[] { "Admin", "Manager", "User" })
+    {
+        if (!await roleManager.RoleExistsAsync(role))
+            await roleManager.CreateAsync(new IdentityRole(role));
+    }
+}
 
 app.Run();
 
