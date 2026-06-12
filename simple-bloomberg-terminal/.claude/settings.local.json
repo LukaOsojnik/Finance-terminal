@@ -42,7 +42,14 @@
       "Bash(curl -s -o /dev/null -w \"%{http_code}\\\\n\" http://localhost:5213/swagger/index.html)",
       "Bash(curl -s http://localhost:5213/swagger/v1/swagger.json)",
       "Read(//c/Users/luka.osojnik/Documents/Coding/simple-bloomberg-terminal/**)",
-      "Bash(dotnet test *)"
+      "Bash(dotnet test *)",
+      "Bash(ASPNETCORE_URLS=\"http://localhost:5213\" dotnet run --no-build)",
+      "Bash(tee /tmp/app.log)",
+      "Read(//c/tmp/**)",
+      "Bash(rm -f cookies.txt)",
+      "Bash(curl -s -c cookies.txt http://localhost:5213/Identity/Account/Register)",
+      "Bash(mysql *)",
+      "Bash(pkill -f \"dotnet.*simple-bloomberg-terminal\")"
     ]
   },
   "outputStyle": "Learning"

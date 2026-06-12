@@ -13,7 +13,8 @@
 
     <li class="nav-item dropdown">
         <a class="nav-link dropdown-toggle nav-avatar" href="#" id="userMenu" role="button"
-           data-bs-toggle="dropdown" aria-expanded="false" title="@email">
+           data-bs-toggle="dropdown" aria-expanded="false" title="@email"
+           data-initial="@(username.Length > 0 ? char.ToUpper(username[0]).ToString() : "?")">
             @if (!string.IsNullOrEmpty(pfp))
             {
                 <img class="avatar-img" src="@pfp" alt="@username"/>

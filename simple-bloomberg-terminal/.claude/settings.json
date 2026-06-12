@@ -1,4 +1,4 @@
-{
+ {
   "lsp": {
     "csharp-ls": {
       "command": "csharp-ls",

@@ -84,6 +84,7 @@
             document.getElementById("metaDate").textContent = uploadedAt || "";
             document.getElementById("pictureMeta").style.display = "";
             document.getElementById("deleteBtn").style.display = "";
+            updateNavAvatar(path);
         }
 
         function clearPicture() {
@@ -92,6 +93,19 @@
                 'border-radius:8px;border:1px dashed #555;color:#888;">No picture</div>';
             document.getElementById("pictureMeta").style.display = "none";
             document.getElementById("deleteBtn").style.display = "none";
+            updateNavAvatar(null);
+        }
+
+        // Keep the nav-bar avatar in sync with the picture change (it was rendered at page load).
+        function updateNavAvatar(path) {
+            const menu = document.getElementById("userMenu");
+            if (!menu) return;
+            if (path) {
+                menu.innerHTML = '<img class="avatar-img" src="' + path + '" alt="avatar"/>';
+            } else {
+                const initial = menu.getAttribute("data-initial") || "?";
+                menu.innerHTML = '<span class="avatar-fallback">' + initial + '</span>';
+            }
         }
     </script>
 }
