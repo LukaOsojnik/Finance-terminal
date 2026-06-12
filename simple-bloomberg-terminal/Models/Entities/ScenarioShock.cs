@@ -35,6 +35,8 @@ public class ScenarioShock
     /// </summary>
     public double Magnitude { get; set; }
 
+    public DateTime? DeletedAt { get; set; }
+
     [ForeignKey(nameof(ScenarioId))]
     public virtual Scenario? Scenario { get; set; }
 }

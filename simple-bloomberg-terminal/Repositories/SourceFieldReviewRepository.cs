@@ -6,6 +6,37 @@ namespace simple_bloomberg_terminal.Repositories;
 
 public class SourceFieldReviewRepository(AppDbContext db) : ISourceFieldReviewRepository
 {
+    public IEnumerable<SourceFieldReview> GetAll() =>
+        db.SourceFieldReviews
+            .Include(r => r.Company)
+            .Include(r => r.RevenueSource)
+            .Include(r => r.CostSource)
+            .Include(r => r.CompanyRisk)
+            .Include(r => r.Filing)
+            .Where(r => r.DeletedAt == null)
+            .OrderByDescending(r => r.Id)
+            .ToList();
+
+    public IEnumerable<SourceFieldReview> Search(string? term)
+    {
+        var q = db.SourceFieldReviews
+            .Include(r => r.Company)
+            .Include(r => r.RevenueSource)
+            .Include(r => r.CostSource)
+            .Include(r => r.CompanyRisk)
+            .Include(r => r.Filing)
+            .Where(r => r.DeletedAt == null);
+        if (!string.IsNullOrWhiteSpace(term))
+        {
+            var t = term.Trim();
+            q = q.Where(r =>
+                EF.Functions.Like(r.Endpoint, $"%{t}%") ||
+                (r.Rationale != null && EF.Functions.Like(r.Rationale, $"%{t}%")) ||
+                (r.Company != null && EF.Functions.Like(r.Company.Name, $"%{t}%")));
+        }
+        return q.OrderByDescending(r => r.Id).ToList();
+    }
+
     public IEnumerable<SourceFieldReview> GetByCompany(long companyId) =>
         db.SourceFieldReviews
             .Include(r => r.Company)

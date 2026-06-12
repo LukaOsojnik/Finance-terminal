@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
+using Microsoft.EntityFrameworkCore;
 using simple_bloomberg_terminal.Models.Entities;
 
 namespace simple_bloomberg_terminal.Areas.Identity.Pages.Account;
@@ -81,11 +82,25 @@ public class ExternalLoginModel : PageModel
         if (user == null)
         {
             user = new AppUser { UserName = email, Email = email, EmailConfirmed = true };
-            var createResult = await _userManager.CreateAsync(user);
-            if (!createResult.Succeeded)
+            try
             {
-                ErrorMessage = string.Join(" ", createResult.Errors.Select(e => e.Description));
-                return RedirectToPage("./Login", new { returnUrl });
+                var createResult = await _userManager.CreateAsync(user);
+                if (!createResult.Succeeded)
+                {
+                    ErrorMessage = string.Join(" ", createResult.Errors.Select(e => e.Description));
+                    return RedirectToPage("./Login", new { returnUrl });
+                }
+            }
+            catch (DbUpdateException)
+            {
+                // Unique index backstop fired (concurrent callback raced past FindByEmail).
+                // The account now exists — reload it and continue linking the login.
+                user = await _userManager.FindByEmailAsync(email);
+                if (user == null)
+                {
+                    ErrorMessage = "An account with this email already exists.";
+                    return RedirectToPage("./Login", new { returnUrl });
+                }
             }
         }
 

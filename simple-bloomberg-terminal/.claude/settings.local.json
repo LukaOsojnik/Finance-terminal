@@ -35,7 +35,14 @@
       "PowerShell(dotnet user-secrets init *)",
       "Read(//c/Program Files/MySQL/**)",
       "Read(//c/Program Files/**)",
-      "Read(//c/xampp/mysql/bin/**)"
+      "Read(//c/xampp/mysql/bin/**)",
+      "Skill(run)",
+      "Bash(dotnet run *)",
+      "Bash(echo \"started with pid $!\")",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\\\\n\" http://localhost:5213/swagger/index.html)",
+      "Bash(curl -s http://localhost:5213/swagger/v1/swagger.json)",
+      "Read(//c/Users/luka.osojnik/Documents/Coding/simple-bloomberg-terminal/**)",
+      "Bash(dotnet test *)"
     ]
   },
   "outputStyle": "Learning"

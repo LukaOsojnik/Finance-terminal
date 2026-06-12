@@ -1290,6 +1290,96 @@
 
 ---
 
+## api/CompanyRisks
+
+| Field | Value |
+|---|---|
+| Controller | CompanyRisksController (Controllers/Api/) |
+| Action | GetAll / GetById / Create / Update / Delete |
+| HTTP | GET /api/CompanyRisks (`?q=` optional search), GET /api/CompanyRisks/{id:long}, POST /api/CompanyRisks, PUT /api/CompanyRisks/{id:long}, DELETE /api/CompanyRisks/{id:long} |
+| Route source | `[ApiController]` + `[Route("api/[controller]")]` |
+| View | — (JSON `CompanyRiskDto` / list) |
+| Parameters | q: string? (query, GetAll); id: long (route, constrained); body: `CompanyRiskRequestDto` (Create/Update) |
+| Auth | `[Authorize]` class-level (GET); `[Authorize(Roles = "Admin,Manager")]` on Create/Update/Delete |
+| Notes | Standard CRUD; Delete is a soft-delete (`_repo.SoftDelete`) |
+
+---
+
+## api/CompanyFinancials
+
+| Field | Value |
+|---|---|
+| Controller | CompanyFinancialsController (Controllers/Api/) |
+| Action | GetAll / GetById / Create / Update / Delete |
+| HTTP | GET /api/CompanyFinancials (`?q=` optional search), GET /api/CompanyFinancials/{id:long}, POST /api/CompanyFinancials, PUT /api/CompanyFinancials/{id:long}, DELETE /api/CompanyFinancials/{id:long} |
+| Route source | `[ApiController]` + `[Route("api/[controller]")]` |
+| View | — (JSON `CompanyFinancialDto` / list) |
+| Parameters | q: string? (query, GetAll); id: long (route, constrained); body: `CompanyFinancialRequestDto` (Create/Update) |
+| Auth | `[Authorize]` class-level (GET); `[Authorize(Roles = "Admin,Manager")]` on Create/Update/Delete |
+| Notes | Standard CRUD; Delete is a soft-delete (`_repo.SoftDelete`) |
+
+---
+
+## api/Filings
+
+| Field | Value |
+|---|---|
+| Controller | FilingsController (Controllers/Api/) |
+| Action | GetAll / GetById / Create / Update / Delete |
+| HTTP | GET /api/Filings (`?q=` optional search), GET /api/Filings/{id:long}, POST /api/Filings, PUT /api/Filings/{id:long}, DELETE /api/Filings/{id:long} |
+| Route source | `[ApiController]` + `[Route("api/[controller]")]` |
+| View | — (JSON `FilingDto` / list) |
+| Parameters | q: string? (query, GetAll); id: long (route, constrained); body: `FilingRequestDto` (Create/Update) |
+| Auth | `[Authorize]` class-level (GET); `[Authorize(Roles = "Admin,Manager")]` on Create/Update/Delete |
+| Notes | Standard CRUD, except Create calls `_repo.Upsert(companyId, accessionNumber, form, filingDate, primaryDocUrl)` instead of a plain insert — AccessionNumber has a unique index, so an existing row for the same accession is revived/refreshed rather than colliding. Delete is a soft-delete (`_repo.SoftDelete`) |
+
+---
+
+## api/SourceFieldReviews
+
+| Field | Value |
+|---|---|
+| Controller | SourceFieldReviewsController (Controllers/Api/) |
+| Action | GetAll / GetById / Create / Update / Delete |
+| HTTP | GET /api/SourceFieldReviews (`?q=` optional search), GET /api/SourceFieldReviews/{id:long}, POST /api/SourceFieldReviews, PUT /api/SourceFieldReviews/{id:long}, DELETE /api/SourceFieldReviews/{id:long} |
+| Route source | `[ApiController]` + `[Route("api/[controller]")]` |
+| View | — (JSON `SourceFieldReviewDto` / list) |
+| Parameters | q: string? (query, GetAll); id: long (route, constrained); body: `SourceFieldReviewRequestDto` (Create/Update) |
+| Auth | `[Authorize]` class-level (GET); `[Authorize(Roles = "Admin,Manager")]` on Create/Update/Delete |
+| Notes | Standard CRUD; Delete is a soft-delete (`_repo.SoftDelete`) |
+
+---
+
+## api/Scenarios
+
+| Field | Value |
+|---|---|
+| Controller | ScenariosController (Controllers/Api/) |
+| Action | GetAll / GetById / Create / Update / Delete |
+| HTTP | GET /api/Scenarios (`?q=` optional search), GET /api/Scenarios/{id:long}, POST /api/Scenarios, PUT /api/Scenarios/{id:long}, DELETE /api/Scenarios/{id:long} |
+| Route source | `[ApiController]` + `[Route("api/[controller]")]` |
+| View | — (JSON `ScenarioDto` / list — includes nested `Shocks: List<ScenarioShockDto>`) |
+| Parameters | q: string? (query, GetAll); id: long (route, constrained); body: `ScenarioRequestDto` (Create/Update) |
+| Auth | `[Authorize]` class-level (GET); `[Authorize(Roles = "Admin,Manager")]` on Create/Update/Delete |
+| Notes | Standard CRUD; Delete is a soft-delete (`_repo.SoftDelete`). `ScenarioDto` carries the scenario's `ScenarioShock` rows nested under `Shocks` |
+
+---
+
+## api/ScenarioShocks
+
+| Field | Value |
+|---|---|
+| Controller | ScenarioShocksController (Controllers/Api/) |
+| Action | GetAll / GetById / Create / Update / Delete |
+| HTTP | GET /api/ScenarioShocks (`?q=` optional search), GET /api/ScenarioShocks/{id:long}, POST /api/ScenarioShocks, PUT /api/ScenarioShocks/{id:long}, DELETE /api/ScenarioShocks/{id:long} |
+| Route source | `[ApiController]` + `[Route("api/[controller]")]` |
+| View | — (JSON `ScenarioShockDto` / list) |
+| Parameters | q: string? (query, GetAll); id: long (route, constrained); body: `ScenarioShockRequestDto` (Create/Update) |
+| Auth | `[Authorize]` class-level (GET); `[Authorize(Roles = "Admin,Manager")]` on Create/Update/Delete |
+| Notes | Standard CRUD, except Delete is a HARD delete (`db.ScenarioShocks.Remove` via `_repo.Delete`) — ScenarioShock has no `DeletedAt` column |
+
+---
+
 ## /Account/Profile
 
 | Field | Value |
@@ -1415,7 +1505,7 @@
 ASP.NET Core Identity now gates the existing controllers as follows:
 
 - **MVC entity controllers** (Countries, Companies, Events, TradeBlocs, CountryDetails, CountryAdvantages, CountryChallenges, GdpSnapshots, RevenueSources, CostSources): read GETs (`Index`/`Search`/`Details`/`Lookup`/`ValidateCountry` and the like) are `[AllowAnonymous]`; `Create`/`Edit`/`Delete` (and the other mutating actions) require `[Authorize(Roles = "Admin,Manager")]`.
-- **API controllers** (Controllers/Api — GraphController, StockController): `GET` requires `[Authorize]` (any authenticated user); `POST`/`PUT`/`DELETE` require `[Authorize(Roles = "Admin,Manager")]`.
+- **API controllers** (Controllers/Api — GraphController, StockController, CompanyRisks, CompanyFinancials, Filings, SourceFieldReviews, Scenarios, ScenarioShocks): `GET` requires `[Authorize]` (any authenticated user); `POST`/`PUT`/`DELETE` require `[Authorize(Roles = "Admin,Manager")]`.
 - **Public** (no auth): Home, Ticker, Graph, Impact.
 - **ExtractionController**: `[Authorize(Roles = "Admin,Manager")]` for the whole controller.
 - **AccountController**: `[Authorize]` (any authenticated user).

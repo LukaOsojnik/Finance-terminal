@@ -12,6 +12,12 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddControllersWithViews();
 builder.Services.AddAutoMapper(cfg => { }, typeof(Program).Assembly);
 
+// Swagger/OpenAPI: docs + test UI for the Controllers/Api/* endpoints at /swagger.
+// [Authorize] endpoints use cookie auth, so they're testable from the UI once logged in via the app
+// (same browser session shares the auth cookie).
+builder.Services.AddEndpointsApiExplorer();
+builder.Services.AddSwaggerGen();
+
 var connectionString = builder.Configuration.GetConnectionString("DefaultConnection");
 // AutoDetect opens a MySQL connection at startup; skip it under the integration-test
 // host ("Testing"), which removes this provider and swaps in SQLite anyway.
@@ -66,6 +72,9 @@ builder.Services.AddScoped<IGdpSnapshotRepository, GdpSnapshotRepository>();
 builder.Services.AddScoped<IRevenueSourceRepository, RevenueSourceRepository>();
 builder.Services.AddScoped<ICostSourceRepository, CostSourceRepository>();
 builder.Services.AddScoped<ICompanyRiskRepository, CompanyRiskRepository>();
+builder.Services.AddScoped<ICompanyFinancialRepository, CompanyFinancialRepository>();
+builder.Services.AddScoped<IScenarioRepository, ScenarioRepository>();
+builder.Services.AddScoped<IScenarioShockRepository, ScenarioShockRepository>();
 builder.Services.AddScoped<ISourceFieldReviewRepository, SourceFieldReviewRepository>();
 builder.Services.AddScoped<IFilingRepository, FilingRepository>();
 
@@ -127,6 +136,9 @@ if (!app.Environment.IsDevelopment())
     app.UseExceptionHandler("/Home/Error");
     app.UseHsts();
 }
+
+app.UseSwagger();
+app.UseSwaggerUI();
 
 app.UseHttpsRedirection();
 

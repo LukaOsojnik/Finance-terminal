@@ -1,3 +1,4 @@
+using Microsoft.EntityFrameworkCore;
 using simple_bloomberg_terminal.Data;
 using simple_bloomberg_terminal.Models.Entities;
 using simple_bloomberg_terminal.Models.Enums;
@@ -6,6 +7,13 @@ namespace simple_bloomberg_terminal.Repositories;
 
 public class FilingRepository(AppDbContext db) : IFilingRepository
 {
+    public IEnumerable<Filing> GetAll() =>
+        db.Filings
+            .Include(f => f.Company)
+            .Where(f => f.DeletedAt == null)
+            .OrderByDescending(f => f.FilingDate)
+            .ToList();
+
     // Accession is globally unique and the unique index spans soft-deleted rows too, so this
     // upsert lookup must find a row regardless of DeletedAt — the caller revives it rather than
     // inserting a duplicate.
@@ -21,8 +29,30 @@ public class FilingRepository(AppDbContext db) : IFilingRepository
             .OrderByDescending(f => f.FilingDate)
             .ToList();
 
+    public IEnumerable<Filing> Search(string? term)
+    {
+        var q = db.Filings.Include(f => f.Company).Where(f => f.DeletedAt == null);
+        if (!string.IsNullOrWhiteSpace(term))
+        {
+            var t = term.Trim();
+            q = q.Where(f =>
+                EF.Functions.Like(f.AccessionNumber, $"%{t}%") ||
+                (f.Form != null && EF.Functions.Like(f.Form, $"%{t}%")) ||
+                (f.Company != null && EF.Functions.Like(f.Company.Name, $"%{t}%")));
+        }
+        return q.OrderByDescending(f => f.FilingDate).ToList();
+    }
+
     public void Add(Filing entity) { db.Filings.Add(entity); db.SaveChanges(); }
     public void Update(Filing entity) { db.Filings.Update(entity); db.SaveChanges(); }
+
+    public void SoftDelete(long id)
+    {
+        var entity = db.Filings.FirstOrDefault(f => f.Id == id);
+        if (entity == null || entity.DeletedAt != null) return;
+        entity.DeletedAt = DateTime.UtcNow;
+        db.SaveChanges();
+    }
 
     public Filing Upsert(long companyId, string accessionNumber, string? form, DateTime? filingDate, string? primaryDocUrl)
     {

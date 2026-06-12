@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.AspNetCore.Mvc.RazorPages;
 using simple_bloomberg_terminal.Models.Entities;
 
@@ -58,7 +59,20 @@ public class RegisterModel : PageModel
         if (!ModelState.IsValid) return Page();
 
         var user = new AppUser { UserName = Input.Email, Email = Input.Email };
-        var result = await _userManager.CreateAsync(user, Input.Password);
+
+        IdentityResult result;
+        try
+        {
+            result = await _userManager.CreateAsync(user, Input.Password);
+        }
+        catch (DbUpdateException)
+        {
+            // Unique index backstop fired (concurrent/replayed submit slipped past the
+            // pre-insert uniqueness check). Surface the same friendly error as the validator.
+            ModelState.AddModelError(string.Empty, "An account with this email already exists.");
+            return Page();
+        }
+
         if (result.Succeeded)
         {
             _logger.LogInformation("User created a new account with password.");

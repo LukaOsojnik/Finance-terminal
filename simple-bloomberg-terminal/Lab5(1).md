@@ -26,7 +26,7 @@ Predaja: 12.6.
         - [ ]  Povezane podatke prikazati kroz ugniježđene DTO klase gdje ima smisla
 - [ ]  Upload datoteka mora biti vezan uz konkretnog kviza
     - [ ]  Upload raditi asinkrono preko Dropzone komponente ili održavane alternative
-    - [ ]  Datoteke spremiti na disk
+      - [ ]  Datoteke spremiti na disk
     - [ ]  U bazu spremiti metapodatke i putanju
     - [ ]  Popis datoteka učitati AJAX pozivom
     - [ ]  Omogućiti brisanje postojećih datoteka

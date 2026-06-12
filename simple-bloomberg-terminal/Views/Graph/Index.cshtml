@@ -223,13 +223,23 @@
 
             function render(payload) {
                 lastData = payload;
-                const visNodes = payload.nodes.map(n => Object.assign({
-                    id: n.id,
-                    label: n.label,
-                    title: n.title || '',
-                    group: n.group,
-                    _meta: n
-                }, GROUP_STYLES[n.group] || {}));
+                const visNodes = payload.nodes.map(n => {
+                    const node = Object.assign({
+                        id: n.id,
+                        label: n.label,
+                        title: n.title || '',
+                        group: n.group,
+                        _meta: n
+                    }, GROUP_STYLES[n.group] || {});
+                    // Pin the center company at the origin so physics orbits it instead of
+                    // translating the whole cluster off-canvas to one side.
+                    if (n.id === ('company:' + payload.centerId)) {
+                        node.x = 0;
+                        node.y = 0;
+                        node.fixed = { x: true, y: true };
+                    }
+                    return node;
+                });
 
                 const visEdges = payload.edges.map(e => Object.assign({
                     from: e.from,

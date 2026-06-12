@@ -67,6 +67,31 @@ public class MappingProfile : Profile
             .ForMember(e => e.Companies, o => o.Ignore())
             .ForMember(e => e.TradeBlocs, o => o.Ignore());
 
+        // CompanyRisk
+        CreateMap<CompanyRisk, CompanyRiskDto>();
+        CreateMap<CompanyRiskRequestDto, CompanyRisk>();
+
+        // CompanyFinancial
+        CreateMap<CompanyFinancial, CompanyFinancialDto>();
+        CreateMap<CompanyFinancialRequestDto, CompanyFinancial>();
+
+        // Filing: Create goes through repo.Upsert (accession-keyed), so only the Update
+        // direction is needed here.
+        CreateMap<Filing, FilingDto>();
+        CreateMap<FilingRequestDto, Filing>();
+
+        // SourceFieldReview
+        CreateMap<SourceFieldReview, SourceFieldReviewDto>();
+        CreateMap<SourceFieldReviewRequestDto, SourceFieldReview>();
+
+        // Scenario (nested Shocks -> ScenarioShockDto, resolves via the ScenarioShock map below)
+        CreateMap<Scenario, ScenarioDto>();
+        CreateMap<ScenarioRequestDto, Scenario>();
+
+        // ScenarioShock
+        CreateMap<ScenarioShock, ScenarioShockDto>();
+        CreateMap<ScenarioShockRequestDto, ScenarioShock>();
+
         // Graph: Company -> hub-and-spoke GraphResponse. Imperative node/edge build (1->N
         // expansion + counterparty dedup), so it uses a custom converter instead of member
         // mapping. Shared by the MVC GraphController (HTML) and API GraphController (JSON).

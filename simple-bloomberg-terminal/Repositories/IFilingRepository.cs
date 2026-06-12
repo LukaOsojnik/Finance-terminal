@@ -5,11 +5,14 @@ namespace simple_bloomberg_terminal.Repositories;
 
 public interface IFilingRepository
 {
+    IEnumerable<Filing> GetAll();
     Filing? GetByAccession(string accessionNumber);
     Filing? GetById(long id);
     IEnumerable<Filing> GetByCompany(long companyId);
+    IEnumerable<Filing> Search(string? term);
     void Add(Filing entity);
     void Update(Filing entity);
+    void SoftDelete(long id);
 
     /// <summary>
     /// Find-or-create a Filing by its (globally unique) accession number, reviving a soft-deleted
