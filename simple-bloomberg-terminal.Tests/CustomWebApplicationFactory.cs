@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
@@ -32,6 +33,13 @@ public class CustomWebApplicationFactory : WebApplicationFactory<Program>
     public const long CountryChallengeId = 1;
     public const long GdpSnapshotId = 1;
     public const long RevenueSourceId = 1;
+    public const long CompanyFinancialId = 1;   // on Apple
+    public const long CompanyRiskId = 1;         // on Apple
+    public const long FilingId = 1;              // on Apple
+    public const long SourceFieldReviewId = 1;   // on Apple
+    public const long ScenarioId = 1;
+    public const long ScenarioShockId = 1;       // on the seeded Scenario
+    public const long CompanyAppleId = 1;        // alias: deletable company == Apple
 
     public const long MissingId = 999999;       // never seeded
 
@@ -60,16 +68,34 @@ public class CustomWebApplicationFactory : WebApplicationFactory<Program>
             // Swap the real EDGAR HttpClient for a deterministic fake (no live SEC calls).
             services.RemoveAll<IStockApiClient>();
             services.AddScoped<IStockApiClient, FakeStockApiClient>();
+
+            // Authenticate every request as an Admin+Manager user so the [Authorize] CRUD
+            // actions are reachable. Override Identity's defaults to the Test scheme.
+            services.AddAuthentication(TestAuthHandler.SchemeName)
+                .AddScheme<AuthenticationSchemeOptions, TestAuthHandler>(TestAuthHandler.SchemeName, _ => { });
+            services.Configure<AuthenticationOptions>(o =>
+            {
+                o.DefaultAuthenticateScheme = TestAuthHandler.SchemeName;
+                o.DefaultChallengeScheme = TestAuthHandler.SchemeName;
+                o.DefaultForbidScheme = TestAuthHandler.SchemeName;
+            });
         });
     }
 
     protected override IHost CreateHost(IHostBuilder builder)
     {
+        // Build the schema on the shared connection BEFORE base.CreateHost starts the app,
+        // because the app's startup role-seeding (Program.cs) queries AspNetRoles during
+        // host start — which is earlier than this override resumes. Includes Identity tables
+        // since AppDbContext : IdentityDbContext.
+        var options = new DbContextOptionsBuilder<AppDbContext>().UseSqlite(_connection).Options;
+        using (var schema = new AppDbContext(options))
+            schema.Database.EnsureCreated();
+
         var host = base.CreateHost(builder);
 
         using var scope = host.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-        db.Database.EnsureCreated();
         Seed(db);
 
         return host;
@@ -113,6 +139,47 @@ public class CustomWebApplicationFactory : WebApplicationFactory<Program>
         db.CountryChallenges.Add(new CountryChallenge { CountryId = us.Id, Text = "High public debt" });
         db.GdpSnapshots.Add(new GdpSnapshot { CountryId = us.Id, Year = 2023, GdpUsd = 24_000_000_000_000 });
 
+        db.SaveChanges();
+
+        // One row each for the financial-extraction + scenario API controllers (their tests).
+        var risk = new CompanyRisk(RiskScope.FINANCIAL, "FX exposure", apple.Id) { Note = "USD strength" };
+        db.CompanyFinancials.Add(new CompanyFinancial(apple.Id, 2023, FiscalPeriod.FY)
+            { Revenue = 383_000_000_000, NetIncome = 97_000_000_000, Source = DataSource.FMP, CapturedAt = DateTime.UtcNow });
+        db.CompanyRisks.Add(risk);
+        db.Filings.Add(new Filing
+        {
+            CompanyId = apple.Id,
+            AccessionNumber = "0000320193-23-000106",
+            Form = "10-K",
+            FilingDate = new DateTime(2023, 11, 3),
+            PrimaryDocUrl = "https://www.sec.gov/aapl-20230930.htm"
+        });
+
+        // Scenario + risk must be saved before dependent rows so their FKs resolve.
+        var scenario = new Scenario { Name = "Rate hike", Description = "Capital cost push" };
+        db.Scenarios.Add(scenario);
+        db.SaveChanges();
+
+        // CK_SourceFieldReview_OneSource: exactly one source FK must be set -> tie to the risk.
+        db.SourceFieldReviews.Add(new SourceFieldReview
+        {
+            CompanyId = apple.Id,
+            Relation = RelationKind.RISK,
+            CompanyRiskId = risk.Id,
+            Field = ReviewableField.VALUE,
+            Endpoint = "company-facts",
+            ReferencePointer = "us-gaap/Revenues/2023",
+            ReferenceSnapshot = "Total net sales 383,285"
+        });
+
+        db.ScenarioShocks.Add(new ScenarioShock
+        {
+            ScenarioId = scenario.Id,
+            Kind = ImpactKind.Cost,
+            Target = ShockTarget.FACTOR,
+            Factor = CostFactor.CAPITAL,
+            Magnitude = 0.10
+        });
         db.SaveChanges();
     }
 

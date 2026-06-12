@@ -31,3 +31,9 @@ appsettings.Development.json
 
 # Client-side libraries (restore via LibMan)
 **/wwwroot/lib
+
+# sec2md converted-markdown dumps (inspection artifacts)
+filings/
+
+# User-uploaded content (profile pictures) — runtime data, not source
+**/wwwroot/uploads/

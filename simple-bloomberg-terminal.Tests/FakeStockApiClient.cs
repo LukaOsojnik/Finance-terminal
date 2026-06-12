@@ -42,6 +42,11 @@ public class FakeStockApiClient : IStockApiClient
     public Task<string?> ResolveCik(string ticker) =>
         Task.FromResult(string.Equals(ticker, "AAPL", StringComparison.OrdinalIgnoreCase) ? AppleCik10 : null);
 
+    // Reverse of ResolveCik: CIK -> ticker. Only Apple is known.
+    public Task<IReadOnlyDictionary<string, string>> GetCikTickerMap() =>
+        Task.FromResult<IReadOnlyDictionary<string, string>>(
+            new Dictionary<string, string> { [AppleCik10] = "AAPL" });
+
     public Task<string?> GetCompanyFactsJson(string cik10) =>
         Task.FromResult<string?>(cik10 == AppleCik10
             ? "{\"cik\":320193,\"entityName\":\"Apple Inc.\",\"facts\":{\"us-gaap\":{\"Revenues\":{\"units\":{\"USD\":[{\"end\":\"2023-09-30\",\"val\":383000000000,\"fy\":2023,\"form\":\"10-K\"}]}}}}}"
