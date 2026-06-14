@@ -150,6 +150,9 @@ Dated per-fiscal-period financial time series for a Company (Company holds only 
 | Percentage | double? | |
 | DataSource | DataSource? | EDGAR, MANUAL, CLAUDE_ESTIMATED… |
 | DeletedAt | DateTime? | Soft-delete timestamp |
+| Status | ContributionStatus | Review state; defaults to Approved (live). User contributions are Pending until a Manager rules on them |
+| ContributedByUserId | string? | FK → AspNetUsers.Id (OnDelete SetNull, indexed); the user who proposed a pending row; null = system/admin write. Nav: `ContributedBy` |
+| SupersedesId | long? | Self-reference (audit pointer, not a configured FK) to the live Approved row this pending edit would replace; null = brand-new addition |
 
 ### CostSource
 | Property | Type | Notes |
@@ -163,6 +166,9 @@ Dated per-fiscal-period financial time series for a Company (Company holds only 
 | Percentage | double? | |
 | DataSource | DataSource? | |
 | DeletedAt | DateTime? | Soft-delete timestamp |
+| Status | ContributionStatus | Review state; defaults to Approved (live). User contributions are Pending until a Manager rules on them |
+| ContributedByUserId | string? | FK → AspNetUsers.Id (OnDelete SetNull, indexed); the user who proposed a pending row; null = system/admin write. Nav: `ContributedBy` |
+| SupersedesId | long? | Self-reference (audit pointer, not a configured FK) to the live Approved row this pending edit would replace; null = brand-new addition |
 
 ### CompanyRisk
 | Property | Type | Notes |
@@ -174,6 +180,9 @@ Dated per-fiscal-period financial time series for a Company (Company holds only 
 | Note | string? | Free-text detail |
 | DataSource | DataSource? | |
 | DeletedAt | DateTime? | Soft-delete timestamp |
+| Status | ContributionStatus | Review state; defaults to Approved (live). User contributions are Pending until a Manager rules on them |
+| ContributedByUserId | string? | FK → AspNetUsers.Id (OnDelete SetNull, indexed); the user who proposed a pending row; null = system/admin write. Nav: `ContributedBy` |
+| SupersedesId | long? | Self-reference (audit pointer, not a configured FK) to the live Approved row this pending edit would replace; null = brand-new addition |
 
 Disclosed risk extracted from SEC Item 1A risk factors / Item 7A market risk. Mirrors RevenueSource/CostSource but has no money/percentage/counterparty — just Name + Scope + Note. Per-cell proof lives in SourceFieldReview (Relation = RISK).
 
@@ -272,7 +281,13 @@ Filing ───────────────── SourceFieldReview  (1
 Event   ◄──────────────► TradeBloc          (N:M, junction table)
 
 AppUser ──────────────── UserApiKey         (1:1, shared PK UserId, Cascade)
+
+AppUser ──────────────── RevenueSource      (1:N, FK ContributedByUserId nullable, SetNull — nav: ContributedBy; the contributing user)
+AppUser ──────────────── CostSource         (1:N, FK ContributedByUserId nullable, SetNull — nav: ContributedBy; the contributing user)
+AppUser ──────────────── CompanyRisk        (1:N, FK ContributedByUserId nullable, SetNull — nav: ContributedBy; the contributing user)
 ```
+
+> **Contribution review:** RevenueSource / CostSource / CompanyRisk each gained `Status` (ContributionStatus, default Approved), `ContributedByUserId` (FK → AspNetUsers, SetNull, indexed; nav `ContributedBy`), and `SupersedesId` (self-reference audit pointer to the Approved row a pending edit replaces; not a configured FK). Migration: `20260614140315_AddContributionStatus`.
 
 ---
 
@@ -291,3 +306,4 @@ AppUser ──────────────── UserApiKey         (1:1
 | RelationKind | COST, REVENUE, RISK |
 | ReviewableField | VALUE, PERCENTAGE, NAME, RELATED_COMPANY, CLASSIFICATION, NOTE |
 | RiskScope | MACROECONOMIC, INDUSTRY, BUSINESS, LEGAL_REGULATORY, FINANCIAL, GENERAL |
+| ContributionStatus | Approved (=0, default/live), Pending, Rejected |

@@ -11,8 +11,26 @@ public class RevenueSourceRepository(AppDbContext db) : IRevenueSourceRepository
         db.RevenueSources
             .Include(r => r.Company)
             .Include(r => r.RelatedCompany)
-            .Where(r => r.DeletedAt == null)
+            .Where(r => r.DeletedAt == null && r.Status == ContributionStatus.Approved)
             .OrderBy(r => r.Company!.Name).ThenBy(r => r.Name)
+            .ToList();
+
+    // Manager review feed: every pending contribution across all companies (light — Company only,
+    // for grouping + counts on the review index).
+    public IEnumerable<RevenueSource> GetAllPending() =>
+        db.RevenueSources
+            .Include(r => r.Company)
+            .Where(r => r.DeletedAt == null && r.Status == ContributionStatus.Pending)
+            .OrderBy(r => r.Company!.Name).ThenBy(r => r.Name)
+            .ToList();
+
+    // Pending contributions for one company's review page (RelatedCompany + ContributedBy for display).
+    public IEnumerable<RevenueSource> GetPendingByCompany(long companyId) =>
+        db.RevenueSources
+            .Include(r => r.RelatedCompany)
+            .Include(r => r.ContributedBy)
+            .Where(r => r.CompanyId == companyId && r.DeletedAt == null && r.Status == ContributionStatus.Pending)
+            .OrderBy(r => r.Name)
             .ToList();
 
     public RevenueSource? GetById(long id) =>
@@ -26,7 +44,7 @@ public class RevenueSourceRepository(AppDbContext db) : IRevenueSourceRepository
         var q = db.RevenueSources
             .Include(r => r.Company)
             .Include(r => r.RelatedCompany)
-            .Where(r => r.DeletedAt == null);
+            .Where(r => r.DeletedAt == null && r.Status == ContributionStatus.Approved);
         if (!string.IsNullOrWhiteSpace(term))
         {
             var t = term.Trim();

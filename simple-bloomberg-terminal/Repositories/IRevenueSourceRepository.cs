@@ -6,6 +6,8 @@ namespace simple_bloomberg_terminal.Repositories;
 public interface IRevenueSourceRepository
 {
     IEnumerable<RevenueSource> GetAll();
+    IEnumerable<RevenueSource> GetAllPending();
+    IEnumerable<RevenueSource> GetPendingByCompany(long companyId);
     RevenueSource? GetById(long id);
     IEnumerable<RevenueSource> Search(string? term);
     void Add(RevenueSource entity);

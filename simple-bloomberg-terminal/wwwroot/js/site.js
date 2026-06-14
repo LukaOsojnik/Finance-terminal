@@ -46,16 +46,17 @@
     // The reactive fetch wrapper below can only fire AFTER a button's own handler has already run its
     // setup (disabling itself, rendering "Planning searches…", building feed DOM). To show ONLY the
     // popup with zero partial UI, intercept the click during the CAPTURE phase — before the button's
-    // own bubble-phase listener — and stop it dead when the user lacks the Admin/Manager role these
-    // AJAX features require. data-priv / data-auth are stamped on <body> by _Layout.
+    // own bubble-phase listener — and stop it dead when the user isn't signed in. These features now
+    // run on the user's own API keys, so ANY authenticated user may use them (no Admin/Manager role);
+    // only logged-out clicks are blocked here. data-auth is stamped on <body> by _Layout.
     const PROTECTED = '.js-discover, .js-extract-filings, .js-rediscover';
     document.addEventListener('click', e => {
         const trigger = e.target.closest(PROTECTED);
         if (!trigger) return;
-        if (document.body.dataset.priv === '1') return;   // privileged — let the real handler run
+        if (document.body.dataset.auth === '1') return;   // signed in — let the real handler run
         e.preventDefault();
         e.stopImmediatePropagation();                     // the button's own click listener never fires
-        promptSignIn(document.body.dataset.auth === '1');
+        promptSignIn(false);                              // not signed in -> sign-in prompt
     }, true);
 
     // ── Reactive safety net ──

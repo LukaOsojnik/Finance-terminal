@@ -27,8 +27,18 @@ public class CompanyRisk
     public long CompanyId { get; set; }
     public DateTime? DeletedAt { get; set; }
 
+    // Contribution review (Status defaults to Approved=0): user-contributed rows are Pending until a
+    // Manager rules on them; ContributedBy is who proposed it; Supersedes points at the live Approved
+    // row this pending edit would replace (null = a brand-new addition). See ContributionStatus.
+    public ContributionStatus Status { get; set; }
+    public string? ContributedByUserId { get; set; }
+    public long? SupersedesId { get; set; }
+
     [ForeignKey("CompanyId")]
     public virtual Company? Company { get; set; }
+
+    [ForeignKey("ContributedByUserId")]
+    public virtual AppUser? ContributedBy { get; set; }
 
     // Per-field proof rows; their distinct filings are the risk's proof filings.
     public virtual ICollection<SourceFieldReview> Reviews { get; set; } = [];

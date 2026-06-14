@@ -50,6 +50,12 @@
                     <li class="nav-item">
                         <a class="nav-link" asp-area="" asp-route="ImpactIndex">Impact</a>
                     </li>
+                    @if (User is { } reviewer && (reviewer.IsInRole("Admin") || reviewer.IsInRole("Manager")))
+                    {
+                        <li class="nav-item">
+                            <a class="nav-link" asp-area="" asp-controller="Contributions" asp-action="Index">Review</a>
+                        </li>
+                    }
                     <li class="nav-item dropdown">
                         <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown">More</a>
                         <ul class="dropdown-menu terminal-dropdown">

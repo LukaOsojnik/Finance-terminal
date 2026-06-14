@@ -6,6 +6,8 @@ namespace simple_bloomberg_terminal.Repositories;
 public interface ICostSourceRepository
 {
     IEnumerable<CostSource> GetAll();
+    IEnumerable<CostSource> GetAllPending();
+    IEnumerable<CostSource> GetPendingByCompany(long companyId);
     CostSource? GetById(long id);
     IEnumerable<CostSource> Search(string? term);
     void Add(CostSource entity);

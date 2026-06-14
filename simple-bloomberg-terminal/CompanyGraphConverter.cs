@@ -1,5 +1,6 @@
 using AutoMapper;
 using simple_bloomberg_terminal.Models.Entities;
+using simple_bloomberg_terminal.Models.Enums;
 using simple_bloomberg_terminal.Models.ViewModels;
 
 namespace simple_bloomberg_terminal;
@@ -58,8 +59,9 @@ public class CompanyGraphConverter : ITypeConverter<Company, GraphResponse>
         ));
 
         // Hub-and-spoke: center → category hub → leaves. Hubs only added when children exist.
-        var revenues = company.RevenueSources.Where(x => x.DeletedAt == null).ToList();
-        var costs    = company.CostSources.Where(x => x.DeletedAt == null).ToList();
+        // Approved only — Pending user contributions stay off the public graph until reviewed.
+        var revenues = company.RevenueSources.Where(x => x.DeletedAt == null && x.Status == ContributionStatus.Approved).ToList();
+        var costs    = company.CostSources.Where(x => x.DeletedAt == null && x.Status == ContributionStatus.Approved).ToList();
         var events   = company.Events.Where(x => x.DeletedAt == null).ToList();
 
         if (revenues.Count > 0)

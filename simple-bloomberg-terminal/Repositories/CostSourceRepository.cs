@@ -11,8 +11,25 @@ public class CostSourceRepository(AppDbContext db) : ICostSourceRepository
         db.CostSources
             .Include(c => c.Company)
             .Include(c => c.RelatedCompany)
-            .Where(c => c.DeletedAt == null)
+            .Where(c => c.DeletedAt == null && c.Status == ContributionStatus.Approved)
             .OrderBy(c => c.Company!.Name).ThenBy(c => c.Name)
+            .ToList();
+
+    // Manager review feed: every pending contribution across all companies (light — Company only).
+    public IEnumerable<CostSource> GetAllPending() =>
+        db.CostSources
+            .Include(c => c.Company)
+            .Where(c => c.DeletedAt == null && c.Status == ContributionStatus.Pending)
+            .OrderBy(c => c.Company!.Name).ThenBy(c => c.Name)
+            .ToList();
+
+    // Pending contributions for one company's review page (RelatedCompany + ContributedBy for display).
+    public IEnumerable<CostSource> GetPendingByCompany(long companyId) =>
+        db.CostSources
+            .Include(c => c.RelatedCompany)
+            .Include(c => c.ContributedBy)
+            .Where(c => c.CompanyId == companyId && c.DeletedAt == null && c.Status == ContributionStatus.Pending)
+            .OrderBy(c => c.Name)
             .ToList();
 
     public CostSource? GetById(long id) =>
@@ -26,7 +43,7 @@ public class CostSourceRepository(AppDbContext db) : ICostSourceRepository
         var q = db.CostSources
             .Include(c => c.Company)
             .Include(c => c.RelatedCompany)
-            .Where(c => c.DeletedAt == null);
+            .Where(c => c.DeletedAt == null && c.Status == ContributionStatus.Approved);
         if (!string.IsNullOrWhiteSpace(term))
         {
             var t = term.Trim();

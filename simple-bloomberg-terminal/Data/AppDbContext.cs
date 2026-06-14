@@ -102,6 +102,19 @@ public class AppDbContext : IdentityDbContext<AppUser>
             e.HasIndex(f => f.AccessionNumber).IsUnique();
         });
 
+        // Contribution provenance: the user who proposed a pending revenue/cost/risk row. Optional FK
+        // (null = system/admin write); SetNull on user-delete so deleting an account doesn't drop the
+        // pending rows it contributed — they just lose the "who" and a Manager still rules on them.
+        modelBuilder.Entity<RevenueSource>()
+            .HasOne(r => r.ContributedBy).WithMany()
+            .HasForeignKey(r => r.ContributedByUserId).OnDelete(DeleteBehavior.SetNull);
+        modelBuilder.Entity<CostSource>()
+            .HasOne(c => c.ContributedBy).WithMany()
+            .HasForeignKey(c => c.ContributedByUserId).OnDelete(DeleteBehavior.SetNull);
+        modelBuilder.Entity<CompanyRisk>()
+            .HasOne(r => r.ContributedBy).WithMany()
+            .HasForeignKey(r => r.ContributedByUserId).OnDelete(DeleteBehavior.SetNull);
+
         // A user's bring-your-own API keys: 1:1 with the user via a shared primary key (UserId is
         // both PK and FK). Cascade-delete so the keys vanish when the account is removed.
         modelBuilder.Entity<UserApiKey>(e =>

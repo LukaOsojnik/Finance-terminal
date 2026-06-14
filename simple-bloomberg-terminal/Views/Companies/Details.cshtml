@@ -675,24 +675,25 @@ document.querySelectorAll('.js-rediscover').forEach(btn => {
     const original = btn.textContent;
     btn.addEventListener('click', async () => {
         if (window.uiConfirm && !(await uiConfirm(btn.dataset.confirm, { danger: true }))) return;
-        btn.disabled = true;
-        btn.textContent = 'STARTING…';
+        // Don't show "STARTING…" / disable until the POST is accepted — a pre-stream reject (e.g.
+        // missing Perplexity key -> 424) makes the wrapped fetch never resolve (it pops the "add your
+        // key" dialog instead), which would otherwise strand the button on "STARTING…".
+        let res;
         try {
             const token = document.querySelector('input[name="__RequestVerificationToken"]')?.value;
-            const res = await fetch(`/companies/${btn.dataset.company}/rediscover`, {
+            res = await fetch(`/companies/${btn.dataset.company}/rediscover`, {
                 method: 'POST', headers: { 'RequestVerificationToken': token }
             });
-            if (!res.ok) { btn.textContent = 'FAILED — ' + (await res.text() || res.status); btn.disabled = false; return; }
-            const { jobId } = await res.json();
-            if (window.startScanJob) window.startScanJob(jobId, {
-                kind: 'rediscover', companyId: Number(btn.dataset.company), companyName: btn.dataset.name,
-                filingLabel: 'Profile re-discovery', node: 'PROFILE', progress: 'Searching the web with sonar-pro…'
-            });
-            // The widget now owns progress + the accept/reject verdict — restore the button so it's not
-            // stuck on a stale "running" label and can be fired again.
-            btn.textContent = original;
-            btn.disabled = false;
-        } catch (e) { btn.textContent = 'FAILED — ' + e.message; btn.disabled = false; }
+        } catch (e) { btn.textContent = 'FAILED — ' + e.message; return; }
+        if (!res.ok) { btn.textContent = 'FAILED — ' + (await res.text() || res.status); return; }
+        const { jobId } = await res.json();
+        if (window.startScanJob) window.startScanJob(jobId, {
+            kind: 'rediscover', companyId: Number(btn.dataset.company), companyName: btn.dataset.name,
+            filingLabel: 'Profile re-discovery', node: 'PROFILE', progress: 'Searching the web with sonar-pro…'
+        });
+        // The widget now owns progress + the accept/reject verdict; keep the button usable.
+        btn.textContent = original;
+        btn.disabled = false;
     });
 });
 
@@ -743,8 +744,30 @@ window.refreshCompanyProfile = async function (companyId) {
             ? [...table.querySelectorAll('tr[data-segment]')].map(tr => tr.dataset.segment).filter(Boolean)
             : [];
 
-        btn.disabled = true;
         const label = btn.textContent;
+
+        // Fire the request FIRST — don't paint any "Planning…" UI or disable the button until the
+        // stream is confirmed started. If the server rejects before streaming (e.g. a missing
+        // Perplexity key -> 424), the wrapped fetch never resolves: it pops the "add your key" dialog
+        // instead, so anything painted up-front would be left stuck. Commit to the UI only once it's
+        // really running.
+        let resp;
+        try {
+            resp = await fetch('/extraction/discover-related', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ companyId, side, segments, valued })
+            });
+        } catch {
+            out.innerHTML = '<div class="muted-cell">Discovery failed — network error.</div>';
+            return;
+        }
+        if (!resp.ok || !resp.body) {
+            out.innerHTML = `<div class="muted-cell">Discovery failed (${resp.status}). Check the Perplexity API key.</div>`;
+            return;
+        }
+
+        btn.disabled = true;
 
         // Live feed (top) + grouped results (below), both filled as the NDJSON stream arrives — the
         // planner emits its sub-queries first, then a searching/result pair per query (Perplexity-style).
@@ -765,13 +788,6 @@ window.refreshCompanyProfile = async function (companyId) {
         let found = 0;
 
         try {
-            const resp = await fetch('/extraction/discover-related', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ companyId, side, segments, valued })
-            });
-            if (!resp.ok || !resp.body) { status.textContent = `Discovery failed (${resp.status}). Check the Perplexity API key.`; return; }
-
             // Read NDJSON line by line (same pattern as the filing chat stream).
             const reader = resp.body.getReader(), dec = new TextDecoder();
             let buf = '';
@@ -1006,23 +1022,27 @@ window.refreshCompanyProfile = async function (companyId) {
 
     extStart.addEventListener('click', async () => {
         if (!extSel) return;
-        extStart.disabled = true;
-        extStatus.textContent = 'Starting scan…';
         const filingLabel = `${extSel.form || 'filing'} ${extSel.filingDate || ''}`.trim();
         const qs = `accession=${encodeURIComponent(extSel.accessionNumber)}&doc=${encodeURIComponent(extSel.primaryDocument)}` +
             `&node=${extNode}&form=${encodeURIComponent(extSel.form || '')}` +
             `&companyName=${encodeURIComponent(COMPANY_NAME)}&filingLabel=${encodeURIComponent(filingLabel)}`;
+        // Don't disable / show "Starting scan…" until the POST is accepted — a pre-stream reject
+        // (missing DeepSeek key -> 424) never resolves the wrapped fetch (it pops the key dialog),
+        // which would otherwise strand the modal on "Starting scan…".
+        let res;
         try {
-            const res = await fetch(`/extraction/scan-auto-async/${extCompany}?${qs}`, { method: 'POST' });
-            if (!res.ok) { extStatus.textContent = 'Scan failed: ' + await res.text(); extStart.disabled = false; return; }
-            const r = await res.json();
-            if (window.startScanJob) window.startScanJob(r.jobId, {
-                companyId: extCompany, companyName: COMPANY_NAME, filingLabel, node: extNode,
-                accession: extSel.accessionNumber, doc: extSel.primaryDocument,
-                form: extSel.form || null, progress: 'Starting…'
-            });
-            closeExt();
-        } catch (e) { extStatus.textContent = 'Network error: ' + e.message; extStart.disabled = false; }
+            res = await fetch(`/extraction/scan-auto-async/${extCompany}?${qs}`, { method: 'POST' });
+        } catch (e) { extStatus.textContent = 'Network error: ' + e.message; return; }
+        if (!res.ok) { extStatus.textContent = 'Scan failed: ' + await res.text(); return; }
+        extStart.disabled = true;
+        extStatus.textContent = 'Starting scan…';
+        const r = await res.json();
+        if (window.startScanJob) window.startScanJob(r.jobId, {
+            companyId: extCompany, companyName: COMPANY_NAME, filingLabel, node: extNode,
+            accession: extSel.accessionNumber, doc: extSel.primaryDocument,
+            form: extSel.form || null, progress: 'Starting…'
+        });
+        closeExt();
     });
 
     extModal.querySelectorAll('[data-extx-close]').forEach(el => el.addEventListener('click', closeExt));

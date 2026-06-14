@@ -6,6 +6,8 @@ namespace simple_bloomberg_terminal.Repositories;
 public interface ICompanyRiskRepository
 {
     IEnumerable<CompanyRisk> GetAll();
+    IEnumerable<CompanyRisk> GetAllPending();
+    IEnumerable<CompanyRisk> GetPendingByCompany(long companyId);
     CompanyRisk? GetById(long id);
     IEnumerable<CompanyRisk> Search(string? term);
     void Add(CompanyRisk entity);

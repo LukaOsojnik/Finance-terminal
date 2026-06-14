@@ -12,15 +12,17 @@ using simple_bloomberg_terminal.Services;
 namespace simple_bloomberg_terminal.Controllers;
 
 [Route("companies")]
-[Authorize(Roles = "Admin,Manager")]
+// Any authenticated user — keyed actions (FMP fetch, private discovery, rediscover) run on the
+// USER's own API keys. Browse actions stay [AllowAnonymous] (overrides below). A missing key shows
+// the "add your key" popup; logged-out callers get the sign-in prompt.
+[Authorize]
 public class CompaniesController : Controller
 {
     private readonly ICompanyRepository _companies;
     private readonly ICountryRepository _countries;
     private readonly IFmpApiClient _fmp;
     private readonly IRestCountriesClient _restCountries;
-    private readonly IYahooFinanceClient _yahoo;
-    private readonly IExchangeRateApiClient _exchangeRate;
+    private readonly ITickerProfileEnricher _enricher;
     private readonly ICompanyFinancialsService _financials;
     private readonly IStockApiClient _stock;
     private readonly ICompanyProfileDiscovery _profileDiscovery;
@@ -31,7 +33,7 @@ public class CompaniesController : Controller
 
     public CompaniesController(ICompanyRepository companies, ICountryRepository countries,
         IFmpApiClient fmp, IRestCountriesClient restCountries,
-        IYahooFinanceClient yahoo, IExchangeRateApiClient exchangeRate,
+        ITickerProfileEnricher enricher,
         ICompanyFinancialsService financials, IStockApiClient stock,
         ICompanyProfileDiscovery profileDiscovery, IIndustryClassifier industryClassifier,
         RediscoverJobStore rediscoverJobs, IServiceScopeFactory scopeFactory, IUserApiKeyProvider keys)
@@ -43,8 +45,7 @@ public class CompaniesController : Controller
         _countries = countries;
         _fmp = fmp;
         _restCountries = restCountries;
-        _yahoo = yahoo;
-        _exchangeRate = exchangeRate;
+        _enricher = enricher;
         _financials = financials;
         _stock = stock;
         _profileDiscovery = profileDiscovery;
@@ -78,9 +79,11 @@ public class CompaniesController : Controller
         {
             Company = company,
             RelatedEvents = company.Events.Where(e => e.DeletedAt == null),
-            RevenueSources = company.RevenueSources.Where(r => r.DeletedAt == null),
-            CostSources = company.CostSources.Where(c => c.DeletedAt == null),
-            CompanyRisks = company.CompanyRisks.Where(r => r.DeletedAt == null),
+            // Status filter hides Pending user contributions from the public profile until a Manager
+            // approves them; Approved is the default so all existing/admin data still shows.
+            RevenueSources = company.RevenueSources.Where(r => r.DeletedAt == null && r.Status == ContributionStatus.Approved),
+            CostSources = company.CostSources.Where(c => c.DeletedAt == null && c.Status == ContributionStatus.Approved),
+            CompanyRisks = company.CompanyRisks.Where(r => r.DeletedAt == null && r.Status == ContributionStatus.Approved),
             Financials = company.Financials.Where(f => f.DeletedAt == null)
                 .OrderByDescending(f => f.EndDate ?? DateOnly.FromDateTime(DateTime.MinValue))
                 .ThenByDescending(f => f.FiscalYear),
@@ -157,16 +160,10 @@ public class CompaniesController : Controller
         try { income = await _fmp.GetLatestIncomeAsync(ticker); }
         catch (HttpRequestException) { /* income unavailable on this plan/symbol */ }
 
-        var model = FmpMapper.ToCreateModel(profile, income);
-        model.Symbol = ticker;   // carried hidden into Create POST to re-fetch financial history
-
-        // Stamp the fetch date so the row always has an "as of" without manual entry.
-        model.AsOf = DateOnly.FromDateTime(DateTime.Today);
-
-        // The static label map only covers common FMP/Yahoo labels; on a miss, let DeepSeek pick
-        // the industry within the already-resolved sector so the user doesn't have to choose.
-        if (model.Industry == null)
-            await ResolveIndustryWithLlm(model, profile, _industryClassifier);
+        // Shared kernel: maps the profile, stamps AsOf, resolves industry (LLM on a label miss) and
+        // backfills Yahoo financials when income is gated. Country + the note are surfaced per-caller.
+        var (model, note) = await _enricher.BuildModelAsync(profile, income, ticker);
+        if (note != null) ViewBag.FetchNote = note;
 
         var country = await ResolveOrCreateCountry(profile.Country, _countries, _restCountries);
         if (country != null)
@@ -174,11 +171,6 @@ public class CompaniesController : Controller
             model.CountryId = country.Id;
             ViewBag.CountryLabel = country.Name;
         }
-
-        if (income == null)
-            await ApplyYahooFallback(model, ticker);
-        else if (!string.Equals(income.ReportedCurrency, "USD", StringComparison.OrdinalIgnoreCase))
-            ViewBag.FetchNote = $"Revenue is reported in {income.ReportedCurrency}; left blank — enter the USD value manually.";
 
         return model;
     }
@@ -561,60 +553,26 @@ public class CompaniesController : Controller
         var c = _companies.GetWithGraphRelations(id);
         if (c == null) return NotFound();
 
-        var owned = c.RevenueSources.Where(r => r.DeletedAt == null)
+        var owned = c.RevenueSources.Where(r => r.DeletedAt == null && r.Status == ContributionStatus.Approved)
                 .Select(r => new { kind = "revenue", direction = "owned", id = r.Id, name = r.Name, type = r.SourceType.ToString(), value = r.Value, other = r.RelatedCompany?.Name })
-            .Concat(c.CostSources.Where(s => s.DeletedAt == null)
+            .Concat(c.CostSources.Where(s => s.DeletedAt == null && s.Status == ContributionStatus.Approved)
                 .Select(s => new { kind = "cost", direction = "owned", id = s.Id, name = s.Name, type = s.CostBase.ToString(), value = s.Value, other = s.RelatedCompany?.Name }));
 
-        var inverse = c.RevenueFromDependents.Where(r => r.DeletedAt == null)
+        var inverse = c.RevenueFromDependents.Where(r => r.DeletedAt == null && r.Status == ContributionStatus.Approved)
                 .Select(r => new { kind = "revenue", direction = "inverse", id = r.Id, name = r.Name, type = r.SourceType.ToString(), value = r.Value, other = r.Company?.Name })
-            .Concat(c.CostFromDependents.Where(s => s.DeletedAt == null)
+            .Concat(c.CostFromDependents.Where(s => s.DeletedAt == null && s.Status == ContributionStatus.Approved)
                 .Select(s => new { kind = "cost", direction = "inverse", id = s.Id, name = s.Name, type = s.CostBase.ToString(), value = s.Value, other = s.Company?.Name }));
 
         return Json(new { owned, inverse });
     }
 
-    // Async fallback for industry: the static map missed FMP's free-form label, so ask DeepSeek to
-    // choose one GICS industry from those belonging to the already-resolved sector. Constraining the
-    // candidates to that sector keeps the model honest and the result self-consistent (industry's
-    // sector == model.Sector). Any failure leaves Industry null and the user picks it on review.
-    private static Task ResolveIndustryWithLlm(CompanyCreateModel model, FmpProfile profile, IIndustryClassifier classifier) =>
-        ResolveIndustryWithLlm(model, profile.CompanyName, profile.Industry, classifier);
-
     // Classify the company into one GICS industry within its already-resolved sector via the shared
-    // classifier. Works from a plain name + source label so it serves both the FMP fetch and the
-    // private-company discovery (whose label comes from sonar). Leaves Industry null on a miss.
+    // classifier. Works from a plain name + source label so it serves the private-company discovery
+    // (whose label comes from sonar). Leaves Industry null on a miss.
     private static async Task ResolveIndustryWithLlm(CompanyCreateModel model, string? companyName, string? sourceLabel, IIndustryClassifier classifier)
     {
         if (await classifier.ClassifyAsync(model.Sector, companyName, sourceLabel) is { } industry)
             model.Industry = industry;
-    }
-
-    // FMP income was premium-gated (non-US). Pull revenue + gross margin from Yahoo Finance,
-    // converting revenue to USD via ExchangeRate-API. Margin is a ratio so it's filled regardless
-    // of currency; revenue is left blank only if the currency can't be converted at all.
-    private async Task ApplyYahooFallback(CompanyCreateModel model, string ticker)
-    {
-        var yf = await _yahoo.GetFinancialsAsync(ticker);
-        if (yf == null)
-        {
-            ViewBag.FetchNote = "Financials aren't available for this symbol — enter revenue and gross margin manually.";
-            return;
-        }
-
-        if (yf.GrossMargins is { } gm)
-            model.GrossMargin = Math.Round(gm, 2); // 2 dp to satisfy the form's step="0.01"
-
-        if (yf.Revenue is { } rev && !string.IsNullOrWhiteSpace(yf.Currency))
-        {
-            var rate = await _exchangeRate.GetUsdRateAsync(yf.Currency);
-            if (rate is { } r)
-                model.RevenueTotal = Math.Round(rev * r);
-            else
-                ViewBag.FetchNote = $"Revenue is in {yf.Currency} (no USD conversion rate available) — enter it manually.";
-        }
-
-        ViewBag.FetchNote ??= "Financials filled from Yahoo Finance (FMP is premium-gated for this symbol).";
     }
 
     // Find the Country matching FMP's ISO-2 code; if absent, look it up on REST Countries and

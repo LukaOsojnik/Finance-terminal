@@ -10,8 +10,24 @@ public class CompanyRiskRepository(AppDbContext db) : ICompanyRiskRepository
     public IEnumerable<CompanyRisk> GetAll() =>
         db.CompanyRisks
             .Include(r => r.Company)
-            .Where(r => r.DeletedAt == null)
+            .Where(r => r.DeletedAt == null && r.Status == ContributionStatus.Approved)
             .OrderBy(r => r.Company!.Name).ThenBy(r => r.Name)
+            .ToList();
+
+    // Manager review feed: every pending contribution across all companies (light — Company only).
+    public IEnumerable<CompanyRisk> GetAllPending() =>
+        db.CompanyRisks
+            .Include(r => r.Company)
+            .Where(r => r.DeletedAt == null && r.Status == ContributionStatus.Pending)
+            .OrderBy(r => r.Company!.Name).ThenBy(r => r.Name)
+            .ToList();
+
+    // Pending contributions for one company's review page (ContributedBy for display).
+    public IEnumerable<CompanyRisk> GetPendingByCompany(long companyId) =>
+        db.CompanyRisks
+            .Include(r => r.ContributedBy)
+            .Where(r => r.CompanyId == companyId && r.DeletedAt == null && r.Status == ContributionStatus.Pending)
+            .OrderBy(r => r.Name)
             .ToList();
 
     public CompanyRisk? GetById(long id) =>
@@ -23,7 +39,7 @@ public class CompanyRiskRepository(AppDbContext db) : ICompanyRiskRepository
     {
         var q = db.CompanyRisks
             .Include(r => r.Company)
-            .Where(r => r.DeletedAt == null);
+            .Where(r => r.DeletedAt == null && r.Status == ContributionStatus.Approved);
         if (!string.IsNullOrWhiteSpace(term))
         {
             var t = term.Trim();

@@ -170,6 +170,10 @@ builder.Services.AddHttpClient<IExchangeRateApiClient, ExchangeRateApiClient>();
 // FMP/Yahoo clients above, so a plain scoped service — not its own HttpClient.
 builder.Services.AddScoped<ICompanyFinancialsService, CompanyFinancialsService>();
 
+// Shared FMP profile -> create-model enrichment (AsOf, industry LLM, Yahoo financials). Consumes the
+// classifier + typed Yahoo/exchange clients above; used by both the New Company fetch and the link path.
+builder.Services.AddScoped<ITickerProfileEnricher, TickerProfileEnricher>();
+
 var app = builder.Build();
 
 if (!app.Environment.IsDevelopment())

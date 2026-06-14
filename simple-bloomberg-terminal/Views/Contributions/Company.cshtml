@@ -1,0 +1,100 @@
+@model simple_bloomberg_terminal.Models.ViewModels.CompanyContributionsViewModel
+@{
+    ViewData["Title"] = $"Review · {Model.CompanyName}";
+    var sections = new[]
+    {
+        ("Revenue sources", Model.Revenue),
+        ("Cost sources", Model.Cost),
+        ("Risks", Model.Risk)
+    };
+}
+
+<div class="d-flex justify-content-between align-items-center mb-2">
+    <h2 class="mb-0">@Model.CompanyName <small class="text-muted">— pending contributions</small></h2>
+    <a class="btn btn-sm btn-outline-secondary" asp-action="Index">← All companies</a>
+</div>
+
+@if (Model.Total == 0)
+{
+    <p class="text-muted">No pending contributions for this company.</p>
+}
+
+@foreach (var (title, rows) in sections)
+{
+    if (rows.Count == 0) { continue; }
+    var type = rows[0].Type;
+    <section class="mb-4">
+        <h4>@title <span class="text-muted">(@rows.Count)</span></h4>
+        <form asp-action="Approve" method="post">
+            <input type="hidden" name="type" value="@type"/>
+            <input type="hidden" name="companyId" value="@Model.CompanyId"/>
+
+            <table class="terminal-table align-middle">
+                <thead>
+                <tr>
+                    <th style="width:1.5rem;"><input type="checkbox" onclick="document.querySelectorAll('.chk-@type').forEach(c => c.checked = this.checked)"/></th>
+                    <th>Name</th>
+                    <th>Class</th>
+                    <th class="text-end">Value</th>
+                    <th class="text-end">%</th>
+                    <th>Counterparty / note</th>
+                    <th>By</th>
+                    <th>Proof</th>
+                </tr>
+                </thead>
+                <tbody>
+                @foreach (var r in rows)
+                {
+                    <tr>
+                        <td><input type="checkbox" class="chk-@type" name="ids" value="@r.Id"/></td>
+                        <td>
+                            @r.Name
+                            @if (r.SupersedesId is not null)
+                            {
+                                <span class="badge bg-warning text-dark" title="Proposed edit — approving replaces the live row">edit → @(r.SupersededName ?? "live row")</span>
+                            }
+                        </td>
+                        <td>@r.Classification.Replace("_", " ")</td>
+                        <td class="text-end">@(r.Value is { } v ? v.ToString("N0") : "—")</td>
+                        <td class="text-end">@(r.Percentage is { } p ? p.ToString("0.#") + "%" : "—")</td>
+                        <td>@(r.RelatedCompany ?? r.Note ?? "—")</td>
+                        <td><small class="text-muted">@(r.ContributorEmail ?? "—")</small></td>
+                        <td>
+                            @if (r.Proofs.Count == 0)
+                            {
+                                <span class="text-muted">none</span>
+                            }
+                            else
+                            {
+                                <ul class="list-unstyled mb-0">
+                                    @foreach (var pr in r.Proofs)
+                                    {
+                                        <li class="mb-1">
+                                            <strong>@pr.Field.Replace("_", " "):</strong>
+                                            <span class="text-muted">@(pr.Snapshot.Length > 160 ? pr.Snapshot[..160] + "…" : pr.Snapshot)</span>
+                                            @if (!string.IsNullOrWhiteSpace(pr.FilingUrl))
+                                            {
+                                                <a href="@pr.FilingUrl" target="_blank" rel="noopener">[@(pr.FilingLabel ?? "filing")]</a>
+                                            }
+                                            else if (!string.IsNullOrWhiteSpace(pr.Pointer) && pr.Pointer.StartsWith("http"))
+                                            {
+                                                <a href="@pr.Pointer" target="_blank" rel="noopener">[source]</a>
+                                            }
+                                            <span class="text-muted">· @pr.Endpoint</span>
+                                        </li>
+                                    }
+                                </ul>
+                            }
+                        </td>
+                    </tr>
+                }
+                </tbody>
+            </table>
+
+            <div class="d-flex gap-2">
+                <button type="submit" class="btn btn-sm btn-success">Approve selected</button>
+                <button type="submit" class="btn btn-sm btn-outline-danger" asp-action="Reject">Reject selected</button>
+            </div>
+        </form>
+    </section>
+}

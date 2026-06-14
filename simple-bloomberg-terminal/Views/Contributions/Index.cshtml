@@ -1,0 +1,42 @@
+@model List<simple_bloomberg_terminal.Models.ViewModels.ContributionCompanyRow>
+@{
+    ViewData["Title"] = "Contribution review";
+}
+
+<h2>Pending contributions</h2>
+<p class="text-muted">User-submitted revenue, cost and risk rows awaiting review. Approving publishes them; rejecting discards them.</p>
+
+@if (Model.Count == 0)
+{
+    <p class="text-muted">Nothing to review — no pending contributions.</p>
+}
+else
+{
+    <table class="terminal-table align-middle">
+        <thead>
+        <tr>
+            <th>Company</th>
+            <th class="text-end">Revenue</th>
+            <th class="text-end">Cost</th>
+            <th class="text-end">Risk</th>
+            <th class="text-end">Total</th>
+            <th></th>
+        </tr>
+        </thead>
+        <tbody>
+        @foreach (var r in Model)
+        {
+            <tr>
+                <td>@r.CompanyName</td>
+                <td class="text-end">@(r.RevenueCount > 0 ? r.RevenueCount.ToString() : "—")</td>
+                <td class="text-end">@(r.CostCount > 0 ? r.CostCount.ToString() : "—")</td>
+                <td class="text-end">@(r.RiskCount > 0 ? r.RiskCount.ToString() : "—")</td>
+                <td class="text-end"><strong>@r.Total</strong></td>
+                <td class="text-end">
+                    <a class="btn btn-sm btn-outline-primary" asp-action="Company" asp-route-id="@r.CompanyId">Review</a>
+                </td>
+            </tr>
+        }
+        </tbody>
+    </table>
+}

@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Security.Claims;
 using System.Text;
 using System.Text.Json;
 using Microsoft.AspNetCore.Authorization;
@@ -19,7 +20,10 @@ namespace simple_bloomberg_terminal.Controllers;
 /// <see cref="SourceFieldReview"/> (one per cell, <c>Mark=null</c> for the phase-2 reviewer).
 /// </summary>
 [Route("extraction")]
-[Authorize(Roles = "Admin,Manager")]
+// Any authenticated user — the keyed features run on the USER's own API keys (bring-your-own), so a
+// signed-in customer can use them; no Admin/Manager role required. A missing key surfaces the
+// "add your key" popup; logged-out callers get the sign-in prompt.
+[Authorize]
 public class ExtractionController : Controller
 {
     private readonly IRevenueSourceRepository _revenue;
@@ -34,8 +38,7 @@ public class ExtractionController : Controller
     private readonly IExtractionChatService _chat;
     private readonly ICounterpartyDiscovery _discovery;
     private readonly IFmpApiClient _fmp;
-    private readonly IYahooFinanceClient _yahoo;
-    private readonly IExchangeRateApiClient _exchangeRate;
+    private readonly ITickerProfileEnricher _enricher;
     private readonly ICompanyFinancialsService _financials;
     private readonly IIndustryClassifier _industryClassifier;
     private readonly ScanJobStore _jobs;
@@ -56,8 +59,7 @@ public class ExtractionController : Controller
         IExtractionChatService chat,
         ICounterpartyDiscovery discovery,
         IFmpApiClient fmp,
-        IYahooFinanceClient yahoo,
-        IExchangeRateApiClient exchangeRate,
+        ITickerProfileEnricher enricher,
         ICompanyFinancialsService financials,
         IIndustryClassifier industryClassifier,
         ScanJobStore jobs,
@@ -77,8 +79,7 @@ public class ExtractionController : Controller
         _chat = chat;
         _discovery = discovery;
         _fmp = fmp;
-        _yahoo = yahoo;
-        _exchangeRate = exchangeRate;
+        _enricher = enricher;
         _financials = financials;
         _industryClassifier = industryClassifier;
         _jobs = jobs;
@@ -100,6 +101,13 @@ public class ExtractionController : Controller
 
     private static ExtractionNode ParseNode(string? node) =>
         Enum.TryParse<ExtractionNode>(node, true, out var n) ? n : ExtractionNode.REVENUE;
+
+    // Contribution gate: a Manager/Admin's writes go live (Approved); everyone else's are held as
+    // Pending contributions stamped with the contributor, for a Manager to review. (UpsertRowByNode
+    // is the single chokepoint every web-searched/LLM-parsed revenue/cost/risk row flows through.)
+    private bool IsReviewer => User.IsInRole("Admin") || User.IsInRole("Manager");
+    private string? CurrentUserId => User.FindFirstValue(ClaimTypes.NameIdentifier);
+    private ContributionStatus NewRowStatus => IsReviewer ? ContributionStatus.Approved : ContributionStatus.Pending;
 
     [HttpGet, Route("")]
     public IActionResult Index(long? companyId, long? revenueSourceId, string? node)
@@ -308,6 +316,21 @@ public class ExtractionController : Controller
         {
             var existing = _revenue.GetById(id);
             if (existing is null) return null;
+            // Non-reviewer edit: leave the live row untouched and propose a superseding Pending copy
+            // (approved on review -> the old row is soft-deleted). Reviewers edit in place.
+            if (!IsReviewer)
+            {
+                var proposal = new RevenueSource(sourceType, name, companyId)
+                {
+                    Value = value, Percentage = percentage, RelatedCompanyId = relatedCompanyId,
+                    DataSource = DataSource.MANUAL,
+                    Status = ContributionStatus.Pending,
+                    ContributedByUserId = CurrentUserId,
+                    SupersedesId = existing.Id
+                };
+                _revenue.Add(proposal);
+                return proposal.Id;
+            }
             existing.SourceType = sourceType;
             existing.Name = name;
             existing.Value = value;
@@ -319,7 +342,9 @@ public class ExtractionController : Controller
         var row = new RevenueSource(sourceType, name, companyId)
         {
             Value = value, Percentage = percentage, RelatedCompanyId = relatedCompanyId,
-            DataSource = DataSource.MANUAL
+            DataSource = DataSource.MANUAL,
+            Status = NewRowStatus,
+            ContributedByUserId = IsReviewer ? null : CurrentUserId
         };
         _revenue.Add(row);
         return row.Id;
@@ -333,6 +358,20 @@ public class ExtractionController : Controller
         {
             var existing = _cost.GetById(id);
             if (existing is null) return null;
+            // Non-reviewer edit: propose a superseding Pending copy, leave the live row untouched.
+            if (!IsReviewer)
+            {
+                var proposal = new CostSource(costBase, name, companyId)
+                {
+                    Value = value, Percentage = percentage, RelatedCompanyId = relatedCompanyId,
+                    DataSource = DataSource.MANUAL,
+                    Status = ContributionStatus.Pending,
+                    ContributedByUserId = CurrentUserId,
+                    SupersedesId = existing.Id
+                };
+                _cost.Add(proposal);
+                return proposal.Id;
+            }
             existing.CostBase = costBase;
             existing.Name = name;
             existing.Value = value;
@@ -344,7 +383,9 @@ public class ExtractionController : Controller
         var row = new CostSource(costBase, name, companyId)
         {
             Value = value, Percentage = percentage, RelatedCompanyId = relatedCompanyId,
-            DataSource = DataSource.MANUAL
+            DataSource = DataSource.MANUAL,
+            Status = NewRowStatus,
+            ContributedByUserId = IsReviewer ? null : CurrentUserId
         };
         _cost.Add(row);
         return row.Id;
@@ -357,13 +398,31 @@ public class ExtractionController : Controller
         {
             var existing = _risks.GetById(id);
             if (existing is null) return null;
+            // Non-reviewer edit: propose a superseding Pending copy, leave the live row untouched.
+            if (!IsReviewer)
+            {
+                var proposal = new CompanyRisk(scope, name, companyId)
+                {
+                    Note = note, DataSource = DataSource.MANUAL,
+                    Status = ContributionStatus.Pending,
+                    ContributedByUserId = CurrentUserId,
+                    SupersedesId = existing.Id
+                };
+                _risks.Add(proposal);
+                return proposal.Id;
+            }
             existing.Scope = scope;
             existing.Name = name;
             existing.Note = note;
             _risks.Update(existing);
             return existing.Id;
         }
-        var row = new CompanyRisk(scope, name, companyId) { Note = note, DataSource = DataSource.MANUAL };
+        var row = new CompanyRisk(scope, name, companyId)
+        {
+            Note = note, DataSource = DataSource.MANUAL,
+            Status = NewRowStatus,
+            ContributedByUserId = IsReviewer ? null : CurrentUserId
+        };
         _risks.Add(row);
         return row.Id;
     }
@@ -866,12 +925,11 @@ public class ExtractionController : Controller
                 try { income = await _fmp.GetLatestIncomeAsync(req.Ticker.Trim()); }
                 catch (Exception ex) when (ex is HttpRequestException or MissingApiKeyException) { /* financials optional */ }
 
-                var model = FmpMapper.ToCreateModel(profile, income);
-
-                // FMP income is premium-gated (non-US -> 402), so it's often null. Mirror the New
-                // Company form and backfill revenue + gross margin from Yahoo Finance.
-                if (income == null)
-                    await FillFinancialsFromYahoo(model, req.Ticker.Trim());
+                // Same enrichment kernel the New Company form uses: maps the profile, stamps AsOf,
+                // resolves industry (LLM on a label miss) and backfills Yahoo financials when income is
+                // gated. The note is form-only, so the link path discards it. Country falls back to the
+                // owner's here (vs the form's resolve/create), so it stays a per-caller concern.
+                var (model, _) = await _enricher.BuildModelAsync(profile, income, req.Ticker.Trim());
                 var entity = new Company(model.Name, ResolveCountryId(profile.Country, owner), model.Sector)
                 {
                     Cik = model.Cik,
@@ -903,25 +961,6 @@ public class ExtractionController : Controller
         };
         _companies.Add(stub);
         return stub.Id;
-    }
-
-    // Backfill revenue (USD) + gross margin from Yahoo Finance when FMP income is unavailable.
-    // Margin is a currency-agnostic ratio so it's filled regardless; revenue is converted to USD
-    // via ExchangeRate-API and left blank if no rate is available. Best-effort: Yahoo miss -> blanks.
-    private async Task FillFinancialsFromYahoo(CompanyCreateModel model, string ticker)
-    {
-        var yf = await _yahoo.GetFinancialsAsync(ticker);
-        if (yf == null) return;
-
-        if (yf.GrossMargins is { } gm)
-            model.GrossMargin = Math.Round(gm, 2); // 2 dp to match the form's step="0.01"
-
-        if (yf.Revenue is { } rev && !string.IsNullOrWhiteSpace(yf.Currency))
-        {
-            var rate = await _exchangeRate.GetUsdRateAsync(yf.Currency);
-            if (rate is { } r)
-                model.RevenueTotal = Math.Round(rev * r);
-        }
     }
 
     // Match an ISO-2 code against existing countries; fall back to the inspecting company's country
