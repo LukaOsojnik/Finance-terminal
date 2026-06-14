@@ -33,9 +33,12 @@ public class IndustryClassifier : IIndustryClassifier
         // answer, and reasoning alone runs ~65-122 tokens here. A tight budget (e.g. 100) gets cut off
         // mid-reasoning -> empty/truncated content -> JSON parse fails -> null. 400 leaves headroom for
         // the reasoning plus the one-line JSON answer so finish_reason is "stop", not "length".
+        // Industry is a best-effort enrichment (callers leave it null on a miss), so treat a user
+        // without a DeepSeek key the same as DeepSeek being unreachable — return null, don't block the
+        // create/link/backfill flow that called us. The explicit AI buttons surface the key popup.
         string raw;
         try { raw = await _deepSeek.CompleteAsync(_model, system, user, maxTokens: 400, jsonObject: true, ct); }
-        catch (HttpRequestException) { return null; }
+        catch (Exception ex) when (ex is HttpRequestException or MissingApiKeyException) { return null; }
 
         try
         {

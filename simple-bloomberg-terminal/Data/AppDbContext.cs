@@ -24,6 +24,7 @@ public class AppDbContext : IdentityDbContext<AppUser>
     public DbSet<Filing> Filings { get; set; }
     public DbSet<Scenario> Scenarios { get; set; }
     public DbSet<ScenarioShock> ScenarioShocks { get; set; }
+    public DbSet<UserApiKey> UserApiKeys { get; set; }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -99,6 +100,17 @@ public class AppDbContext : IdentityDbContext<AppUser>
             // shared by every review (and thus source) it backs (upsert-by-accession in
             // ExtractionController).
             e.HasIndex(f => f.AccessionNumber).IsUnique();
+        });
+
+        // A user's bring-your-own API keys: 1:1 with the user via a shared primary key (UserId is
+        // both PK and FK). Cascade-delete so the keys vanish when the account is removed.
+        modelBuilder.Entity<UserApiKey>(e =>
+        {
+            e.HasKey(k => k.UserId);
+            e.HasOne<AppUser>()
+                .WithOne()
+                .HasForeignKey<UserApiKey>(k => k.UserId)
+                .OnDelete(DeleteBehavior.Cascade);
         });
     }
 }

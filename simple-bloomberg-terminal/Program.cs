@@ -1,4 +1,5 @@
 using System.Globalization;
+using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Localization;
 using Microsoft.EntityFrameworkCore;
@@ -9,7 +10,9 @@ using simple_bloomberg_terminal.Repositories;
 using simple_bloomberg_terminal.Services;
 
 var builder = WebApplication.CreateBuilder(args);
-builder.Services.AddControllersWithViews();
+// MissingApiKeyExceptionFilter converts a keyed client's "no user key" exception into a 424 the
+// front-end turns into an "add your key" popup. Registered globally so every AJAX action is covered.
+builder.Services.AddControllersWithViews(o => o.Filters.Add<simple_bloomberg_terminal.Services.MissingApiKeyExceptionFilter>());
 builder.Services.AddAutoMapper(cfg => { }, typeof(Program).Assembly);
 
 // Swagger/OpenAPI: docs + test UI for the Controllers/Api/* endpoints at /swagger.
@@ -42,6 +45,35 @@ builder.Services
     .AddRoles<IdentityRole>()
     .AddEntityFrameworkStores<AppDbContext>();
 
+// Identity's cookie handler answers an unauthenticated request with a 302 redirect to the login
+// page. That's correct for a full-page click (the browser follows it and the user sees the login
+// form), but a fetch() ALSO silently follows the 302, lands on the login HTML as a 200, and resolves
+// `response.ok === true` — so AJAX features (discover / extract / delete) fail silently for logged-out
+// users. Return a bare 401/403 for non-navigation requests (an /api path, an XHR header, or an Accept
+// that doesn't want HTML) so site.js can detect "not logged in" and surface the sign-in prompt;
+// real browser navigations still get the redirect. This is the ASP.NET equivalent of Spring
+// Security's AuthenticationEntryPoint returning 401 for API paths instead of redirecting.
+builder.Services.ConfigureApplicationCookie(options =>
+{
+    static bool IsAjax(HttpRequest r) =>
+        r.Path.StartsWithSegments("/api") ||
+        r.Headers.XRequestedWith == "XMLHttpRequest" ||
+        !r.Headers.Accept.ToString().Contains("text/html", StringComparison.OrdinalIgnoreCase);
+
+    options.Events.OnRedirectToLogin = ctx =>
+    {
+        if (IsAjax(ctx.Request)) ctx.Response.StatusCode = StatusCodes.Status401Unauthorized;
+        else ctx.Response.Redirect(ctx.RedirectUri);
+        return Task.CompletedTask;
+    };
+    options.Events.OnRedirectToAccessDenied = ctx =>
+    {
+        if (IsAjax(ctx.Request)) ctx.Response.StatusCode = StatusCodes.Status403Forbidden;
+        else ctx.Response.Redirect(ctx.RedirectUri);
+        return Task.CompletedTask;
+    };
+});
+
 // Google external login. Credentials come from user-secrets / config under Authentication:Google;
 // only registered when both are present so the app still boots without them (the Google button
 // just won't appear).
@@ -58,6 +90,15 @@ if (!string.IsNullOrWhiteSpace(googleClientId) && !string.IsNullOrWhiteSpace(goo
 }
 
 builder.Services.AddRazorPages();
+
+// Bring-your-own API keys: each user stores their own DeepSeek / FMP / Perplexity keys (encrypted
+// at rest via Data Protection). The provider resolves the current user's keys per request from the
+// auth cookie; the keyed clients read it instead of a global config key. HttpContextAccessor lets
+// the scoped provider see the signed-in user; AddDataProtection is idempotent (also used by
+// antiforgery) and makes the key-ring explicit.
+builder.Services.AddDataProtection();
+builder.Services.AddHttpContextAccessor();
+builder.Services.AddScoped<IUserApiKeyProvider, UserApiKeyProvider>();
 
 // Scoped = one instance per HTTP request (was Singleton — Singleton cannot hold a Scoped DbContext).
 // Spring equivalent: @Transactional method scope vs application-scoped bean.
@@ -168,11 +209,38 @@ app.MapRazorPages();
 // something to match. Idempotent — skips any role that already exists.
 using (var scope = app.Services.CreateScope())
 {
-    var roleManager = scope.ServiceProvider.GetRequiredService<RoleManager<IdentityRole>>();
+    var sp = scope.ServiceProvider;
+    var roleManager = sp.GetRequiredService<RoleManager<IdentityRole>>();
     foreach (var role in new[] { "Admin", "Manager", "User" })
     {
         if (!await roleManager.RoleExistsAsync(role))
             await roleManager.CreateAsync(new IdentityRole(role));
+    }
+
+    // One-time migration of the formerly-global API keys into the new per-user store: seed the
+    // developer account with whatever keys are still in config, so local dev keeps working after the
+    // bring-your-own-key switch. Idempotent — skips once the account already has any key stored.
+    var userManager = sp.GetRequiredService<UserManager<AppUser>>();
+    var dev = await userManager.FindByEmailAsync("lukaosojnikinfo@gmail.com");
+    if (dev is not null)
+    {
+        var db = sp.GetRequiredService<AppDbContext>();
+        var row = await db.UserApiKeys.FirstOrDefaultAsync(k => k.UserId == dev.Id);
+        var hasAny = row is not null &&
+            (row.DeepSeekKey != null || row.FmpKey != null || row.PerplexityKey != null);
+        if (!hasAny)
+        {
+            var protector = sp.GetRequiredService<IDataProtectionProvider>()
+                .CreateProtector(UserApiKeyProvider.Purpose);
+            string? Enc(string? raw) => string.IsNullOrWhiteSpace(raw) ? null : protector.Protect(raw);
+
+            row ??= new UserApiKey { UserId = dev.Id };
+            row.DeepSeekKey = Enc(app.Configuration["DeepSeek:ApiKey"]);
+            row.FmpKey = Enc(app.Configuration["Fmp:ApiKey"]);
+            row.PerplexityKey = Enc(app.Configuration["Perplexity:ApiKey"]);
+            if (db.Entry(row).State == EntityState.Detached) db.UserApiKeys.Add(row);
+            await db.SaveChangesAsync();
+        }
     }
 }
 

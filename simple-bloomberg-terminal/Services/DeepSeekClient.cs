@@ -6,21 +6,32 @@ using System.Text.Json;
 namespace simple_bloomberg_terminal.Services;
 
 /// <summary>
-/// Typed HttpClient for the DeepSeek chat-completions API (OpenAI-compatible). Base URL + key come
-/// from the "DeepSeek" config section. The Bearer auth header is set once on the injected client.
+/// Typed HttpClient for the DeepSeek chat-completions API (OpenAI-compatible). Base URL comes from
+/// the "DeepSeek" config section; the Bearer key is the CURRENT USER's own key (bring-your-own),
+/// resolved per request from <see cref="IUserApiKeyProvider"/> — no global key. A user without a
+/// DeepSeek key triggers a <see cref="MissingApiKeyException"/>. The auth header is set per
+/// HttpRequestMessage (not on the shared client) so concurrent calls in one scope can't clobber it.
 /// </summary>
 public class DeepSeekClient : IDeepSeekClient
 {
     private readonly HttpClient _http;
+    private readonly IUserApiKeyProvider _keys;
 
-    public DeepSeekClient(HttpClient http, IConfiguration config)
+    public DeepSeekClient(HttpClient http, IConfiguration config, IUserApiKeyProvider keys)
     {
         _http = http;
+        _keys = keys;
         var section = config.GetSection("DeepSeek");
         _http.BaseAddress = new Uri(section["BaseUrl"] ?? "https://api.deepseek.com");
         _http.Timeout = TimeSpan.FromMinutes(2);   // filing chunks can be large
-        _http.DefaultRequestHeaders.Authorization =
-            new AuthenticationHeaderValue("Bearer", section["ApiKey"] ?? "");
+    }
+
+    // The user's DeepSeek key, or throw the "add your key" signal the front-end turns into a popup.
+    private async Task<string> KeyAsync(CancellationToken ct)
+    {
+        var k = (await _keys.GetAsync(ct)).DeepSeek;
+        if (string.IsNullOrWhiteSpace(k)) throw MissingApiKeyException.DeepSeek();
+        return k;
     }
 
     public async Task<string> CompleteAsync(
@@ -37,7 +48,12 @@ public class DeepSeekClient : IDeepSeekClient
             MaxTokens: maxTokens,
             ResponseFormat: jsonObject ? new DeepSeekResponseFormat("json_object") : null);
 
-        var resp = await _http.PostAsJsonAsync("/chat/completions", req, ct);
+        using var httpReq = new HttpRequestMessage(HttpMethod.Post, "/chat/completions")
+        {
+            Content = JsonContent.Create(req),
+            Headers = { Authorization = new AuthenticationHeaderValue("Bearer", await KeyAsync(ct)) }
+        };
+        var resp = await _http.SendAsync(httpReq, ct);
         resp.EnsureSuccessStatusCode();
         var body = await resp.Content.ReadFromJsonAsync<DeepSeekResponse>(ct);
 
@@ -51,7 +67,8 @@ public class DeepSeekClient : IDeepSeekClient
         var req = new DeepSeekRequest(model, messages.ToList(), maxTokens, Stream: true);
         using var httpReq = new HttpRequestMessage(HttpMethod.Post, "/chat/completions")
         {
-            Content = JsonContent.Create(req)
+            Content = JsonContent.Create(req),
+            Headers = { Authorization = new AuthenticationHeaderValue("Bearer", await KeyAsync(ct)) }
         };
         // ResponseHeadersRead = don't buffer the whole body; hand us the stream as it arrives.
         using var resp = await _http.SendAsync(httpReq, HttpCompletionOption.ResponseHeadersRead, ct);

@@ -41,6 +41,7 @@ public class ExtractionController : Controller
     private readonly ScanJobStore _jobs;
     private readonly RediscoverJobStore _rediscoverJobs;
     private readonly IServiceScopeFactory _scopeFactory;
+    private readonly IUserApiKeyProvider _keys;
 
     public ExtractionController(
         IRevenueSourceRepository revenue,
@@ -61,7 +62,8 @@ public class ExtractionController : Controller
         IIndustryClassifier industryClassifier,
         ScanJobStore jobs,
         RediscoverJobStore rediscoverJobs,
-        IServiceScopeFactory scopeFactory)
+        IServiceScopeFactory scopeFactory,
+        IUserApiKeyProvider keys)
     {
         _revenue = revenue;
         _cost = cost;
@@ -82,6 +84,18 @@ public class ExtractionController : Controller
         _jobs = jobs;
         _rediscoverJobs = rediscoverJobs;
         _scopeFactory = scopeFactory;
+        _keys = keys;
+    }
+
+    // Write the same 424 "missing key" envelope the global filter produces, for STREAMING actions
+    // that have already begun writing (the filter can't replace a started response). site.js reads
+    // {code:"MISSING_KEY", …} off a 424 and shows the "add your key" popup.
+    private async Task WriteMissingKeyAsync(MissingApiKeyException ex, CancellationToken ct)
+    {
+        Response.StatusCode = StatusCodes.Status424FailedDependency;
+        Response.ContentType = "application/json; charset=utf-8";
+        await Response.WriteAsync(
+            JsonSerializer.Serialize(new { code = "MISSING_KEY", provider = ex.Provider, message = ex.Message }), ct);
     }
 
     private static ExtractionNode ParseNode(string? node) =>
@@ -479,7 +493,7 @@ public class ExtractionController : Controller
     // away; the notification widget polls scan-jobs for the result. The background task opens its
     // OWN DI scope — the request scope (and its DbContext) is gone the moment this returns.
     [HttpPost, Route("scan-auto-async/{companyId:long}")]
-    public IActionResult ScanAutoAsync(
+    public async Task<IActionResult> ScanAutoAsync(
         long companyId, [FromQuery] string accession, [FromQuery] string doc,
         [FromQuery] string? node, [FromQuery] string? form,
         [FromQuery] string? companyName, [FromQuery] string? filingLabel)
@@ -487,6 +501,11 @@ public class ExtractionController : Controller
         if (_companies.GetById(companyId) is null) return NotFound();
         if (string.IsNullOrWhiteSpace(accession) || string.IsNullOrWhiteSpace(doc))
             return BadRequest("accession and doc are required.");
+
+        // The scan + summary run on DeepSeek. Verify the user's key now (throw -> 424 popup) and
+        // snapshot the keys so the detached background scope can use them (it has no HttpContext).
+        var keys = await _keys.GetAsync();
+        if (string.IsNullOrWhiteSpace(keys.DeepSeek)) throw MissingApiKeyException.DeepSeek();
 
         var parsedNode = ParseNode(node);
         var job = new ScanJob
@@ -504,6 +523,7 @@ public class ExtractionController : Controller
         _ = Task.Run(async () =>
         {
             using var scope = _scopeFactory.CreateScope();
+            scope.ServiceProvider.GetRequiredService<IUserApiKeyProvider>().Set(keys);
             var extractor = scope.ServiceProvider.GetRequiredService<IFilingExtractionService>();
             var chat = scope.ServiceProvider.GetRequiredService<IExtractionChatService>();
             try
@@ -617,12 +637,17 @@ public class ExtractionController : Controller
     // the answer survives the user navigating away. The widget POSTs the conversation so far, then
     // polls scan-jobs/{id}/reply for the streamed result. Reuses the existing chat grounding.
     [HttpPost, Route("scan-jobs/{jobId}/reply")]
-    public IActionResult ScanJobReply(string jobId, [FromBody] ScanJobReplyRequest req)
+    public async Task<IActionResult> ScanJobReply(string jobId, [FromBody] ScanJobReplyRequest req)
     {
         var job = _jobs.Get(jobId);
         if (job is null) return NotFound();
         if (job.Status != ScanJobStatus.Done) return BadRequest("Scan hasn't finished.");
         if (job.Replying) return Conflict("A reply is already in progress.");
+
+        // The reply streams via DeepSeek. Verify the user's key now (throw -> 424 popup) and snapshot
+        // the keys so the detached background scope can use them (it has no HttpContext).
+        var keys = await _keys.GetAsync();
+        if (string.IsNullOrWhiteSpace(keys.DeepSeek)) throw MissingApiKeyException.DeepSeek();
 
         var node = ParseNode(job.Node);
         var history = req?.Messages ?? [];
@@ -634,6 +659,7 @@ public class ExtractionController : Controller
         _ = Task.Run(async () =>
         {
             using var scope = _scopeFactory.CreateScope();
+            scope.ServiceProvider.GetRequiredService<IUserApiKeyProvider>().Set(keys);
             var chat = scope.ServiceProvider.GetRequiredService<IExtractionChatService>();
             try
             {
@@ -675,13 +701,21 @@ public class ExtractionController : Controller
     [HttpPost, Route("chat")]
     public async Task Chat([FromBody] ChatRequest req, CancellationToken ct)
     {
-        Response.ContentType = "application/x-ndjson; charset=utf-8";
         if (req is null || _companies.GetById(req.CompanyId) is null)
         {
             Response.StatusCode = StatusCodes.Status404NotFound;
             return;
         }
 
+        // Chat streams via DeepSeek — verify the user's key BEFORE the NDJSON body starts, so a
+        // missing key returns a clean 424 the popup can read (not a half-written stream).
+        if (string.IsNullOrWhiteSpace((await _keys.GetAsync(ct)).DeepSeek))
+        {
+            await WriteMissingKeyAsync(MissingApiKeyException.DeepSeek(), ct);
+            return;
+        }
+
+        Response.ContentType = "application/x-ndjson; charset=utf-8";
         try
         {
             await foreach (var d in _chat.StreamReplyAsync(req.CompanyId, req.Accession, req.Doc, ParseNode(req.Node), req.Messages, req.Form, ct))
@@ -704,13 +738,20 @@ public class ExtractionController : Controller
     [HttpPost, Route("discover-related")]
     public async Task DiscoverRelated([FromBody] DiscoverCounterpartiesRequest req, CancellationToken ct)
     {
-        Response.ContentType = "application/x-ndjson; charset=utf-8";
         if (req is null || req.CompanyId <= 0 || _companies.GetById(req.CompanyId) is null)
         {
             Response.StatusCode = StatusCodes.Status404NotFound;
             return;
         }
 
+        // Discovery streams via Perplexity — verify the user's key BEFORE the NDJSON body starts.
+        if (string.IsNullOrWhiteSpace((await _keys.GetAsync(ct)).Perplexity))
+        {
+            await WriteMissingKeyAsync(MissingApiKeyException.Perplexity(), ct);
+            return;
+        }
+
+        Response.ContentType = "application/x-ndjson; charset=utf-8";
         var side = string.Equals(req.Side, "SUPPLIER", StringComparison.OrdinalIgnoreCase) ? "SUPPLIER" : "CUSTOMER";
         // Empty segments is allowed: the planner then identifies the company's segments itself (so
         // discovery works on a company that has no sources on record yet).
@@ -811,8 +852,10 @@ public class ExtractionController : Controller
         if (!string.IsNullOrWhiteSpace(req.Ticker))
         {
             FmpProfile? profile = null;
+            // FMP here is a best-effort enrichment of a linked counterparty — a missing user key (or
+            // FMP being down) just falls through to the minimal stub below, never blocks the link.
             try { profile = await _fmp.GetProfileAsync(req.Ticker.Trim()); }
-            catch (HttpRequestException) { /* FMP down or symbol unknown -> stub below */ }
+            catch (Exception ex) when (ex is HttpRequestException or MissingApiKeyException) { /* -> stub below */ }
 
             if (profile is { CompanyName.Length: > 0 })
             {
@@ -821,7 +864,7 @@ public class ExtractionController : Controller
 
                 FmpIncome? income = null;
                 try { income = await _fmp.GetLatestIncomeAsync(req.Ticker.Trim()); }
-                catch (HttpRequestException) { /* financials optional */ }
+                catch (Exception ex) when (ex is HttpRequestException or MissingApiKeyException) { /* financials optional */ }
 
                 var model = FmpMapper.ToCreateModel(profile, income);
 
@@ -844,7 +887,7 @@ public class ExtractionController : Controller
                 // Same dated financial history the New Company form pulls. Best-effort: a failure
                 // (premium-gated, unreachable) must not block linking the counterparty.
                 try { _companies.ReplaceFinancials(entity.Id, await _financials.BuildAsync(entity.Id, req.Ticker.Trim())); }
-                catch (HttpRequestException) { /* financials unavailable — company still created */ }
+                catch (Exception ex) when (ex is HttpRequestException or MissingApiKeyException) { /* financials unavailable — company still created */ }
                 return entity.Id;
             }
         }

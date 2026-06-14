@@ -1,3 +1,92 @@
+// ── Sign-in switch for AJAX features ──────────────────────────────────────────────────────────
+// Protected endpoints now answer logged-out fetch() calls with a 401 (see Program.cs cookie events)
+// instead of silently redirecting to the login HTML. Wrap fetch once, globally, so ANY feature that
+// hits a protected endpoint while logged out gets the same intuitive prompt: a confirm dialog, then a
+// redirect to the login page with a returnUrl back here. The streaming bodies (NDJSON discovery) are
+// untouched — we only read `.status`, never the body.
+(function () {
+    const nativeFetch = window.fetch.bind(window);
+    let prompting = false;   // guard so concurrent prompts raise only one dialog
+
+    // Shared prompt: confirm dialog, then redirect to login (returnUrl back here) on confirm.
+    // `authenticated` picks the wording — a logged-out user needs to sign in; a logged-in user
+    // without the role lacks permission. Reused by BOTH the click-guard and the fetch safety net.
+    async function promptSignIn(authenticated) {
+        if (prompting) return;
+        prompting = true;
+        const msg = authenticated
+            ? "Your account doesn't have permission for this action."
+            : 'You need to sign in to use this feature.';
+        const go = window.uiConfirm
+            ? await uiConfirm(msg, { title: 'Sign in required', confirmLabel: 'Go to login', cancelLabel: 'Cancel' })
+            : confirm(msg);
+        if (go) {
+            const returnUrl = encodeURIComponent(location.pathname + location.search);
+            location.href = `/Identity/Account/Login?returnUrl=${returnUrl}`;
+        } else {
+            prompting = false;   // cancelled — let the next protected click prompt again
+        }
+    }
+
+    // Missing bring-your-own API key: a keyed endpoint answered 424 with {code:"MISSING_KEY", …}.
+    // Offer to jump to the keys page. Guarded so concurrent calls raise only one dialog.
+    let keyPrompting = false;
+    async function promptMissingKey(data) {
+        if (keyPrompting) return;
+        keyPrompting = true;
+        const msg = (data.message || 'An API key is required') + '. Add your key to use this feature.';
+        const go = window.uiConfirm
+            ? await uiConfirm(msg, { title: 'API key required', confirmLabel: 'Add key', cancelLabel: 'Dismiss' })
+            : confirm(msg);
+        keyPrompting = false;
+        if (go) location.href = '/Account/ApiKeys';
+    }
+
+    // ── Proactive click-guard ──
+    // The reactive fetch wrapper below can only fire AFTER a button's own handler has already run its
+    // setup (disabling itself, rendering "Planning searches…", building feed DOM). To show ONLY the
+    // popup with zero partial UI, intercept the click during the CAPTURE phase — before the button's
+    // own bubble-phase listener — and stop it dead when the user lacks the Admin/Manager role these
+    // AJAX features require. data-priv / data-auth are stamped on <body> by _Layout.
+    const PROTECTED = '.js-discover, .js-extract-filings, .js-rediscover';
+    document.addEventListener('click', e => {
+        const trigger = e.target.closest(PROTECTED);
+        if (!trigger) return;
+        if (document.body.dataset.priv === '1') return;   // privileged — let the real handler run
+        e.preventDefault();
+        e.stopImmediatePropagation();                     // the button's own click listener never fires
+        promptSignIn(document.body.dataset.auth === '1');
+    }, true);
+
+    // ── Reactive safety net ──
+    // Covers protected fetch()es NOT behind a guarded button (row deletes, links, other pages). Skip
+    // background pollers (the scan-job widget polls /extraction/scan-jobs on EVERY page) — only a
+    // user-initiated call should prompt. On a protected 401/403 we NEVER resolve the returned promise,
+    // so the caller's post-fetch failure code (e.g. "Discovery failed (401)") never runs.
+    const isBackground = arg => {
+        const url = typeof arg === 'string' ? arg : (arg && arg.url) || '';
+        return url.includes('/extraction/scan-jobs');
+    };
+    window.fetch = async function (...args) {
+        const res = await nativeFetch(...args);
+        if ((res.status === 401 || res.status === 403) && !isBackground(args[0])) {
+            promptSignIn(res.status === 403);
+            return new Promise(() => {});   // never resolves: caller's post-fetch code is suppressed
+        }
+        // Bring-your-own key missing: pop the "add your key" dialog and suppress the caller's failure
+        // path, the same way as the auth prompt above. Clone so we don't consume the caller's body.
+        if (res.status === 424 && !isBackground(args[0])) {
+            let data = null;
+            try { data = await res.clone().json(); } catch { /* not our envelope */ }
+            if (data && data.code === 'MISSING_KEY') {
+                promptMissingKey(data);
+                return new Promise(() => {});
+            }
+        }
+        return res;
+    };
+})();
+
 // AJAX search wiring for every list page.
 // Convention:
 //   <input class="search-input" data-search-url="/entity/search" />

@@ -30,6 +30,9 @@
             <li>
                 <a class="dropdown-item" asp-controller="Account" asp-action="Profile">Profile</a>
             </li>
+            <li>
+                <a class="dropdown-item" asp-controller="Account" asp-action="ApiKeys">API Keys</a>
+            </li>
             @if (User.IsInRole("Admin"))
             {
                 <li>

@@ -21,6 +21,7 @@
 | SourceFieldReviews | SourceFieldReview | Per-field provenance (incl. the filing link) + AI verdict for one cell of a revenue/cost/risk source |
 | Filings | Filing | A SEC EDGAR filing used as proof for a cost/revenue source; identity is the EDGAR accession number |
 | AspNetUsers | AppUser | Application user (ASP.NET Core Identity), extended with profile-picture metadata |
+| UserApiKeys | UserApiKey | 1:1 store of a user's bring-your-own third-party API keys (encrypted) |
 
 > **Identity layer:** `AppDbContext` derives from `IdentityDbContext<AppUser>` (was plain `DbContext`). This adds the standard ASP.NET Core Identity tables: **AspNetUsers** (mapped to `AppUser`), **AspNetRoles**, **AspNetUserRoles**, **AspNetUserClaims**, **AspNetRoleClaims**, **AspNetUserLogins**, **AspNetUserTokens**. Roles **Admin**, **Manager**, **User** are seeded at startup.
 
@@ -225,6 +226,16 @@ Extends ASP.NET Core Identity's `IdentityUser` (maps to **AspNetUsers**). Standa
 
 Stores a single profile-picture file's metadata + path; the image bytes live on disk under `wwwroot/uploads/profiles/{userId}/`, not in the database. Note: AppUser does not use the soft-delete `DeletedAt` pattern (Identity-managed).
 
+### UserApiKey
+| Property | Type | Notes |
+|---|---|---|
+| UserId | string | PK + FK → AspNetUsers.Id (shared PK, 1:1) |
+| DeepSeekKey | string? | Ciphertext (Data Protection API); null = not provided |
+| FmpKey | string? | Ciphertext (Data Protection API); null = not provided |
+| PerplexityKey | string? | Ciphertext (Data Protection API); null = not provided |
+
+A user's own (bring-your-own) third-party API keys for the keyed external services — one row per user, shared primary key with AppUser. Each key column holds the value as **ciphertext** encrypted by the ASP.NET Data Protection API (`UserApiKeyProvider`), never the raw key, so a DB dump leaks nothing usable. Null = the user hasn't provided that key. Cascade-delete: keys vanish when the account is removed. No soft-delete `DeletedAt`. Migration: `20260614131546_AddUserApiKeys`.
+
 ---
 
 ## Relationships
@@ -259,6 +270,8 @@ Company ──────────────── Filing             (1:N
 Filing ───────────────── SourceFieldReview  (1:N, FK FilingId nullable, Restrict)
 
 Event   ◄──────────────► TradeBloc          (N:M, junction table)
+
+AppUser ──────────────── UserApiKey         (1:1, shared PK UserId, Cascade)
 ```
 
 ---

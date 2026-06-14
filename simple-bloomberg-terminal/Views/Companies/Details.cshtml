@@ -20,6 +20,7 @@
         <div class="detail-hero-name-row">
             <h1 class="detail-hero-name">@co.Name</h1>
             <a asp-controller="Graph" asp-action="Index" asp-route-companyId="@co.Id" class="detail-graph-link" title="View relationship graph">◉ GRAPH →</a>
+            <a asp-controller="Companies" asp-action="Edit" asp-route-id="@co.Id" class="btn-detail">EDIT →</a>
             <span class="detail-code-badge">@co.Sector.ToString().Replace("_", " ")</span>
             <span class="type-badge type-@co.Type.ToString().ToLowerInvariant()">@co.Type</span>
             @if (co.Country != null)
@@ -384,9 +385,10 @@
                     <tbody>
                         @foreach (var r in Model.RevenueSources)
                         {
-                            @* A real segment to search by: not an EDGAR period-total, not itself a linked counterparty.
-                               When null, Razor omits the attribute so discovery falls back to company-wide mode. *@
-                            <tr data-segment="@(r.RelatedCompanyId == null && r.DataSource != DataSource.EDGAR ? r.Name : null)">
+                            @* Segment name for discovery — extract all valid segments regardless of linked status,
+                               since discovery is just finding web references (the link is made separately).
+                               Skip only EDGAR period-totals since those aren't real business segments. *@
+                            <tr data-segment="@(r.DataSource != DataSource.EDGAR ? r.Name : null)">
                                 <td class="name-cell">@r.Name</td>
                                 <td class="tag-cell">@r.SourceType</td>
                                 <td class="num-cell">@(r.Value.HasValue ? "$" + (r.Value.Value / 1e9).ToString("F2") + "B" : "—")</td>
@@ -477,8 +479,10 @@
                     <tbody>
                         @foreach (var c in Model.CostSources)
                         {
-                            @* A real segment to search by: not an EDGAR period-total, not itself a linked counterparty. *@
-                            <tr data-segment="@(c.RelatedCompanyId == null && c.DataSource != DataSource.EDGAR ? c.Name : null)">
+                            @* Segment name for discovery — extract all valid segments regardless of linked status,
+                               since discovery is just finding web references (the link is made separately).
+                               Skip only EDGAR period-totals since those aren't real business segments. *@
+                            <tr data-segment="@(c.DataSource != DataSource.EDGAR ? c.Name : null)">
                                 <td class="name-cell">@c.Name</td>
                                 <td class="tag-cell">@c.CostBase</td>
                                 <td class="num-cell">@(c.Value.HasValue ? "$" + (c.Value.Value / 1e9).ToString("F2") + "B" : "—")</td>

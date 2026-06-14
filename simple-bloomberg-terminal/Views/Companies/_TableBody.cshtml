@@ -9,7 +9,7 @@
 {
     <tr data-type="@company.Type">
         <td class="name-cell" style="font-weight:500;">
-            @company.Name
+            <a asp-action="Details" asp-route-id="@company.Id" class="btn-detail" style="padding:0; border:none; background:none;">@company.Name</a>
             <span class="type-badge type-@company.Type.ToString().ToLowerInvariant()">@(company.Type == simple_bloomberg_terminal.Models.Enums.CompanyType.PRIVATE ? "PVT" : "PUB")</span>
         </td>
         <td class="tag-cell">@(company.Country?.Name ?? "—")</td>
@@ -26,8 +26,6 @@
             else { <span class="muted-cell">—</span> }
         </td>
         <td style="text-align:right; white-space:nowrap;">
-            <a asp-action="Details" asp-route-id="@company.Id" class="btn-detail">VIEW</a>
-            <a asp-action="Edit" asp-route-id="@company.Id" class="btn-detail">EDIT</a>
             <form asp-route="CompanyDelete" asp-route-id="@company.Id" method="post" style="display:inline;" class="js-row-delete" data-confirm="Delete @company.Name?" data-company-id="@company.Id" data-company-name="@company.Name">
                 @Html.AntiForgeryToken()
                 <button type="submit" class="btn-detail" style="border:none; background:none; color:var(--red); cursor:pointer;">DEL</button>

@@ -11,7 +11,11 @@
     <link rel="stylesheet" href="~/css/dtpicker.css" asp-append-version="true"/>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 </head>
-<body>
+@* Auth state for the client-side sign-in switch (site.js): data-auth = logged in at all; data-priv =
+   has the Admin/Manager role the AJAX features require. The click-guard reads these to prompt BEFORE a
+   protected button runs any of its own UI. *@
+<body data-auth="@(User?.Identity?.IsAuthenticated == true ? "1" : "0")"
+      data-priv="@(User is { } u && (u.IsInRole("Admin") || u.IsInRole("Manager")) ? "1" : "0")">
 <header id="main-nav" data-turbo-permanent>
     <nav class="navbar navbar-expand-sm">
         <div class="container-fluid" style="max-width:1200px; margin:0 auto; padding:0 1rem;">

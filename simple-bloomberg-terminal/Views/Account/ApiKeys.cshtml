@@ -1,0 +1,64 @@
+@model simple_bloomberg_terminal.Models.ViewModels.ApiKeysViewModel
+@{
+    ViewData["Title"] = "API Keys";
+}
+
+@* Bootstrap's .form-text / .text-muted default to a dark grey that's unreadable on the dark
+   terminal theme — pin the page's helper, label and intro text to the theme's light colors. *@
+<style>
+    .api-keys, .api-keys .form-label, .api-keys p { color: var(--text-primary); }
+    .api-keys .form-text, .api-keys .text-muted { color: var(--text-secondary) !important; }
+    .api-keys .form-text a { color: var(--accent); }
+</style>
+
+<div class="api-keys">
+<h2>API Keys</h2>
+<p class="text-muted">
+    Bring your own keys for the external services. They're encrypted before storage and never shown
+    again — only the last 4 characters. Leave a field blank to keep the current key; tick “Clear” to
+    remove it.
+</p>
+
+@if (TempData["ApiKeysSaved"] is string saved)
+{
+    <div class="alert alert-success">@saved</div>
+}
+
+<form asp-action="SaveApiKeys" method="post" class="col-md-8">
+    @Html.AntiForgeryToken()
+
+    @{
+        void KeyRow(string label, string field, string clearField, simple_bloomberg_terminal.Models.ViewModels.ApiKeyStatus status, string help, string helpUrl)
+        {
+            <div class="mb-4">
+                <label class="form-label fw-bold">@label</label>
+                @if (status.IsSet)
+                {
+                    <span class="badge bg-success ms-2">set@(status.Last4 is { } l ? $" · ••••{l}" : "")</span>
+                }
+                else
+                {
+                    <span class="badge bg-secondary ms-2">not set</span>
+                }
+                <input type="password" name="@field" class="form-control mt-1" autocomplete="off"
+                       placeholder="@(status.IsSet ? "Enter a new key to replace it" : "Paste your key")"/>
+                <div class="form-check mt-1">
+                    <input class="form-check-input" type="checkbox" name="@clearField" value="true" id="@clearField"/>
+                    <label class="form-check-label small text-muted" for="@clearField">Clear this key</label>
+                </div>
+                <div class="form-text">@help <a href="@helpUrl" target="_blank" rel="noopener">Get a key</a>.</div>
+            </div>
+        }
+
+        KeyRow("DeepSeek — parsing & structuring LLM", "deepSeekKey", "clearDeepSeek", Model.DeepSeek,
+            "Powers the AI filing review, extraction and chat.", "https://platform.deepseek.com/api_keys");
+        KeyRow("FMP — financial data", "fmpKey", "clearFmp", Model.Fmp,
+            "Powers New Company fundamentals and financial history.", "https://site.financialmodelingprep.com/developer/docs");
+        KeyRow("Perplexity — web search", "perplexityKey", "clearPerplexity", Model.Perplexity,
+            "Powers counterparty discovery and private-company profiles.", "https://console.perplexity.ai/");
+    }
+
+    <button type="submit" class="btn btn-primary">Save keys</button>
+    <a asp-action="Profile" class="btn btn-outline-secondary">Back to profile</a>
+</form>
+</div>

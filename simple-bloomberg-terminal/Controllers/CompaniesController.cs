@@ -27,16 +27,18 @@ public class CompaniesController : Controller
     private readonly IIndustryClassifier _industryClassifier;
     private readonly RediscoverJobStore _rediscoverJobs;
     private readonly IServiceScopeFactory _scopeFactory;
+    private readonly IUserApiKeyProvider _keys;
 
     public CompaniesController(ICompanyRepository companies, ICountryRepository countries,
         IFmpApiClient fmp, IRestCountriesClient restCountries,
         IYahooFinanceClient yahoo, IExchangeRateApiClient exchangeRate,
         ICompanyFinancialsService financials, IStockApiClient stock,
         ICompanyProfileDiscovery profileDiscovery, IIndustryClassifier industryClassifier,
-        RediscoverJobStore rediscoverJobs, IServiceScopeFactory scopeFactory)
+        RediscoverJobStore rediscoverJobs, IServiceScopeFactory scopeFactory, IUserApiKeyProvider keys)
     {
         _rediscoverJobs = rediscoverJobs;
         _scopeFactory = scopeFactory;
+        _keys = keys;
         _companies = companies;
         _countries = countries;
         _fmp = fmp;
@@ -121,6 +123,13 @@ public class CompaniesController : Controller
             ModelState.AddModelError("", "FMP is unreachable. Try again or enter the company manually.");
             return View("Create", new CompanyCreateModel());
         }
+        // No FMP key on this account: this is a full-page form, so surface guidance inline rather
+        // than the AJAX popup the keyed buttons get.
+        catch (MissingApiKeyException ex)
+        {
+            ModelState.AddModelError("", $"{ex.Message}. Add your FMP API key under Profile ▸ API Keys, then try again.");
+            return View("Create", new CompanyCreateModel());
+        }
 
         if (model is null)
         {
@@ -196,7 +205,7 @@ public class CompaniesController : Controller
         if (!string.IsNullOrWhiteSpace(model.Symbol))
         {
             try { _companies.ReplaceFinancials(entity.Id, await _financials.BuildAsync(entity.Id, model.Symbol)); }
-            catch (HttpRequestException) { /* financials unavailable — company still created */ }
+            catch (Exception ex) when (ex is HttpRequestException or MissingApiKeyException) { /* financials unavailable — company still created */ }
         }
         // Private company with an AI-estimated revenue: store it as a single CLAUDE_ESTIMATED history
         // row so the Details matrix shows it clearly flagged as an estimate (not reported API data).
@@ -237,6 +246,12 @@ public class CompaniesController : Controller
             ModelState.AddModelError("", "AI discovery is unreachable. Try again or enter the company manually.");
             return View("Create", new CompanyCreateModel { Type = CompanyType.PRIVATE, Name = companyName });
         }
+        // No Perplexity key on this account: full-page form, so guide inline.
+        catch (MissingApiKeyException ex)
+        {
+            ModelState.AddModelError("", $"{ex.Message}. Add your Perplexity API key under Profile ▸ API Keys, then try again.");
+            return View("Create", new CompanyCreateModel { Type = CompanyType.PRIVATE, Name = companyName });
+        }
 
         if (result is null)
         {
@@ -257,11 +272,16 @@ public class CompaniesController : Controller
     // gone once this returns), so a slow/unreliable web search can't time out the request. Returns a
     // job id the bottom-right widget polls. Public companies are rejected — they have a ticker.
     [HttpPost, Route("{id:long}/rediscover", Name = "CompanyRediscover"), ValidateAntiForgeryToken]
-    public IActionResult Rediscover(long id)
+    public async Task<IActionResult> Rediscover(long id)
     {
         var entity = _companies.GetById(id);
         if (entity == null) return NotFound();
         if (entity.Type != CompanyType.PRIVATE) return BadRequest("Re-discovery is for private companies only.");
+
+        // Re-discovery runs Perplexity sonar. Verify the user's key now (throw -> 424 popup) and
+        // snapshot the keys so the detached background scope can use them (it has no HttpContext).
+        var keys = await _keys.GetAsync();
+        if (string.IsNullOrWhiteSpace(keys.Perplexity)) throw MissingApiKeyException.Perplexity();
 
         var job = new RediscoverJob { CompanyId = id, CompanyName = entity.Name };
         _rediscoverJobs.Add(job);
@@ -270,6 +290,7 @@ public class CompaniesController : Controller
         {
             using var scope = _scopeFactory.CreateScope();
             var sp = scope.ServiceProvider;
+            sp.GetRequiredService<IUserApiKeyProvider>().Set(keys);
             var companies = sp.GetRequiredService<ICompanyRepository>();
             var discovery = sp.GetRequiredService<ICompanyProfileDiscovery>();
             var classifier = sp.GetRequiredService<IIndustryClassifier>();

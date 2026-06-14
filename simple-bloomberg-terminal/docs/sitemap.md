@@ -1440,6 +1440,36 @@
 
 ---
 
+## /Account/ApiKeys
+
+| Field | Value |
+|---|---|
+| Controller | AccountController |
+| Action | ApiKeys |
+| HTTP | GET |
+| Route source | Convention (`/{controller}/{action}/{id?}`) |
+| View | Views/Account/ApiKeys.cshtml |
+| Parameters | — |
+| Auth | `[Authorize]` (any authenticated user) |
+| Notes | Bring-your-own API keys management page — the signed-in user's own DeepSeek / FMP / Perplexity keys, stored encrypted (Data Protection) in `UserApiKeys`. Shows only "set · ••••last4" status, never the raw key. Linked from the user dropdown nav in Views/Shared/_LoginPartial.cshtml. ViewModel: `ApiKeysViewModel` |
+
+---
+
+## /Account/SaveApiKeys
+
+| Field | Value |
+|---|---|
+| Controller | AccountController |
+| Action | SaveApiKeys |
+| HTTP | POST |
+| Route source | Convention (`/{controller}/{action}/{id?}`) (ValidateAntiForgeryToken) |
+| View | — (redirects to ApiKeys) |
+| Parameters | deepSeekKey: string?; fmpKey: string?; perplexityKey: string? (form); clearDeepSeek/clearFmp/clearPerplexity: bool (form) |
+| Auth | `[Authorize]` (any authenticated user) |
+| Notes | Saves the user's encrypted API keys to `UserApiKeys`. Per key: a "clear" tick removes it; a non-blank input sets it (encrypted); blank leaves it as-is (so one key can be updated without re-typing the others). Redirects back to ApiKeys |
+
+---
+
 ## /Admin
 
 | Field | Value |

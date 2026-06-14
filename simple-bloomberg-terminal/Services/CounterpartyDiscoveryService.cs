@@ -35,18 +35,27 @@ public class CounterpartyDiscoveryService : ICounterpartyDiscovery
 {
     private readonly HttpClient _http;
     private readonly ICompanyRepository _companies;
+    private readonly IUserApiKeyProvider _keys;
     private readonly string _model;
 
-    public CounterpartyDiscoveryService(HttpClient http, ICompanyRepository companies, IConfiguration config)
+    public CounterpartyDiscoveryService(HttpClient http, ICompanyRepository companies,
+        IConfiguration config, IUserApiKeyProvider keys)
     {
         _http = http;
         _companies = companies;
+        _keys = keys;
         var section = config.GetSection("Perplexity");
         _http.BaseAddress = new Uri(section["BaseUrl"] ?? "https://api.perplexity.ai");
         _http.Timeout = TimeSpan.FromSeconds(90);   // a deep company-wide web-search turn can be slow
-        _http.DefaultRequestHeaders.Authorization =
-            new AuthenticationHeaderValue("Bearer", section["ApiKey"] ?? "");
         _model = section["Model"] ?? "sonar-pro";
+    }
+
+    // The user's Perplexity key, or throw the "add your key" signal the front-end turns into a popup.
+    private async Task<string> KeyAsync(CancellationToken ct)
+    {
+        var k = (await _keys.GetAsync(ct)).Perplexity;
+        if (string.IsNullOrWhiteSpace(k)) throw MissingApiKeyException.Perplexity();
+        return k;
     }
 
     private const int RecencyYears = 5;   // discovery covers relationships active in the last N years
@@ -217,7 +226,12 @@ public class CounterpartyDiscoveryService : ICounterpartyDiscovery
             MaxTokens: maxTokens,
             WebSearchOptions: new PerplexityWebSearchOptions(contextSize));
 
-        var resp = await _http.PostAsJsonAsync("/chat/completions", req, ct);
+        using var httpReq = new HttpRequestMessage(HttpMethod.Post, "/chat/completions")
+        {
+            Content = JsonContent.Create(req),
+            Headers = { Authorization = new AuthenticationHeaderValue("Bearer", await KeyAsync(ct)) }
+        };
+        var resp = await _http.SendAsync(httpReq, ct);
         resp.EnsureSuccessStatusCode();
 
         using var env = JsonDocument.Parse(await resp.Content.ReadAsStringAsync(ct));
