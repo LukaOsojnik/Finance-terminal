@@ -122,6 +122,8 @@ builder.Services.AddScoped<IScenarioRepository, ScenarioRepository>();
 builder.Services.AddScoped<IScenarioShockRepository, ScenarioShockRepository>();
 builder.Services.AddScoped<ISourceFieldReviewRepository, SourceFieldReviewRepository>();
 builder.Services.AddScoped<IFilingRepository, FilingRepository>();
+// Owns the contribution Approve/Reject state machine over the three reviewed repos (revenue/cost/risk).
+builder.Services.AddScoped<IContributionWriter, ContributionWriter>();
 
 // External stock data (SEC EDGAR): typed HttpClient + the one service with real logic.
 builder.Services.AddHttpClient<IStockApiClient, StockApiClient>();

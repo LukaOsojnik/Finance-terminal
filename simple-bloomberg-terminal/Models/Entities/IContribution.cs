@@ -16,6 +16,8 @@ public interface IContribution
     long CompanyId { get; }
     DataSource? DataSource { get; }
     DateTime? DeletedAt { get; set; }
-    ContributionStatus Status { get; }
+    ContributionStatus Status { get; set; }
+    // The live row this one proposes to replace (null = a brand-new row, not an edit).
+    long? SupersedesId { get; }
     Company? Company { get; }
 }

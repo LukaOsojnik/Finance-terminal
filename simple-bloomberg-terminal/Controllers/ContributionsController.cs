@@ -2,9 +2,9 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using simple_bloomberg_terminal.Models.Entities;
-using simple_bloomberg_terminal.Models.Enums;
 using simple_bloomberg_terminal.Models.ViewModels;
 using simple_bloomberg_terminal.Repositories;
+using simple_bloomberg_terminal.Services;
 
 namespace simple_bloomberg_terminal.Controllers;
 
@@ -25,10 +25,12 @@ public class ContributionsController : Controller
     private readonly ICompanyRiskRepository _risks;
     private readonly ISourceFieldReviewRepository _reviews;
     private readonly UserManager<AppUser> _users;
+    private readonly IContributionWriter _writer;
 
     public ContributionsController(
         ICompanyRepository companies, IRevenueSourceRepository revenue, ICostSourceRepository cost,
-        ICompanyRiskRepository risks, ISourceFieldReviewRepository reviews, UserManager<AppUser> users)
+        ICompanyRiskRepository risks, ISourceFieldReviewRepository reviews, UserManager<AppUser> users,
+        IContributionWriter writer)
     {
         _companies = companies;
         _revenue = revenue;
@@ -36,6 +38,7 @@ public class ContributionsController : Controller
         _risks = risks;
         _reviews = reviews;
         _users = users;
+        _writer = writer;
     }
 
     // Every company with at least one pending contribution, with per-section counts.
@@ -72,19 +75,29 @@ public class ContributionsController : Controller
         // Proofs for every pending row, fetched once and matched by source id below. Reused from the
         // extraction flow's review repository (Filing already eager-loaded for the link).
         var reviews = _reviews.GetByCompany(id).ToList();
-        // Contributor email lookup once per distinct user, so the view shows "who" without N queries.
-        var emails = new Dictionary<string, string?>();
-        string? Email(string? userId)
-        {
-            if (string.IsNullOrEmpty(userId)) return null;
-            if (!emails.TryGetValue(userId, out var e))
-                emails[userId] = e = _users.FindByIdAsync(userId).GetAwaiter().GetResult()?.Email;
-            return e;
-        }
+
+        // Materialize each section once so the projections (and the email batch below) don't re-query.
+        var revenue = _revenue.GetPendingByCompany(id).ToList();
+        var cost = _cost.GetPendingByCompany(id).ToList();
+        var risk = _risks.GetPendingByCompany(id).ToList();
+
+        // Contributor emails for every distinct user across the three sections, in one query (was a
+        // blocking FindByIdAsync per distinct user — an N+1).
+        var userIds = revenue.Select(r => r.ContributedByUserId)
+            .Concat(cost.Select(c => c.ContributedByUserId))
+            .Concat(risk.Select(r => r.ContributedByUserId))
+            .Where(uid => !string.IsNullOrEmpty(uid))
+            .Distinct()
+            .ToList();
+        var emails = _users.Users
+            .Where(u => userIds.Contains(u.Id))
+            .ToDictionary(u => u.Id, u => u.Email);
+        string? Email(string? userId) =>
+            userId is not null && emails.TryGetValue(userId, out var e) ? e : null;
 
         var vm = new CompanyContributionsViewModel { CompanyId = id, CompanyName = company.Name };
 
-        vm.Revenue = _revenue.GetPendingByCompany(id).Select(r => new ContributionRow
+        vm.Revenue = revenue.Select(r => new ContributionRow
         {
             Type = "REVENUE", Id = r.Id, Classification = r.SourceType.ToString(), Name = r.Name,
             Value = r.Value, Percentage = r.Percentage, RelatedCompany = r.RelatedCompany?.Name,
@@ -94,7 +107,7 @@ public class ContributionsController : Controller
             Proofs = ProofsFor(reviews, p => p.RevenueSourceId == r.Id)
         }).ToList();
 
-        vm.Cost = _cost.GetPendingByCompany(id).Select(c => new ContributionRow
+        vm.Cost = cost.Select(c => new ContributionRow
         {
             Type = "COST", Id = c.Id, Classification = c.CostBase.ToString(), Name = c.Name,
             Value = c.Value, Percentage = c.Percentage, RelatedCompany = c.RelatedCompany?.Name,
@@ -104,7 +117,7 @@ public class ContributionsController : Controller
             Proofs = ProofsFor(reviews, p => p.CostSourceId == c.Id)
         }).ToList();
 
-        vm.Risk = _risks.GetPendingByCompany(id).Select(r => new ContributionRow
+        vm.Risk = risk.Select(r => new ContributionRow
         {
             Type = "RISK", Id = r.Id, Classification = r.Scope.ToString(), Name = r.Name, Note = r.Note,
             ContributorEmail = Email(r.ContributedByUserId),
@@ -128,54 +141,20 @@ public class ContributionsController : Controller
             FilingUrl = p.Filing?.PrimaryDocUrl
         }).ToList();
 
-    // Approve every selected pending row: a proposed edit soft-deletes the live row it supersedes,
-    // then the pending row flips to Approved and goes public. Batched so a section "Approve all"
-    // button posts the whole section's ids in one call.
+    // Approve every selected pending row. Batched so a section "Approve all" button posts the whole
+    // section's ids in one call; the transition rules live in IContributionWriter.
     [HttpPost, Route("approve"), ValidateAntiForgeryToken]
     public IActionResult Approve(string type, long[] ids, long companyId)
     {
-        foreach (var id in ids ?? [])
-        {
-            switch (type)
-            {
-                case "REVENUE" when _revenue.GetById(id) is { Status: ContributionStatus.Pending } r:
-                    if (r.SupersedesId is { } rs) _revenue.SoftDelete(rs);
-                    r.Status = ContributionStatus.Approved; _revenue.Update(r);
-                    break;
-                case "COST" when _cost.GetById(id) is { Status: ContributionStatus.Pending } c:
-                    if (c.SupersedesId is { } cs) _cost.SoftDelete(cs);
-                    c.Status = ContributionStatus.Approved; _cost.Update(c);
-                    break;
-                case "RISK" when _risks.GetById(id) is { Status: ContributionStatus.Pending } k:
-                    if (k.SupersedesId is { } ks) _risks.SoftDelete(ks);
-                    k.Status = ContributionStatus.Approved; _risks.Update(k);
-                    break;
-            }
-        }
+        _writer.Approve(type, ids ?? []);
         return RedirectToAction(nameof(Company), new { id = companyId });
     }
 
-    // Reject every selected pending row: mark Rejected so it leaves both the public app (reads filter
-    // Approved) and this queue (reads filter Pending). The live row a rejected edit targeted is left
-    // untouched — nothing was ever swapped.
+    // Reject every selected pending row.
     [HttpPost, Route("reject"), ValidateAntiForgeryToken]
     public IActionResult Reject(string type, long[] ids, long companyId)
     {
-        foreach (var id in ids ?? [])
-        {
-            switch (type)
-            {
-                case "REVENUE" when _revenue.GetById(id) is { Status: ContributionStatus.Pending } r:
-                    r.Status = ContributionStatus.Rejected; _revenue.Update(r);
-                    break;
-                case "COST" when _cost.GetById(id) is { Status: ContributionStatus.Pending } c:
-                    c.Status = ContributionStatus.Rejected; _cost.Update(c);
-                    break;
-                case "RISK" when _risks.GetById(id) is { Status: ContributionStatus.Pending } k:
-                    k.Status = ContributionStatus.Rejected; _risks.Update(k);
-                    break;
-            }
-        }
+        _writer.Reject(type, ids ?? []);
         return RedirectToAction(nameof(Company), new { id = companyId });
     }
 }
