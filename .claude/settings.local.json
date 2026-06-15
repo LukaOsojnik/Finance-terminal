@@ -1,9 +1,11 @@
 {
-  "outputStyle": "Learning",
   "permissions": {
     "allow": [
       "Bash(ls Helpers)",
-      "Bash(ls Extensions)"
+      "Bash(ls Extensions)",
+      "Skill(claude-api)",
+      "WebSearch"
     ]
-  }
+  },
+  "outputStyle": "Learning"
 }

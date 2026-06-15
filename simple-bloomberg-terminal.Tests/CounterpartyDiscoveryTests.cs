@@ -26,7 +26,6 @@ public class CounterpartyDiscoveryTests
         return new CounterpartyDiscoveryService(
             new HttpClient(handler) { BaseAddress = new Uri("https://api.perplexity.ai") },
             new FakeCompanyRepository(owner, microsoft),
-            new ConfigurationBuilder().Build(),
             new FakeApiKeyProvider(new UserApiKeys(null, null, "pplx-key")));
     }
 
@@ -181,7 +180,6 @@ public class CounterpartyDiscoveryTests
         var svc = new CounterpartyDiscoveryService(
             new HttpClient(ScriptedHttpHandler.Json(Envelope("""{"queries":[]}"""))) { BaseAddress = new Uri("https://api.perplexity.ai") },
             new FakeCompanyRepository(new Company("Apple", 1, Sector.INFORMATION_TECHNOLOGY) { Id = OwnerId }),
-            new ConfigurationBuilder().Build(),
             new FakeApiKeyProvider(UserApiKeys.Empty));
 
         await Assert.ThrowsAsync<MissingApiKeyException>(async () =>

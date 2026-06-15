@@ -21,4 +21,13 @@ public class MissingApiKeyException : Exception
 
     public static MissingApiKeyException Perplexity() =>
         new("Perplexity", "Web search (Perplexity key) missing");
+
+    public static MissingApiKeyException Kimi() =>
+        new("Kimi", "Kimi (Moonshot) API key missing");
+
+    public static MissingApiKeyException OpenAi() =>
+        new("OpenAI", "OpenAI API key missing");
+
+    public static MissingApiKeyException Anthropic() =>
+        new("Anthropic", "Anthropic API key missing");
 }

@@ -1,3 +1,4 @@
+@using simple_bloomberg_terminal.Services
 @model simple_bloomberg_terminal.Models.ViewModels.ApiKeysViewModel
 @{
     ViewData["Title"] = "API Keys";
@@ -9,6 +10,8 @@
     .api-keys, .api-keys .form-label, .api-keys p { color: var(--text-primary); }
     .api-keys .form-text, .api-keys .text-muted { color: var(--text-secondary) !important; }
     .api-keys .form-text a { color: var(--accent); }
+    .api-keys .routing-card { border: 1px solid var(--border-subtle); border-radius: var(--radius-md);
+        padding: 1rem 1.25rem; margin-bottom: 1.5rem; background: var(--bg-card); }
 </style>
 
 <div class="api-keys">
@@ -16,7 +19,7 @@
 <p class="text-muted">
     Bring your own keys for the external services. They're encrypted before storage and never shown
     again — only the last 4 characters. Leave a field blank to keep the current key; tick “Clear” to
-    remove it.
+    remove it. Below the keys, pick which model handles each task.
 </p>
 
 @if (TempData["ApiKeysSaved"] is string saved)
@@ -50,15 +53,87 @@
             </div>
         }
 
-        KeyRow("DeepSeek — parsing & structuring LLM", "deepSeekKey", "clearDeepSeek", Model.DeepSeek,
-            "Powers the AI filing review, extraction and chat.", "https://platform.deepseek.com/api_keys");
-        KeyRow("FMP — financial data", "fmpKey", "clearFmp", Model.Fmp,
-            "Powers New Company fundamentals and financial history.", "https://site.financialmodelingprep.com/developer/docs");
+        <h5 class="mt-2">Parsing &amp; structuring LLMs</h5>
+        <p class="form-text mb-3">Any one of these can power the AI filing review, extraction and chat —
+            choose which under “Model routing” below.</p>
+
+        KeyRow("DeepSeek", "deepSeekKey", "clearDeepSeek", Model.DeepSeek,
+            "Fast, low-cost reasoning models.", "https://platform.deepseek.com/api_keys");
+        KeyRow("Kimi (Moonshot)", "kimiKey", "clearKimi", Model.Kimi,
+            "Moonshot's Kimi K2 series (long context, agentic).", "https://platform.moonshot.ai/console/api-keys");
+        KeyRow("OpenAI", "openAiKey", "clearOpenAi", Model.OpenAi,
+            "GPT-5 family.", "https://platform.openai.com/api-keys");
+        KeyRow("Anthropic", "anthropicKey", "clearAnthropic", Model.Anthropic,
+            "Claude (Opus / Sonnet / Haiku).", "https://console.anthropic.com/settings/keys");
+
+        <h5 class="mt-4">Web search &amp; financial data</h5>
         KeyRow("Perplexity — web search", "perplexityKey", "clearPerplexity", Model.Perplexity,
-            "Powers counterparty discovery and private-company profiles.", "https://console.perplexity.ai/");
+            "Powers counterparty discovery and private-company profiles (sonar does search + answer).",
+            "https://console.perplexity.ai/");
+        KeyRow("FMP — financial data", "fmpKey", "clearFmp", Model.Fmp,
+            "Powers New Company fundamentals and financial history.",
+            "https://site.financialmodelingprep.com/developer/docs");
     }
+
+    <div class="routing-card">
+        <h5 class="mb-3">Model routing</h5>
+
+        <div class="mb-3">
+            <label class="form-label fw-bold" for="parsingProvider">Parsing &amp; structuring</label>
+            <div class="row g-2">
+                <div class="col-sm-5">
+                    <select name="parsingProvider" id="parsingProvider" class="form-select">
+                        @foreach (var p in ChatProviders.Parsing)
+                        {
+                            <option value="@p.Id" selected="@(p.Id == Model.ParsingProvider)">@p.Display</option>
+                        }
+                    </select>
+                </div>
+                <div class="col-sm-7">
+                    <select name="parsingModel" id="parsingModel" class="form-select">
+                        @foreach (var m in ChatProviders.Info(Model.ParsingProvider).Models)
+                        {
+                            <option value="@m" selected="@(m == Model.ParsingModel)">@m</option>
+                        }
+                    </select>
+                </div>
+            </div>
+            <div class="form-text">Used for filing extraction, the reviewer, chat and industry classification.
+                Requires the chosen provider's key above.</div>
+        </div>
+
+        <div class="mb-1">
+            <label class="form-label fw-bold" for="webSearchModel">Web search (Perplexity)</label>
+            <select name="webSearchModel" id="webSearchModel" class="form-select" style="max-width: 22rem;">
+                @foreach (var m in ChatProviders.WebSearchModels)
+                {
+                    <option value="@m" selected="@(m == Model.WebSearchModel)">@m</option>
+                }
+            </select>
+            <div class="form-text">Sonar searches the web itself, so the same model both searches and answers.</div>
+        </div>
+    </div>
 
     <button type="submit" class="btn btn-primary">Save keys</button>
     <a asp-action="Profile" class="btn btn-outline-secondary">Back to profile</a>
 </form>
 </div>
+
+@section Scripts {
+<script>
+    // Provider -> its model list (mirrors the server-side ChatProviders catalog). Repopulating the
+    // model dropdown client-side keeps the two selects consistent without a page round-trip.
+    const PARSING_MODELS = {
+        @foreach (var p in ChatProviders.Parsing)
+        {
+            @:@Html.Raw($"\"{p.Id}\": [{string.Join(", ", p.Models.Select(m => $"\"{m}\""))}],")
+        }
+    };
+    const providerSel = document.getElementById('parsingProvider');
+    const modelSel = document.getElementById('parsingModel');
+    providerSel.addEventListener('change', () => {
+        const models = PARSING_MODELS[providerSel.value] || [];
+        modelSel.innerHTML = models.map(m => `<option value="${m}">${m}</option>`).join('');
+    });
+</script>
+}

@@ -8,14 +8,12 @@ namespace simple_bloomberg_terminal.Services;
 public class ReviewService : IReviewService
 {
     private readonly ISourceFieldReviewRepository _reviews;
-    private readonly IDeepSeekClient _llm;
-    private readonly string _model;
+    private readonly IChatLlm _llm;
 
-    public ReviewService(ISourceFieldReviewRepository reviews, IDeepSeekClient llm, IConfiguration config)
+    public ReviewService(ISourceFieldReviewRepository reviews, IChatLlm llm)
     {
         _reviews = reviews;
         _llm = llm;
-        _model = config["DeepSeek:ReviewerModel"] ?? "deepseek-v4-pro";
     }
 
     private const string System =
@@ -33,6 +31,9 @@ public class ReviewService : IReviewService
             .Where(r => r.Mark == null && !string.IsNullOrWhiteSpace(r.ReferenceSnapshot))
             .ToList();
 
+        // The provider+model that will actually judge — resolved once so every row records the same label.
+        var (_, model) = await _llm.ResolveParsingAsync(ct);
+
         int passed = 0, failed = 0, skipped = 0;
         foreach (var review in pending)
         {
@@ -46,7 +47,7 @@ public class ReviewService : IReviewService
                 "Does the proof support the claimed value for this field?";
 
             string raw;
-            try { raw = await _llm.CompleteAsync(_model, System, prompt, maxTokens: 300, jsonObject: true, ct: ct); }
+            try { raw = await _llm.CompleteAsync(System, prompt, maxTokens: 300, jsonObject: true, ct: ct); }
             catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException) { skipped++; continue; }
 
             if (!TryParseVerdict(raw, out var mark, out var rationale)) { skipped++; continue; }
@@ -54,7 +55,7 @@ public class ReviewService : IReviewService
             review.Mark = mark;
             review.Rationale = rationale;
             review.ReviewedAt = DateTime.UtcNow;
-            review.ReviewerModel = _model;
+            review.ReviewerModel = model;
             _reviews.Update(review);
 
             if (mark == 1) passed++; else failed++;

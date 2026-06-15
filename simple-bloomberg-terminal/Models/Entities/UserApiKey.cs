@@ -15,4 +15,16 @@ public class UserApiKey
     public string? DeepSeekKey { get; set; }
     public string? FmpKey { get; set; }
     public string? PerplexityKey { get; set; }
+
+    // Additional parsing-LLM provider keys (ciphertext, same as above). Null = not provided.
+    public string? KimiKey { get; set; }
+    public string? OpenAiKey { get; set; }
+    public string? AnthropicKey { get; set; }
+
+    // Per-user model routing (NOT secrets — stored plaintext). Which provider/model handles the
+    // parsing & structuring role, and which Perplexity sonar variant handles web search. Null = use
+    // the app default (DeepSeek / sonar-pro), so existing rows keep working unchanged.
+    public string? ParsingProvider { get; set; }
+    public string? ParsingModel { get; set; }
+    public string? WebSearchModel { get; set; }
 }

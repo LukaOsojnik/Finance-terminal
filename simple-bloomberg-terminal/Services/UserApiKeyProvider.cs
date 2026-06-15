@@ -40,7 +40,13 @@ public class UserApiKeyProvider : IUserApiKeyProvider
         return _cached = new UserApiKeys(
             Decrypt(row.DeepSeekKey),
             Decrypt(row.FmpKey),
-            Decrypt(row.PerplexityKey));
+            Decrypt(row.PerplexityKey),
+            Decrypt(row.KimiKey),
+            Decrypt(row.OpenAiKey),
+            Decrypt(row.AnthropicKey),
+            ChatProviders.ParseProvider(row.ParsingProvider),
+            row.ParsingModel,
+            row.WebSearchModel);
     }
 
     public async Task SaveAsync(ApiKeyEdit edit, CancellationToken ct = default)
@@ -53,6 +59,15 @@ public class UserApiKeyProvider : IUserApiKeyProvider
         row.DeepSeekKey = Apply(row.DeepSeekKey, edit.DeepSeek, edit.ClearDeepSeek);
         row.FmpKey = Apply(row.FmpKey, edit.Fmp, edit.ClearFmp);
         row.PerplexityKey = Apply(row.PerplexityKey, edit.Perplexity, edit.ClearPerplexity);
+        row.KimiKey = Apply(row.KimiKey, edit.Kimi, edit.ClearKimi);
+        row.OpenAiKey = Apply(row.OpenAiKey, edit.OpenAi, edit.ClearOpenAi);
+        row.AnthropicKey = Apply(row.AnthropicKey, edit.Anthropic, edit.ClearAnthropic);
+
+        // Routing choices are plaintext and always overwritten with the posted selection.
+        row.ParsingProvider = edit.ParsingProvider.ToString();
+        row.ParsingModel = ChatProviders.ResolveModel(edit.ParsingProvider, edit.ParsingModel);
+        row.WebSearchModel = ChatProviders.WebSearchModels.Contains(edit.WebSearchModel)
+            ? edit.WebSearchModel : ChatProviders.DefaultWebSearchModel;
 
         await _repo.UpsertAsync(row, ct);
         _cached = null; // next GetAsync re-reads the saved values

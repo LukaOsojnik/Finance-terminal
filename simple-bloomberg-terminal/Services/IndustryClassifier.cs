@@ -6,13 +6,11 @@ namespace simple_bloomberg_terminal.Services;
 /// <inheritdoc cref="IIndustryClassifier"/>
 public class IndustryClassifier : IIndustryClassifier
 {
-    private readonly IDeepSeekClient _deepSeek;
-    private readonly string _model;
+    private readonly IChatLlm _llm;
 
-    public IndustryClassifier(IDeepSeekClient deepSeek, IConfiguration config)
+    public IndustryClassifier(IChatLlm llm)
     {
-        _deepSeek = deepSeek;
-        _model = config["DeepSeek:ScanModel"] ?? "deepseek-v4-flash";
+        _llm = llm;
     }
 
     public async Task<GicsIndustry?> ClassifyAsync(Sector sector, string? companyName, string? sourceLabel, CancellationToken ct = default)
@@ -29,15 +27,15 @@ public class IndustryClassifier : IIndustryClassifier
         var user = $"Company: {companyName}\nSector: {sector}\n" +
             $"Source industry label: {sourceLabel}\nAllowed industries: {allowed}";
 
-        // deepseek-v4-flash is a reasoning model: it spends tokens on reasoning_content BEFORE the
-        // answer, and reasoning alone runs ~65-122 tokens here. A tight budget (e.g. 100) gets cut off
-        // mid-reasoning -> empty/truncated content -> JSON parse fails -> null. 400 leaves headroom for
-        // the reasoning plus the one-line JSON answer so finish_reason is "stop", not "length".
+        // The user's chosen parsing model may be a reasoning model that spends tokens BEFORE the answer
+        // (reasoning alone runs ~65-122 tokens here). A tight budget (e.g. 100) gets cut off mid-reasoning
+        // -> empty/truncated content -> JSON parse fails -> null. 400 leaves headroom for the reasoning
+        // plus the one-line JSON answer so the reply finishes on "stop", not "length".
         // Industry is a best-effort enrichment (callers leave it null on a miss), so treat a user
         // without a DeepSeek key the same as DeepSeek being unreachable — return null, don't block the
         // create/link/backfill flow that called us. The explicit AI buttons surface the key popup.
         string raw;
-        try { raw = await _deepSeek.CompleteAsync(_model, system, user, maxTokens: 400, jsonObject: true, ct); }
+        try { raw = await _llm.CompleteAsync(system, user, maxTokens: 400, jsonObject: true, ct: ct); }
         catch (Exception ex) when (ex is HttpRequestException or MissingApiKeyException) { return null; }
 
         try

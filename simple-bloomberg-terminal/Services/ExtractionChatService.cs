@@ -13,13 +13,12 @@ public class ExtractionChatService : IExtractionChatService
     private readonly IStockApiClient _client;
     private readonly ISec2MdClient _sec2md;
     private readonly IFilingExtractionService _scan;
-    private readonly IDeepSeekClient _llm;
+    private readonly IChatLlm _llm;
     private readonly IMemoryCache _cache;
-    private readonly string _model;
 
     public ExtractionChatService(
         ICompanyRepository companies, IStockApiClient client, ISec2MdClient sec2md,
-        IFilingExtractionService scan, IDeepSeekClient llm, IMemoryCache cache, IConfiguration config)
+        IFilingExtractionService scan, IChatLlm llm, IMemoryCache cache)
     {
         _companies = companies;
         _client = client;
@@ -27,7 +26,6 @@ public class ExtractionChatService : IExtractionChatService
         _scan = scan;
         _llm = llm;
         _cache = cache;
-        _model = config["DeepSeek:ChatModel"] ?? "deepseek-v4-pro";
     }
 
 
@@ -110,7 +108,7 @@ public class ExtractionChatService : IExtractionChatService
 
         // No maxTokens → the lead-analyst reply runs to the model's own ceiling instead of being cut
         // off mid-answer at a fixed cap.
-        await foreach (var delta in _llm.StreamAsync(_model, messages, ct: ct))
+        await foreach (var delta in _llm.StreamAsync(messages, ct: ct))
             yield return delta;
     }
 

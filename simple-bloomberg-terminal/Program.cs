@@ -141,9 +141,31 @@ void ConfigureHttp(HttpClient http, string section)
 builder.Services.AddHttpClient<IStockApiClient, StockApiClient>(c => ConfigureHttp(c, "Edgar"));
 builder.Services.AddScoped<IStockService, StockService>();
 
-// DeepSeek: typed HttpClient shared by the phase-2 reviewer (Mode A) and the filing extractor
-// (Mode B) on the /extraction page.
+// Parsing & structuring LLM: the reviewer (Mode A), filing extractor (Mode B), chat and industry
+// classifier all go through IChatLlm, which routes to whichever provider the signed-in user picked.
+// Each provider is its own transport (base URL + key + parameter quirks); they're all registered as
+// IChatProvider and the router resolves one per request.
+//   DeepSeek — typed HttpClient (also kept as IDeepSeekClient for its unit tests). OpenAI-compatible.
 builder.Services.AddHttpClient<IDeepSeekClient, DeepSeekClient>(c => ConfigureHttp(c, "DeepSeek"));
+builder.Services.AddScoped<IChatProvider>(sp => (IChatProvider)sp.GetRequiredService<IDeepSeekClient>());
+//   Kimi (Moonshot) & OpenAI — same OpenAI-compatible transport; only base URL, key, and the cap
+//   parameter name differ (OpenAI's newer models require max_completion_tokens, not max_tokens).
+builder.Services.AddHttpClient("Kimi", c => ConfigureHttp(c, "Kimi"));
+builder.Services.AddHttpClient("OpenAi", c => ConfigureHttp(c, "OpenAi"));
+builder.Services.AddScoped<IChatProvider>(sp => new OpenAiCompatibleChatProvider(
+    sp.GetRequiredService<IHttpClientFactory>().CreateClient("Kimi"),
+    sp.GetRequiredService<IUserApiKeyProvider>(), ChatProviderId.Kimi,
+    k => k.Kimi, MissingApiKeyException.Kimi, "max_tokens"));
+builder.Services.AddScoped<IChatProvider>(sp => new OpenAiCompatibleChatProvider(
+    sp.GetRequiredService<IHttpClientFactory>().CreateClient("OpenAi"),
+    sp.GetRequiredService<IUserApiKeyProvider>(), ChatProviderId.OpenAi,
+    k => k.OpenAi, MissingApiKeyException.OpenAi, "max_completion_tokens"));
+//   Anthropic — the one non-OpenAI-compatible provider (Messages API): its own transport.
+builder.Services.AddHttpClient("Anthropic", c => ConfigureHttp(c, "Anthropic"));
+builder.Services.AddScoped<IChatProvider>(sp => new AnthropicChatProvider(
+    sp.GetRequiredService<IHttpClientFactory>().CreateClient("Anthropic"),
+    sp.GetRequiredService<IUserApiKeyProvider>()));
+builder.Services.AddScoped<IChatLlm, ChatLlmRouter>();
 builder.Services.AddScoped<IReviewService, ReviewService>();
 // sec2md sidecar (Python): converts a filing to clean markdown before the extractor's heading triage.
 builder.Services.AddHttpClient<ISec2MdClient, Sec2MdClient>(c => ConfigureHttp(c, "Sec2Md"));

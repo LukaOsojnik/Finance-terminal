@@ -15,13 +15,11 @@ public class CompanyProfileDiscoveryService : ICompanyProfileDiscovery
 {
     private readonly HttpClient _http;
     private readonly IUserApiKeyProvider _keys;
-    private readonly string _model;
 
-    public CompanyProfileDiscoveryService(HttpClient http, IConfiguration config, IUserApiKeyProvider keys)
+    public CompanyProfileDiscoveryService(HttpClient http, IUserApiKeyProvider keys)
     {
         _http = http;
         _keys = keys;
-        _model = config.GetSection("Perplexity")["Model"] ?? "sonar-pro";
     }
 
     // The user's Perplexity key, or throw the "add your key" signal the front-end turns into a popup.
@@ -55,8 +53,10 @@ public class CompanyProfileDiscoveryService : ICompanyProfileDiscovery
         // to surface first (a fast-growing private's revenue varies wildly by year across sources).
         var user = $"Company: {companyName}. Today is {DateTime.UtcNow:MMMM yyyy}; report the most recent year's revenue available.";
 
+        // The web-search model is the user's stored choice (a Perplexity sonar variant), default if unset.
+        var model = (await _keys.GetAsync(ct)).WebSearchModel ?? ChatProviders.DefaultWebSearchModel;
         var req = new PerplexityRequest(
-            Model: _model,
+            Model: model,
             Messages: [new DeepSeekMessage("system", system), new DeepSeekMessage("user", user)],
             MaxTokens: 1200,
             // "high" pulls more (primary) source content before answering — slower but the figures are

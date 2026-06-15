@@ -242,8 +242,14 @@ Stores a single profile-picture file's metadata + path; the image bytes live on 
 | DeepSeekKey | string? | Ciphertext (Data Protection API); null = not provided |
 | FmpKey | string? | Ciphertext (Data Protection API); null = not provided |
 | PerplexityKey | string? | Ciphertext (Data Protection API); null = not provided |
+| KimiKey | string? | Ciphertext (Data Protection API); null = not provided |
+| OpenAiKey | string? | Ciphertext (Data Protection API); null = not provided |
+| AnthropicKey | string? | Ciphertext (Data Protection API); null = not provided |
+| ParsingProvider | string? | **Plaintext** (not a secret). Which chat provider runs the parsing/structuring role — a `ChatProviderId` enum name (DeepSeek, Kimi, OpenAi, Anthropic); null = app default (DeepSeek) |
+| ParsingModel | string? | **Plaintext**. Chosen model id for that provider (e.g. `deepseek-v4-pro`, `gpt-5`, `claude-sonnet-4-6`); null = provider default |
+| WebSearchModel | string? | **Plaintext**. Chosen Perplexity sonar variant for the web-search role (e.g. `sonar-pro`); null = default `sonar-pro` |
 
-A user's own (bring-your-own) third-party API keys for the keyed external services — one row per user, shared primary key with AppUser. Each key column holds the value as **ciphertext** encrypted by the ASP.NET Data Protection API (`UserApiKeyProvider`), never the raw key, so a DB dump leaks nothing usable. Null = the user hasn't provided that key. Cascade-delete: keys vanish when the account is removed. No soft-delete `DeletedAt`. Migration: `20260614131546_AddUserApiKeys`.
+A user's own (bring-your-own) third-party API keys for the keyed external services — one row per user, shared primary key with AppUser. Each *key* column holds the value as **ciphertext** encrypted by the ASP.NET Data Protection API (`UserApiKeyProvider`), never the raw key, so a DB dump leaks nothing usable. Null = the user hasn't provided that key. The `ParsingProvider` / `ParsingModel` / `WebSearchModel` columns are per-user model-routing settings, not secrets, and are stored **plaintext**; null = use the app default. Cascade-delete: keys vanish when the account is removed. No soft-delete `DeletedAt`. Migration: `20260614131546_AddUserApiKeys`.
 
 ---
 
@@ -307,3 +313,4 @@ AppUser ──────────────── CompanyRisk        (1:N
 | ReviewableField | VALUE, PERCENTAGE, NAME, RELATED_COMPANY, CLASSIFICATION, NOTE |
 | RiskScope | MACROECONOMIC, INDUSTRY, BUSINESS, LEGAL_REGULATORY, FINANCIAL, GENERAL |
 | ContributionStatus | Approved (=0, default/live), Pending, Rejected |
+| ChatProviderId | DeepSeek, Kimi, OpenAi, Anthropic (parsing-role chat provider; stored as the enum *name* in UserApiKey.ParsingProvider) |

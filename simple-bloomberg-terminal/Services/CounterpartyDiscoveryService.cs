@@ -36,15 +36,13 @@ public class CounterpartyDiscoveryService : ICounterpartyDiscovery
     private readonly HttpClient _http;
     private readonly ICompanyRepository _companies;
     private readonly IUserApiKeyProvider _keys;
-    private readonly string _model;
 
     public CounterpartyDiscoveryService(HttpClient http, ICompanyRepository companies,
-        IConfiguration config, IUserApiKeyProvider keys)
+        IUserApiKeyProvider keys)
     {
         _http = http;
         _companies = companies;
         _keys = keys;
-        _model = config.GetSection("Perplexity")["Model"] ?? "sonar-pro";
     }
 
     // The user's Perplexity key, or throw the "add your key" signal the front-end turns into a popup.
@@ -213,8 +211,11 @@ public class CounterpartyDiscoveryService : ICounterpartyDiscovery
     private async Task<(string answer, List<string> citations)> CallAsync(
         string system, string user, string contextSize, int maxTokens, CancellationToken ct)
     {
+        // The web-search model is the user's stored choice (a Perplexity sonar variant), falling back to
+        // the default when unset. Resolved per call so it tracks the signed-in user.
+        var model = (await _keys.GetAsync(ct)).WebSearchModel ?? ChatProviders.DefaultWebSearchModel;
         var req = new PerplexityRequest(
-            Model: _model,
+            Model: model,
             Messages: [new DeepSeekMessage("system", system), new DeepSeekMessage("user", user)],
             MaxTokens: maxTokens,
             WebSearchOptions: new PerplexityWebSearchOptions(contextSize));

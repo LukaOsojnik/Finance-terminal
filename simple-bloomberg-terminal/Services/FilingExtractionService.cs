@@ -12,22 +12,20 @@ public class FilingExtractionService : IFilingExtractionService
     private readonly ICompanyRepository _companies;
     private readonly IStockApiClient _client;
     private readonly ISec2MdClient _sec2md;
-    private readonly IDeepSeekClient _llm;
+    private readonly IChatLlm _llm;
     private readonly IMemoryCache _cache;
-    private readonly string _model;
 
-    private const int MaxParallel = 6;   // concurrent Flash workers in the map phase
+    private const int MaxParallel = 6;   // concurrent worker calls in the map phase
 
     public FilingExtractionService(
         ICompanyRepository companies, IStockApiClient client, ISec2MdClient sec2md,
-        IDeepSeekClient llm, IMemoryCache cache, IConfiguration config)
+        IChatLlm llm, IMemoryCache cache)
     {
         _companies = companies;
         _client = client;
         _sec2md = sec2md;
         _llm = llm;
         _cache = cache;
-        _model = config["DeepSeek:ScanModel"] ?? "deepseek-v4-flash";
     }
 
     // The chat grounds on this key; both the auto-scan and a curated heading scan write it. Keyed by
@@ -175,7 +173,7 @@ public class FilingExtractionService : IFilingExtractionService
         try
         {
             var answer = await _llm.CompleteAsync(
-                _model, TriageSystemFor(node), $"Headings:\n{list}", maxTokens: 800, jsonObject: true, ct: ct);
+                TriageSystemFor(node), $"Headings:\n{list}", maxTokens: 800, jsonObject: true, ct: ct);
             var ids = ParseIds(answer, headings.Count);
             if (ids.Count > 0) return ids;
         }
@@ -310,7 +308,7 @@ public class FilingExtractionService : IFilingExtractionService
         try
         {
             var prompt = $"Section: {chunk.Section}\n\nExcerpt:\n\"\"\"\n{chunk.Text}\n\"\"\"";
-            var answer = await _llm.CompleteAsync(_model, SystemFor(node), prompt, maxTokens: 1500, jsonObject: true, ct: ct);
+            var answer = await _llm.CompleteAsync(SystemFor(node), prompt, maxTokens: 1500, jsonObject: true, ct: ct);
             return Parse(answer, chunk.Section).ToList();
         }
         catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)

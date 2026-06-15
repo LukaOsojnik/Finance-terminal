@@ -12,10 +12,12 @@ namespace simple_bloomberg_terminal.Services;
 /// DeepSeek key triggers a <see cref="MissingApiKeyException"/>. The auth header is set per
 /// HttpRequestMessage (not on the shared client) so concurrent calls in one scope can't clobber it.
 /// </summary>
-public class DeepSeekClient : IDeepSeekClient
+public class DeepSeekClient : IDeepSeekClient, IChatProvider
 {
     private readonly HttpClient _http;
     private readonly IUserApiKeyProvider _keys;
+
+    public ChatProviderId Id => ChatProviderId.DeepSeek;
 
     public DeepSeekClient(HttpClient http, IUserApiKeyProvider keys)
     {
