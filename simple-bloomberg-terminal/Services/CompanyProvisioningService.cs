@@ -250,9 +250,8 @@ public class CompanyProvisioningService(
     // placeholder (all-zeros) CIK, or one not in the map (e.g. a delisted ADR).
     private static string? ResolveTickerForCik(string? cik, IReadOnlyDictionary<string, string> map)
     {
-        if (string.IsNullOrWhiteSpace(cik)) return null;
-        var digits = new string(cik.Where(char.IsDigit).ToArray()).PadLeft(10, '0');
-        if (digits.Trim('0').Length == 0) return null; // placeholder 0000000000 (non-US, no SEC CIK)
+        var digits = Cik.Normalize(cik);
+        if (digits is null || digits.Trim('0').Length == 0) return null; // missing or placeholder 0000000000 (non-US, no SEC CIK)
         return map.TryGetValue(digits, out var t) ? t : null;
     }
 

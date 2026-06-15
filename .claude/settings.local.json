@@ -1,3 +1,9 @@
 {
-  "outputStyle": "Learning"
+  "outputStyle": "Learning",
+  "permissions": {
+    "allow": [
+      "Bash(ls Helpers)",
+      "Bash(ls Extensions)"
+    ]
+  }
 }

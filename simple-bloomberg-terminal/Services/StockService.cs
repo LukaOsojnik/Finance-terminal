@@ -22,7 +22,7 @@ public class StockService(
 {
     public async Task<CompanyDto> RefreshAsync(Company company)
     {
-        var cik10 = company.Cik!.PadLeft(10, '0');
+        var cik10 = Cik.Pad(company.Cik!);
 
         EdgarCompanyFacts? facts;
         try

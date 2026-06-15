@@ -63,10 +63,6 @@ public class CountryAdvantagesController : Controller
     }
 
     [HttpPost, Route("{id:long}/delete", Name = "CountryAdvantageDelete"), ValidateAntiForgeryToken]
-    public IActionResult Delete(long id)
-    {
-        try { _repo.SoftDelete(id); }
-        catch (InvalidOperationException ex) { TempData["Error"] = ex.Message; }
-        return RedirectToAction(nameof(Index));
-    }
+    public IActionResult Delete(long id) =>
+        this.SoftDeleteRedirect(() => _repo.SoftDelete(id));
 }

@@ -126,8 +126,8 @@ public class ExtractionController : Controller
             vm.CompanyLabel = _companies.GetById(id)?.Name;
 
         // Classification option lists per node — the page swaps the dropdown when the node changes.
-        ViewBag.SourceTypes = EnumItems<SourceType>();
-        ViewBag.Nodes = EnumItems<ExtractionNode>();
+        ViewBag.SourceTypes = EnumSelect.Of<SourceType>();
+        ViewBag.Nodes = EnumSelect.Of<ExtractionNode>();
         // Classification options the page swaps between when the node changes.
         ViewBag.ClassOptions = new Dictionary<string, string[]>
         {
@@ -137,9 +137,6 @@ public class ExtractionController : Controller
         };
         return View(vm);
     }
-
-    private static List<SelectListItem> EnumItems<T>() where T : struct, Enum =>
-        Enum.GetValues<T>().Select(t => new SelectListItem(t.ToString(), t.ToString())).ToList();
 
     // Existing references for a source row, so the page can show each cell's pointer on load.
     [HttpGet, Route("references/{sourceId:long}")]

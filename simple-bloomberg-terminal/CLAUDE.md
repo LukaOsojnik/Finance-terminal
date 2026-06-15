@@ -16,6 +16,11 @@ Skip this for:
 - whenever an EF entity is created, edited, or deleted (Models/Entities/ or Data/AppDbContext.cs), spawn a background agent to update semantic-model.md with the appropriate changes. The agent should read the current semantic-model.md and the modified entity files, then edit the document to reflect the new state (tables, properties, relationships, enums).
 - whenever routing is added, changed, or removed in any controller (Controllers/*.cs), spawn a background agent to update sitemap.md with the appropriate changes. The agent should read the current sitemap.md and the modified controller files, then edit the document to reflect the new URLs, controllers, actions, and views.
 
+## UI / styling
+- before any styling, view, or CSS work, read `docs/design-system.md` and follow it: use the CSS
+  variable tokens (never hardcode hex), reuse the already-themed Bootstrap classes, and keep
+  light-mode parity (add a `[data-theme="light"]` override for any new hardcoded-dark component).
+
 ## Code and design patterns
 - do not introduce new abstractions, layers, services, or patterns unless they solve an existing demonstrated problem
 - always aim for simple decisions, avoid complex logic

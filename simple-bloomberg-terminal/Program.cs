@@ -125,24 +125,36 @@ builder.Services.AddScoped<IFilingRepository, FilingRepository>();
 // Owns the contribution Approve/Reject state machine over the three reviewed repos (revenue/cost/risk).
 builder.Services.AddScoped<IContributionWriter, ContributionWriter>();
 
+// One place for every typed client's HTTP wiring (base URL, optional timeout + User-Agent), read from
+// the client's config section. Keeps the framework's typed-client mechanism as the single home for
+// transport config instead of each client's constructor. UA is added without validation because the
+// SEC contact-email UA isn't a structurally valid header value.
+void ConfigureHttp(HttpClient http, string section)
+{
+    var s = builder.Configuration.GetSection(section);
+    http.BaseAddress = new Uri(s["BaseUrl"] ?? throw new InvalidOperationException($"{section}:BaseUrl missing"));
+    if (s["TimeoutSeconds"] is { } t) http.Timeout = TimeSpan.FromSeconds(int.Parse(t));
+    if (s["UserAgent"] is { } ua) http.DefaultRequestHeaders.TryAddWithoutValidation("User-Agent", ua);
+}
+
 // External stock data (SEC EDGAR): typed HttpClient + the one service with real logic.
-builder.Services.AddHttpClient<IStockApiClient, StockApiClient>();
+builder.Services.AddHttpClient<IStockApiClient, StockApiClient>(c => ConfigureHttp(c, "Edgar"));
 builder.Services.AddScoped<IStockService, StockService>();
 
 // DeepSeek: typed HttpClient shared by the phase-2 reviewer (Mode A) and the filing extractor
 // (Mode B) on the /extraction page.
-builder.Services.AddHttpClient<IDeepSeekClient, DeepSeekClient>();
+builder.Services.AddHttpClient<IDeepSeekClient, DeepSeekClient>(c => ConfigureHttp(c, "DeepSeek"));
 builder.Services.AddScoped<IReviewService, ReviewService>();
 // sec2md sidecar (Python): converts a filing to clean markdown before the extractor's heading triage.
-builder.Services.AddHttpClient<ISec2MdClient, Sec2MdClient>();
+builder.Services.AddHttpClient<ISec2MdClient, Sec2MdClient>(c => ConfigureHttp(c, "Sec2Md"));
 builder.Services.AddScoped<IFilingExtractionService, FilingExtractionService>();
 builder.Services.AddScoped<IExtractionChatService, ExtractionChatService>();
 // Perplexity sonar: typed HttpClient that web-searches a company's named suppliers/customers — the
 // counterparties SEC filings don't disclose. Feeds the "Discover related companies" action.
-builder.Services.AddHttpClient<ICounterpartyDiscovery, CounterpartyDiscoveryService>();
+builder.Services.AddHttpClient<ICounterpartyDiscovery, CounterpartyDiscoveryService>(c => ConfigureHttp(c, "Perplexity"));
 // Perplexity sonar: typed HttpClient that web-searches a single private company's profile (sector,
 // industry, country, description, estimated financials) — the New Company "Private (AI)" path.
-builder.Services.AddHttpClient<ICompanyProfileDiscovery, CompanyProfileDiscoveryService>();
+builder.Services.AddHttpClient<ICompanyProfileDiscovery, CompanyProfileDiscoveryService>(c => ConfigureHttp(c, "Perplexity"));
 // Shared DeepSeek-backed GICS industry classifier (New Company fetch, private discovery, and the
 // ticker-less counterparty stub all need to pick an industry within a sector).
 builder.Services.AddScoped<IIndustryClassifier, IndustryClassifier>();
@@ -165,16 +177,16 @@ builder.Services.AddSingleton(_ => IoModelLoader.LoadFromFile(
 builder.Services.AddScoped<EventImpactService>();
 
 // Financial Modeling Prep: typed HttpClient feeding the New Company form (global fundamentals).
-builder.Services.AddHttpClient<IFmpApiClient, FmpApiClient>();
+builder.Services.AddHttpClient<IFmpApiClient, FmpApiClient>(c => ConfigureHttp(c, "Fmp"));
 // REST Countries: typed HttpClient to auto-create a Country row when FMP names one we lack.
-builder.Services.AddHttpClient<IRestCountriesClient, RestCountriesClient>();
+builder.Services.AddHttpClient<IRestCountriesClient, RestCountriesClient>(c => ConfigureHttp(c, "RestCountries"));
 // Yahoo Finance: non-US financials fallback when FMP's income endpoint is premium-gated. Needs
 // a cookie container for the crumb handshake. Frankfurter: converts that revenue to USD.
-builder.Services.AddHttpClient<IYahooFinanceClient, YahooFinanceClient>()
+builder.Services.AddHttpClient<IYahooFinanceClient, YahooFinanceClient>(c => ConfigureHttp(c, "Yahoo"))
     .ConfigurePrimaryHttpMessageHandler(() =>
         new HttpClientHandler { UseCookies = true, CookieContainer = new System.Net.CookieContainer() });
 // ExchangeRate-API: converts non-US revenue to USD (~160 currencies, no key).
-builder.Services.AddHttpClient<IExchangeRateApiClient, ExchangeRateApiClient>();
+builder.Services.AddHttpClient<IExchangeRateApiClient, ExchangeRateApiClient>(c => ConfigureHttp(c, "ExchangeRate"));
 // Assembles dated financial history from FMP's statements (Yahoo fallback). Consumes the typed
 // FMP/Yahoo clients above, so a plain scoped service — not its own HttpClient.
 builder.Services.AddScoped<ICompanyFinancialsService, CompanyFinancialsService>();

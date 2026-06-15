@@ -4,6 +4,15 @@
     <meta charset="utf-8"/>
     <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
     <title>@ViewData["Title"] — BBT</title>
+    @* Apply the saved theme on <html> BEFORE first paint so light-mode users never see a dark flash. *@
+    <script>
+        (function () {
+            try {
+                if (localStorage.getItem('bbt-theme') === 'light')
+                    document.documentElement.setAttribute('data-theme', 'light');
+            } catch (e) { }
+        })();
+    </script>
     <script type="importmap"></script>
     <link rel="stylesheet" href="~/lib/bootstrap/dist/css/bootstrap.min.css"/>
     <link rel="stylesheet" href="~/css/site.css" asp-append-version="true"/>
@@ -70,6 +79,19 @@
                     </li>
                 </ul>
                 <partial name="_LoginPartial"/>
+                <button id="themeToggle" class="theme-toggle" type="button"
+                        aria-label="Toggle light / dark theme" title="Toggle theme">
+                    @* moon shows in dark mode, sun in light mode (swapped via CSS) *@
+                    <svg class="icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                         stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                        <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
+                    </svg>
+                    <svg class="icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                         stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                        <circle cx="12" cy="12" r="4"/>
+                        <path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/>
+                    </svg>
+                </button>
             </div>
         </div>
     </nav>

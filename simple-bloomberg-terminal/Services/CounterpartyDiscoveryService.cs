@@ -44,10 +44,7 @@ public class CounterpartyDiscoveryService : ICounterpartyDiscovery
         _http = http;
         _companies = companies;
         _keys = keys;
-        var section = config.GetSection("Perplexity");
-        _http.BaseAddress = new Uri(section["BaseUrl"] ?? "https://api.perplexity.ai");
-        _http.Timeout = TimeSpan.FromSeconds(90);   // a deep company-wide web-search turn can be slow
-        _model = section["Model"] ?? "sonar-pro";
+        _model = config.GetSection("Perplexity")["Model"] ?? "sonar-pro";
     }
 
     // The user's Perplexity key, or throw the "add your key" signal the front-end turns into a popup.

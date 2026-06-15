@@ -4,7 +4,7 @@ using System.Net.Http.Json;
 namespace simple_bloomberg_terminal.Services;
 
 /// <summary>
-/// Typed HttpClient for Financial Modeling Prep. Base URL comes from the "Fmp" config section; the
+/// Typed HttpClient for Financial Modeling Prep. Base URL is wired from the "Fmp" config section in Program.cs; the
 /// API key is the CURRENT USER's own key (bring-your-own), resolved per request from
 /// <see cref="IUserApiKeyProvider"/> — no global key. A user without an FMP key triggers a
 /// <see cref="MissingApiKeyException"/>. Both endpoints return a JSON array; we take the first
@@ -15,11 +15,10 @@ public class FmpApiClient : IFmpApiClient
     private readonly HttpClient _http;
     private readonly IUserApiKeyProvider _keys;
 
-    public FmpApiClient(HttpClient http, IConfiguration config, IUserApiKeyProvider keys)
+    public FmpApiClient(HttpClient http, IUserApiKeyProvider keys)
     {
         _http = http;
         _keys = keys;
-        _http.BaseAddress = new Uri(config["Fmp:BaseUrl"] ?? "https://financialmodelingprep.com");
     }
 
     // The user's FMP key, or throw the "add your key" signal the front-end turns into a popup.

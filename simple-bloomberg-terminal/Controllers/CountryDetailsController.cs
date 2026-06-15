@@ -67,10 +67,6 @@ public class CountryDetailsController : Controller
     }
 
     [HttpPost, Route("{countryId:long}/delete", Name = "CountryDetailsDelete"), ValidateAntiForgeryToken]
-    public IActionResult Delete(long countryId)
-    {
-        try { _details.SoftDelete(countryId); }
-        catch (InvalidOperationException ex) { TempData["Error"] = ex.Message; }
-        return RedirectToAction(nameof(Index));
-    }
+    public IActionResult Delete(long countryId) =>
+        this.SoftDeleteRedirect(() => _details.SoftDelete(countryId));
 }

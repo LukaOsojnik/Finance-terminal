@@ -14,7 +14,6 @@ public class RestCountriesClient : IRestCountriesClient
     public RestCountriesClient(HttpClient http)
     {
         _http = http;
-        _http.BaseAddress = new Uri("https://restcountries.com");
     }
 
     public async Task<RestCountry?> GetByCodeAsync(string code)

@@ -14,11 +14,9 @@ public class Sec2MdClient : ISec2MdClient
     private readonly HttpClient _http;
     private readonly string _dumpDir;   // filings/ under the content root — converted markdown is saved here
 
-    public Sec2MdClient(HttpClient http, IConfiguration config, IWebHostEnvironment env)
+    public Sec2MdClient(HttpClient http, IWebHostEnvironment env)
     {
         _http = http;
-        _http.BaseAddress = new Uri(config["Sec2Md:BaseUrl"] ?? "http://localhost:8088");
-        _http.Timeout = TimeSpan.FromSeconds(120);   // parsing a long 10-K is slow; don't clip it
         _dumpDir = Path.Combine(env.ContentRootPath, "filings");
     }
 

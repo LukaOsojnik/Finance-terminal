@@ -20,11 +20,6 @@ public class YahooFinanceClient : IYahooFinanceClient
     public YahooFinanceClient(HttpClient http)
     {
         _http = http;
-        _http.BaseAddress = new Uri("https://query1.finance.yahoo.com");
-        // Yahoo rejects the default .NET User-Agent; a browser-like UA is required.
-        if (!_http.DefaultRequestHeaders.Contains("User-Agent"))
-            _http.DefaultRequestHeaders.TryAddWithoutValidation(
-                "User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64)");
     }
 
     public async Task<YahooFinancials?> GetFinancialsAsync(string symbol)

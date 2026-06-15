@@ -191,7 +191,7 @@ contribution repos / into the extraction service from 2.1.
 
 Lower payoff individually; do opportunistically.
 
-### 3.1 HttpClient configuration is scattered
+### 3.1 ✅ HttpClient configuration is scattered
 Six clients hardcode base URLs/timeouts and only 2 of 6 set a User-Agent.
 Evidence: `StockApiClient.cs:20-24` (URL + email User-Agent), `YahooFinanceClient.cs:23`,
 `ExchangeRateApiClient.cs:16`, `RestCountriesClient.cs:17`, `Sec2MdClient.cs:20-21`,
@@ -201,7 +201,20 @@ registration in `Program.cs` (`AddHttpClient<T>(c => ...)`). The email User-Agen
 `StockApiClient.cs:24` is hardcoded PII — config it. **Don't** build a custom client base
 class; the framework's typed-client mechanism already covers this.
 
-### 3.2 MVC CRUD Edit/Delete pattern repeated across 10+ controllers
+**Done (2026-06-15):** applied to **all 9** typed clients (the 6 above + `FmpApiClient`,
+`CounterpartyDiscoveryService`, `CompanyProfileDiscoveryService`), one pattern throughout.
+A `ConfigureHttp(HttpClient, section)` local function in `Program.cs` reads `BaseUrl`
+(required), optional `TimeoutSeconds` and `UserAgent` from the client's config section and is
+passed to each `AddHttpClient<T>(c => ConfigureHttp(c, "..."))` — no base class. New
+appsettings sections `Edgar`/`Yahoo`/`ExchangeRate`/`RestCountries`; the SEC contact-email UA
+is now `Edgar:UserAgent` (PII out of code), added via `TryAddWithoutValidation` (the `@`).
+Constructors dropped their HTTP-config lines; `DeepSeekClient`/`FmpApiClient` no longer take
+`IConfiguration`, `Sec2MdClient` keeps only `IWebHostEnvironment`, the two Perplexity services
+keep `IConfiguration` solely for `Model`. Tests that hand-build these clients now set
+`BaseAddress` on their `HttpClient` (relative request URIs need it). `TickerMapUrl` left a
+const — it's an absolute resource on a different host (`www.sec.gov`), not a base URL.
+
+### 3.2 ✅ MVC CRUD Edit/Delete pattern repeated across 10+ controllers
 `EditGet`/`EditPost` (`TryUpdateModelAsync` + repopulate dropdowns) and the
 `Delete` try/catch-`InvalidOperationException` block are ~95% identical
 (`RevenueSourcesController.cs:122-151` vs `CostSourcesController.cs:61-89`;
@@ -212,6 +225,18 @@ small **shared helpers** (e.g. a `SoftDeleteRedirect(id)` extension and a `Popul
 helper) over a deep base class. Re-evaluate a base controller only if helpers don't
 shrink it enough.
 
+**Done (2026-06-15):** went the shared-helpers route, no base class. `Controllers/MvcCrud.cs` —
+`Controller.SoftDeleteRedirect(Action softDelete, action = "Index")` runs the soft-delete,
+funnels the cascade-guard `InvalidOperationException` into `TempData["Error"]`, then redirects.
+The repo call is passed as a closure so each controller keeps its own repo field and route-param
+name (`id` vs `countryId`). Applied to all **7** MVC controllers with the identical TempData block
+(Countries, CountryDetails, CountryAdvantages, CountryChallenges, GdpSnapshots, Events, TradeBlocs);
+each `Delete` is now one expression-bodied line. The `PopulateEnum` half was already delivered by
+3.4 (`EnumSelect.Of`). **Left as-is:** `EditGet`/`EditPost` (the per-controller dropdown
+repopulation, `ViewBag` label wiring, and `ApplyEdit`/`ToEditModel` mappings diverge enough that a
+helper would leak), and the AJAX/API deletes that return `Conflict`/`Ok` (different response
+contract, not the TempData shape).
+
 ### 3.3 Generic API CRUD base controller (defer / decide explicitly)
 20+ API controllers share an 80–90% identical `GetAll/GetById/Create/Update/Delete`
 shape over `IRepository` + `IMapper`. A `CrudControllerBase<TEntity,TDto,TReq>` would
@@ -220,15 +245,26 @@ against if it obscures routing/auth. Several controllers have per-action auth nu
 (`[Authorize(Roles="Admin,Manager")]` on mutations). **Decision needed** before doing —
 see open questions.
 
-### 3.4 Enum→`SelectListItem` dropdown rendering
+### 3.4 ✅ Enum→`SelectListItem` dropdown rendering
 Repeated in `RevenueSourcesController.cs:163-166`, `EventsController.cs:125-132`,
 `ExtractionController.cs:137-145`. One static helper
 `EnumSelect<TEnum>()`. Trivial, low risk.
 
-### 3.5 SEC CIK padding/trimming
+**Done (2026-06-15):** `Controllers/EnumSelect.cs` — `EnumSelect.Of<TEnum>(label?)`, the
+optional `label` transform covering EventType's `_`→space case. Applied to all 4 call sites
+(Revenue/Events/Extraction); ExtractionController's private `EnumItems<T>` removed.
+
+### 3.5 ✅ SEC CIK padding/trimming
 `CompaniesController.cs:488-493`, `Api/StockController.cs:81-122` repeat
 pad-left-10 / trim-leading-zero. Extract `Cik.Normalize(string)` / `Cik.Trim(string)`
 static helpers.
+
+**Done (2026-06-15):** `Services/Cik.cs` — `Pad` (digit string → 10-pad), `Trim`
+(strip leading zeros), `Normalize` (filter-to-digits + pad, nullable). Applied repo-wide
+beyond the cited sites: StockController (4), StockService, ExtractionChatService,
+FilingExtractionService, StockApiClient (2); the two private `Normalize`-shaped copies
+(`FmpMapper.NormalizeCik`, `CompanyProvisioningService.ResolveTickerForCik`) now delegate.
+CompaniesController's CIK code had already moved to CompanyProvisioningService in 2.2.
 
 ### 3.6 Hardcoded model names / magic constants
 Model fallbacks (`deepseek-v4-flash`, `deepseek-v4-pro`, `sonar-pro`) and tuning

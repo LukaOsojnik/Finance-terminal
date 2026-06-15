@@ -17,11 +17,6 @@ public class StockApiClient : IStockApiClient
     public StockApiClient(HttpClient http)
     {
         _http = http;
-        _http.BaseAddress = new Uri("https://data.sec.gov");
-        // SEC requires an identifying User-Agent (contact email) or it returns 403. The email's
-        // '@' makes the string an invalid structured User-Agent, so skip header validation.
-        if (!_http.DefaultRequestHeaders.Contains("User-Agent"))
-            _http.DefaultRequestHeaders.TryAddWithoutValidation("User-Agent", "simple-bloomberg-terminal lukaosojnikinfo@gmail.com");
     }
 
     public async Task<EdgarCompanyFacts?> GetCompanyFacts(string cik10)
@@ -45,7 +40,7 @@ public class StockApiClient : IStockApiClient
         var map = await _http.GetFromJsonAsync<Dictionary<string, EdgarTicker>>(TickerMapUrl);
         var match = map?.Values.FirstOrDefault(t =>
             string.Equals(t.Ticker, ticker, StringComparison.OrdinalIgnoreCase));
-        return match is null ? null : match.CikStr.ToString().PadLeft(10, '0');
+        return match is null ? null : Cik.Pad(match.CikStr.ToString());
     }
 
     public async Task<IReadOnlyDictionary<string, string>> GetCikTickerMap()
@@ -54,7 +49,7 @@ public class StockApiClient : IStockApiClient
         var byCik = new Dictionary<string, string>();
         if (map != null)
             foreach (var t in map.Values)
-                byCik.TryAdd(t.CikStr.ToString().PadLeft(10, '0'), t.Ticker);  // first share class wins
+                byCik.TryAdd(Cik.Pad(t.CikStr.ToString()), t.Ticker);  // first share class wins
         return byCik;
     }
 

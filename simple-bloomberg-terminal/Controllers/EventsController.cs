@@ -116,20 +116,15 @@ public class EventsController : Controller
     }
 
     [HttpPost, Route("{id:long}/delete", Name = "EventDelete"), ValidateAntiForgeryToken]
-    public IActionResult Delete(long id)
-    {
-        try { _events.SoftDelete(id); }
-        catch (InvalidOperationException ex) { TempData["Error"] = ex.Message; }
-        return RedirectToAction(nameof(Index));
-    }
+    public IActionResult Delete(long id) =>
+        this.SoftDeleteRedirect(() => _events.SoftDelete(id));
 
     private void PopulateDropdowns()
     {
         ViewBag.Countries = _countries.GetAll().ToList();
         ViewBag.Companies = _companies.GetAll().ToList();
         ViewBag.TradeBlocs = _tradeBlocs.GetAll().ToList();
-        ViewBag.EventTypes = Enum.GetValues<EventType>()
-            .Select(t => new SelectListItem(t.ToString().Replace("_", " "), t.ToString())).ToList();
+        ViewBag.EventTypes = EnumSelect.Of<EventType>(t => t.ToString().Replace("_", " "));
     }
 
     private static EventEditModel ToEditModel(Event e) => new()

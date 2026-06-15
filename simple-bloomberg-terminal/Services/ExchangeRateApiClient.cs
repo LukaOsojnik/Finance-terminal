@@ -13,7 +13,6 @@ public class ExchangeRateApiClient : IExchangeRateApiClient
     public ExchangeRateApiClient(HttpClient http)
     {
         _http = http;
-        _http.BaseAddress = new Uri("https://open.er-api.com");
     }
 
     public async Task<double?> GetUsdRateAsync(string currency)

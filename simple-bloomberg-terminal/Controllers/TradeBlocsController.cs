@@ -78,12 +78,8 @@ public class TradeBlocsController : Controller
     }
 
     [HttpPost, Route("{id:long}/delete", Name = "TradeBlocDelete"), ValidateAntiForgeryToken]
-    public IActionResult Delete(long id)
-    {
-        try { _tradeBlocs.SoftDelete(id); }
-        catch (InvalidOperationException ex) { TempData["Error"] = ex.Message; }
-        return RedirectToAction(nameof(Index));
-    }
+    public IActionResult Delete(long id) =>
+        this.SoftDeleteRedirect(() => _tradeBlocs.SoftDelete(id));
 
     private void PopulateDropdowns() => ViewBag.Countries = _countries.GetAll().ToList();
 

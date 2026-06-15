@@ -110,12 +110,8 @@ public class CountriesController : Controller
     }
 
     [HttpPost, Route("{id:long}/delete", Name = "CountryDelete"), ValidateAntiForgeryToken]
-    public IActionResult Delete(long id)
-    {
-        try { _countries.SoftDelete(id); }
-        catch (InvalidOperationException ex) { TempData["Error"] = ex.Message; }
-        return RedirectToAction(nameof(Index));
-    }
+    public IActionResult Delete(long id) =>
+        this.SoftDeleteRedirect(() => _countries.SoftDelete(id));
 
     private static CountryEditModel ToEditModel(Country e) => new()
     {

@@ -1225,3 +1225,22 @@ document.addEventListener('submit', async e => {
     if (trackedIds.length) { poll(); startTimer(); }
 })();
 
+// ── Theme toggle ───────────────────────────────────────────────────────────────────────────────
+// The initial theme is applied pre-paint by an inline <head> script (see _Layout) to avoid a flash.
+// Here we only handle the click: flip the <html data-theme> flag and persist the choice. Dark is the
+// default, so "dark" means simply removing the attribute.
+(function () {
+    const btn = document.getElementById('themeToggle');
+    if (!btn) return;
+    btn.addEventListener('click', () => {
+        const isLight = document.documentElement.getAttribute('data-theme') === 'light';
+        if (isLight) {
+            document.documentElement.removeAttribute('data-theme');
+            try { localStorage.setItem('bbt-theme', 'dark'); } catch (e) { }
+        } else {
+            document.documentElement.setAttribute('data-theme', 'light');
+            try { localStorage.setItem('bbt-theme', 'light'); } catch (e) { }
+        }
+    });
+})();
+

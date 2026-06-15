@@ -6,8 +6,8 @@ using System.Text.Json;
 namespace simple_bloomberg_terminal.Services;
 
 /// <summary>
-/// Typed HttpClient for the DeepSeek chat-completions API (OpenAI-compatible). Base URL comes from
-/// the "DeepSeek" config section; the Bearer key is the CURRENT USER's own key (bring-your-own),
+/// Typed HttpClient for the DeepSeek chat-completions API (OpenAI-compatible). Base URL + timeout are
+/// wired from the "DeepSeek" config section in Program.cs; the Bearer key is the CURRENT USER's own key (bring-your-own),
 /// resolved per request from <see cref="IUserApiKeyProvider"/> — no global key. A user without a
 /// DeepSeek key triggers a <see cref="MissingApiKeyException"/>. The auth header is set per
 /// HttpRequestMessage (not on the shared client) so concurrent calls in one scope can't clobber it.
@@ -17,13 +17,10 @@ public class DeepSeekClient : IDeepSeekClient
     private readonly HttpClient _http;
     private readonly IUserApiKeyProvider _keys;
 
-    public DeepSeekClient(HttpClient http, IConfiguration config, IUserApiKeyProvider keys)
+    public DeepSeekClient(HttpClient http, IUserApiKeyProvider keys)
     {
         _http = http;
         _keys = keys;
-        var section = config.GetSection("DeepSeek");
-        _http.BaseAddress = new Uri(section["BaseUrl"] ?? "https://api.deepseek.com");
-        _http.Timeout = TimeSpan.FromMinutes(2);   // filing chunks can be large
     }
 
     // The user's DeepSeek key, or throw the "add your key" signal the front-end turns into a popup.

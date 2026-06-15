@@ -53,12 +53,7 @@ public static class FmpMapper
     private static string Normalize(string s) =>
         new string(s.Where(char.IsLetterOrDigit).Select(char.ToLowerInvariant).ToArray());
 
-    private static string? NormalizeCik(string? cik)
-    {
-        if (string.IsNullOrWhiteSpace(cik)) return null;
-        var digits = new string(cik.Where(char.IsDigit).ToArray());
-        return digits.Length == 0 ? null : digits.PadLeft(10, '0');
-    }
+    private static string? NormalizeCik(string? cik) => Cik.Normalize(cik);
 
     private static string? Truncate(string? s, int max) =>
         string.IsNullOrEmpty(s) ? s : s.Length <= max ? s : s[..max];

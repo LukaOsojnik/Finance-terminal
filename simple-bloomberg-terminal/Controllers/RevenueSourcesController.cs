@@ -162,10 +162,8 @@ public class RevenueSourcesController : Controller
 
     private void PopulateDropdowns()
     {
-        ViewBag.SourceTypes = Enum.GetValues<SourceType>()
-            .Select(t => new SelectListItem(t.ToString(), t.ToString())).ToList();
-        ViewBag.DataSources = Enum.GetValues<DataSource>()
-            .Select(t => new SelectListItem(t.ToString(), t.ToString())).ToList();
+        ViewBag.SourceTypes = EnumSelect.Of<SourceType>();
+        ViewBag.DataSources = EnumSelect.Of<DataSource>();
     }
 
     private static RevenueSourceEditModel ToEditModel(RevenueSource r) => new()

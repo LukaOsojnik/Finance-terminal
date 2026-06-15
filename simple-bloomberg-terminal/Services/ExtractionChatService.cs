@@ -136,7 +136,7 @@ public class ExtractionChatService : IExtractionChatService
     {
         var company = _companies.GetById(companyId);
         if (company is null || string.IsNullOrWhiteSpace(company.Cik)) return "";
-        var cik = company.Cik.TrimStart('0');
+        var cik = Cik.Trim(company.Cik);
         var acc = accession.Replace("-", "");
         var raw = await _sec2md.ToMarkdownAsync(cik, acc, doc, filingType, ct)
                   ?? await _client.GetFilingDocument(cik, acc, doc);

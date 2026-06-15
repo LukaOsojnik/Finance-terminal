@@ -78,14 +78,14 @@ public class StockController : ControllerBase
         if (string.IsNullOrWhiteSpace(company.Cik)) return Conflict("Company has no CIK — not an SEC filer.");
 
         EdgarSubmissions? subs;
-        try { subs = await _client.GetSubmissions(company.Cik.PadLeft(10, '0')); }
+        try { subs = await _client.GetSubmissions(Cik.Pad(company.Cik)); }
         catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
         {
             return StatusCode(StatusCodes.Status503ServiceUnavailable, "SEC unreachable.");
         }
         if (subs?.Filings?.Recent is not { Form: { } forms }) return UnprocessableEntity("No filings.");
 
-        var cikNoPad = company.Cik.TrimStart('0');
+        var cikNoPad = Cik.Trim(company.Cik);
         var r = subs.Filings.Recent;
         var list = Enumerable.Range(0, forms.Count).Select(i =>
         {
@@ -119,7 +119,7 @@ public class StockController : ControllerBase
 
         try
         {
-            var body = await _client.GetFilingDocument(company.Cik.TrimStart('0'), accession.Replace("-", ""), doc);
+            var body = await _client.GetFilingDocument(Cik.Trim(company.Cik), accession.Replace("-", ""), doc);
             if (body is null) return NotFound("Filing document not found.");
             return Content(body, "text/plain");   // raw text; client renders it for selection
         }
@@ -136,7 +136,7 @@ public class StockController : ControllerBase
         var company = _companies.GetById(companyId);
         if (company is null) { fail = NotFound(); return true; }
         if (string.IsNullOrWhiteSpace(company.Cik)) { fail = Conflict("Company has no CIK — not an SEC filer."); return true; }
-        cik10 = company.Cik.PadLeft(10, '0');
+        cik10 = Cik.Pad(company.Cik);
         return false;
     }
 }
