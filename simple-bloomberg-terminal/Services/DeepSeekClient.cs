@@ -27,12 +27,8 @@ public class DeepSeekClient : IDeepSeekClient
     }
 
     // The user's DeepSeek key, or throw the "add your key" signal the front-end turns into a popup.
-    private async Task<string> KeyAsync(CancellationToken ct)
-    {
-        var k = (await _keys.GetAsync(ct)).DeepSeek;
-        if (string.IsNullOrWhiteSpace(k)) throw MissingApiKeyException.DeepSeek();
-        return k;
-    }
+    private Task<string> KeyAsync(CancellationToken ct) =>
+        _keys.RequireAsync(k => k.DeepSeek, MissingApiKeyException.DeepSeek, ct);
 
     public async Task<string> CompleteAsync(
         string model, string system, string userPrompt,

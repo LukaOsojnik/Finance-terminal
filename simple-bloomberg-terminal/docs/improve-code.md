@@ -20,11 +20,20 @@ Estimated removable/relocatable duplication: **~900–1000 lines**.
 
 ---
 
-## Priority 1 — High value, low risk
+## Priority 1 — High value, low risk ✅ DONE (2026-06-15)
 
 These are mechanical, well-isolated, and pay off immediately.
 
-### 1.1 Generic repository base for the 6 contribution repositories
+**Status:** all four items implemented; build clean (0 warnings), 179/179 tests pass.
+- 1.1 — landed scoped to the **3** contribution repos (revenue/cost/risk); the 2 country repos
+  were excluded as a different shape (no Status, Text-vs-Name) to avoid a leaky base. ~68 lines removed.
+- 1.2 — `Services/LlmJson.cs` (`ParseObject` + salvage, `Str`, `Num`); FilingExtraction's
+  number-tolerant `Str` and IndustryClassifier's direct parse left local on purpose. ~90 lines removed.
+- 1.3 — `UserApiKeyProviderExtensions.RequireAsync`; applied to the 3 service `KeyAsync` copies.
+  Controller call sites left as-is (their `keys` var double-duties as the detached-job snapshot).
+- 1.4 — `EventsController.Today` now `DateTime.UtcNow.Date`.
+
+### 1.1 ✅ Generic repository base for the 6 contribution repositories
 **Problem.** `CompanyRiskRepository`, `CostSourceRepository`, `RevenueSourceRepository`,
 `CountryAdvantageRepository`, `CountryChallengeRepository`, (+ partial `FilingRepository`)
 repeat the same 8 methods word-for-word: `GetAll`, `GetAllPending`, `GetPendingByCompany`,
@@ -48,7 +57,7 @@ large; the base class removes ~250 lines and centralizes the soft-delete invaria
 
 **Risk.** Low. Behavior-preserving. Covered by existing repo tests.
 
-### 1.2 Extract one JSON-envelope helper for LLM responses
+### 1.2 ✅ Extract one JSON-envelope helper for LLM responses
 **Problem.** The "slice from first `{` to last `}`, tolerate code fences, then
 `JsonDocument.Parse`" trick is reimplemented in 6+ services, plus private `Str(...)`
 and `Num(...)` helpers copied verbatim into 3 of them.
@@ -67,7 +76,7 @@ copies live today.
 **Risk.** Low. Each call site swaps a private method for the shared one. Add unit tests
 on the salvage/fence cases first (they encode hard-won model-output quirks).
 
-### 1.3 Centralize the API-key fetch+validate (`KeyAsync`)
+### 1.3 ✅ Centralize the API-key fetch+validate (`KeyAsync`)
 **Problem.** Identical `KeyAsync` (`get key -> throw MissingApiKeyException.X() if blank`)
 in `DeepSeekClient.cs:29-35`, `CompanyProfileDiscoveryService.cs:30-36`,
 `CounterpartyDiscoveryService.cs:53-59`. Controllers repeat the same check too
@@ -79,7 +88,7 @@ One line per call site. Controllers keep using `WriteMissingKeyAsync` to render 
 
 **Risk.** Low.
 
-### 1.4 Replace the hardcoded test date in `EventsController`
+### 1.4 ✅ Replace the hardcoded test date in `EventsController`
 **Problem.** `EventsController.cs:19` — `static readonly DateTime Today = new(2026, 4, 16)`.
 A frozen date shipping in a controller is a latent bug.
 

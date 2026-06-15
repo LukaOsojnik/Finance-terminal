@@ -51,12 +51,8 @@ public class CounterpartyDiscoveryService : ICounterpartyDiscovery
     }
 
     // The user's Perplexity key, or throw the "add your key" signal the front-end turns into a popup.
-    private async Task<string> KeyAsync(CancellationToken ct)
-    {
-        var k = (await _keys.GetAsync(ct)).Perplexity;
-        if (string.IsNullOrWhiteSpace(k)) throw MissingApiKeyException.Perplexity();
-        return k;
-    }
+    private Task<string> KeyAsync(CancellationToken ct) =>
+        _keys.RequireAsync(k => k.Perplexity, MissingApiKeyException.Perplexity, ct);
 
     private const int RecencyYears = 5;   // discovery covers relationships active in the last N years
     private const int MaxQueries = 6;     // cap planner output so cost (one paid search per query) stays bounded

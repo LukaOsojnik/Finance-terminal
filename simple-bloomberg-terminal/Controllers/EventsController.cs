@@ -16,7 +16,8 @@ public class EventsController : Controller
     private readonly ICountryRepository _countries;
     private readonly ICompanyRepository _companies;
     private readonly ITradeBlocRepository _tradeBlocs;
-    private static readonly DateTime Today = new(2026, 4, 16);
+    // Today (UTC) for the LIVE/PAST/UPCOMING status of an event's date range.
+    private static DateTime Today => DateTime.UtcNow.Date;
 
     public EventsController(
         IEventRepository events,

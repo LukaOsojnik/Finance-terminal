@@ -19,3 +19,22 @@ public interface IUserApiKeyProvider
     // Override the keys for this scope (used by detached jobs that have no HttpContext).
     void Set(UserApiKeys keys);
 }
+
+public static class UserApiKeyProviderExtensions
+{
+    /// <summary>
+    /// Resolve one required key, throwing the matching <see cref="MissingApiKeyException"/> when the
+    /// user hasn't provided it. Centralizes the "blank => throw the add-your-key signal" rule the
+    /// keyed clients all share.
+    /// </summary>
+    public static async Task<string> RequireAsync(
+        this IUserApiKeyProvider keys,
+        Func<UserApiKeys, string?> pick,
+        Func<MissingApiKeyException> ifMissing,
+        CancellationToken ct = default)
+    {
+        var k = pick(await keys.GetAsync(ct));
+        if (string.IsNullOrWhiteSpace(k)) throw ifMissing();
+        return k;
+    }
+}

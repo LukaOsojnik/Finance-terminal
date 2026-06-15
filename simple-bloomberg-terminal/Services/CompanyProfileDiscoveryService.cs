@@ -28,12 +28,8 @@ public class CompanyProfileDiscoveryService : ICompanyProfileDiscovery
     }
 
     // The user's Perplexity key, or throw the "add your key" signal the front-end turns into a popup.
-    private async Task<string> KeyAsync(CancellationToken ct)
-    {
-        var k = (await _keys.GetAsync(ct)).Perplexity;
-        if (string.IsNullOrWhiteSpace(k)) throw MissingApiKeyException.Perplexity();
-        return k;
-    }
+    private Task<string> KeyAsync(CancellationToken ct) =>
+        _keys.RequireAsync(k => k.Perplexity, MissingApiKeyException.Perplexity, ct);
 
     public async Task<CompanyProfileResult?> DiscoverAsync(string companyName, CancellationToken ct = default)
     {
