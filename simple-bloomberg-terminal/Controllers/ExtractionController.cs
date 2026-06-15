@@ -31,16 +31,13 @@ public class ExtractionController : Controller
     private readonly ICompanyRiskRepository _risks;
     private readonly ISourceFieldReviewRepository _reviews;
     private readonly ICompanyRepository _companies;
-    private readonly ICountryRepository _countries;
     private readonly IFilingRepository _filings;
     private readonly IReviewService _reviewer;
     private readonly IFilingExtractionService _extractor;
     private readonly IExtractionChatService _chat;
     private readonly ICounterpartyDiscovery _discovery;
-    private readonly IFmpApiClient _fmp;
-    private readonly ITickerProfileEnricher _enricher;
-    private readonly ICompanyFinancialsService _financials;
-    private readonly IIndustryClassifier _industryClassifier;
+    private readonly IContributionWriter _writer;
+    private readonly ICompanyProvisioningService _provisioning;
     private readonly ScanJobStore _jobs;
     private readonly RediscoverJobStore _rediscoverJobs;
     private readonly IServiceScopeFactory _scopeFactory;
@@ -52,16 +49,13 @@ public class ExtractionController : Controller
         ICompanyRiskRepository risks,
         ISourceFieldReviewRepository reviews,
         ICompanyRepository companies,
-        ICountryRepository countries,
         IFilingRepository filings,
         IReviewService reviewer,
         IFilingExtractionService extractor,
         IExtractionChatService chat,
         ICounterpartyDiscovery discovery,
-        IFmpApiClient fmp,
-        ITickerProfileEnricher enricher,
-        ICompanyFinancialsService financials,
-        IIndustryClassifier industryClassifier,
+        IContributionWriter writer,
+        ICompanyProvisioningService provisioning,
         ScanJobStore jobs,
         RediscoverJobStore rediscoverJobs,
         IServiceScopeFactory scopeFactory,
@@ -72,16 +66,13 @@ public class ExtractionController : Controller
         _risks = risks;
         _reviews = reviews;
         _companies = companies;
-        _countries = countries;
         _filings = filings;
         _reviewer = reviewer;
         _extractor = extractor;
         _chat = chat;
         _discovery = discovery;
-        _fmp = fmp;
-        _enricher = enricher;
-        _financials = financials;
-        _industryClassifier = industryClassifier;
+        _writer = writer;
+        _provisioning = provisioning;
         _jobs = jobs;
         _rediscoverJobs = rediscoverJobs;
         _scopeFactory = scopeFactory;
@@ -107,7 +98,8 @@ public class ExtractionController : Controller
     // is the single chokepoint every web-searched/LLM-parsed revenue/cost/risk row flows through.)
     private bool IsReviewer => User.IsInRole("Admin") || User.IsInRole("Manager");
     private string? CurrentUserId => User.FindFirstValue(ClaimTypes.NameIdentifier);
-    private ContributionStatus NewRowStatus => IsReviewer ? ContributionStatus.Approved : ContributionStatus.Pending;
+    // The contributor context the writer needs to apply the reviewer-gate (live vs pending + stamp).
+    private Contributor By => new(IsReviewer, CurrentUserId);
 
     [HttpGet, Route("")]
     public IActionResult Index(long? companyId, long? revenueSourceId, string? node)
@@ -187,14 +179,14 @@ public class ExtractionController : Controller
 
         // The source row is the source of truth for the values — upsert it first so a review FK can
         // only ever point at a row that exists.
-        var rowId = UpsertRowByNode(node, req.CompanyId, req.RevenueSourceId, req.SourceType,
-            req.Name, req.Value, req.Percentage, req.Note, req.RelatedCompanyId);
+        var rowId = _writer.UpsertRow(node, req.CompanyId, req.RevenueSourceId, req.SourceType,
+            req.Name, req.Value, req.Percentage, req.Note, req.RelatedCompanyId, By);
         if (rowId is null) return BadRequest("Could not save the row (check the classification value).");
 
         var endpoint = string.IsNullOrWhiteSpace(req.Endpoint)
             ? $"POST /api/stock/refresh/{req.CompanyId}"
             : req.Endpoint;
-        var review = UpsertReviewByNode(node, req.CompanyId, rowId.Value, field, endpoint,
+        var review = _writer.UpsertReview(node, req.CompanyId, rowId.Value, field, endpoint,
             req.ReferencePointer, req.ReferenceSnapshot, req.ReferencedValue, filingId);
         return Json(new ReferenceResult(rowId.Value, review.Id, field.ToString()));
     }
@@ -208,8 +200,8 @@ public class ExtractionController : Controller
         if (string.IsNullOrWhiteSpace(req.Name)) return BadRequest("Name required.");
         var node = ParseNode(req.Node);
 
-        var rowId = UpsertRowByNode(node, req.CompanyId, req.RevenueSourceId, req.SourceType,
-            req.Name, req.Value, req.Percentage, req.Note, req.RelatedCompanyId);
+        var rowId = _writer.UpsertRow(node, req.CompanyId, req.RevenueSourceId, req.SourceType,
+            req.Name, req.Value, req.Percentage, req.Note, req.RelatedCompanyId, By);
         if (rowId is null) return BadRequest("Could not save the row (check the classification value).");
 
         var saved = 0;
@@ -219,7 +211,7 @@ public class ExtractionController : Controller
             if (!Enum.TryParse<ReviewableField>(p.Field, out var field)) continue;
             var filingId = ResolveFilingId(req.CompanyId, p.FilingAccessionNumber, p.FilingForm, p.FilingDate, p.FilingUrl);
             var endpoint = string.IsNullOrWhiteSpace(p.Endpoint) ? "AI extraction" : p.Endpoint;
-            UpsertReviewByNode(node, req.CompanyId, rowId.Value, field, endpoint, p.ReferencePointer, p.ReferenceSnapshot, p.ReferencedValue, filingId);
+            _writer.UpsertReview(node, req.CompanyId, rowId.Value, field, endpoint, p.ReferencePointer, p.ReferenceSnapshot, p.ReferencedValue, filingId);
             saved++;
         }
         return Json(new { revenueSourceId = rowId.Value, proofs = saved });
@@ -257,11 +249,11 @@ public class ExtractionController : Controller
                     Ticker = item.RelatedCompanyTicker,
                     Value = item.Value
                 };
-                counterpartyId = await GetOrCreateCompanyAsync(linkReq, owner);
+                counterpartyId = await _provisioning.GetOrCreateCounterpartyAsync(linkReq, owner);
             }
 
-            var rowId = UpsertRowByNode(node, req.CompanyId, null, item.Classification, item.Name,
-                item.Value, item.Percentage, item.Note, counterpartyId);
+            var rowId = _writer.UpsertRow(node, req.CompanyId, null, item.Classification, item.Name,
+                item.Value, item.Percentage, item.Note, counterpartyId, By);
             if (rowId is null) continue;   // unparseable classification — skip this item
             saved++;
 
@@ -280,7 +272,7 @@ public class ExtractionController : Controller
 
             if (hasCounterparty && counterpartyId is { } cid)
             {
-                EnsureReciprocal(node, cid, req.CompanyId, owner.Name, item.Value);
+                _writer.EnsureReciprocal(node, cid, req.CompanyId, owner.Name, item.Value, By);
                 links++;
             }
         }
@@ -292,139 +284,8 @@ public class ExtractionController : Controller
         string? snapshot, string? referencedValue, long? filingId)
     {
         if (string.IsNullOrWhiteSpace(snapshot)) return;
-        UpsertReviewByNode(node, companyId, rowId, field, "AI extraction", "ai-suggested",
+        _writer.UpsertReview(node, companyId, rowId, field, "AI extraction", "ai-suggested",
             snapshot, referencedValue, filingId);
-    }
-
-    // Create or update the source row for the active node from the form values, returning its id.
-    // Returns null when the classification can't be parsed, or an existing-row id pointed at no row.
-    // `classification` is the generic string from the form: SourceType / CostBase / RiskScope.
-    private long? UpsertRowByNode(
-        ExtractionNode node, long companyId, long? rowId, string classification, string name,
-        double? value, double? percentage, string? note, long? relatedCompanyId) => node switch
-    {
-        ExtractionNode.COST => UpsertCost(companyId, rowId, classification, name, value, percentage, relatedCompanyId),
-        ExtractionNode.RISK => UpsertRisk(companyId, rowId, classification, name, note),
-        _                   => UpsertRevenue(companyId, rowId, classification, name, value, percentage, relatedCompanyId),
-    };
-
-    private long? UpsertRevenue(long companyId, long? rowId, string classification, string name,
-        double? value, double? percentage, long? relatedCompanyId)
-    {
-        if (!Enum.TryParse<SourceType>(classification, out var sourceType)) return null;
-        if (rowId is { } id)
-        {
-            var existing = _revenue.GetById(id);
-            if (existing is null) return null;
-            // Non-reviewer edit: leave the live row untouched and propose a superseding Pending copy
-            // (approved on review -> the old row is soft-deleted). Reviewers edit in place.
-            if (!IsReviewer)
-            {
-                var proposal = new RevenueSource(sourceType, name, companyId)
-                {
-                    Value = value, Percentage = percentage, RelatedCompanyId = relatedCompanyId,
-                    DataSource = DataSource.MANUAL,
-                    Status = ContributionStatus.Pending,
-                    ContributedByUserId = CurrentUserId,
-                    SupersedesId = existing.Id
-                };
-                _revenue.Add(proposal);
-                return proposal.Id;
-            }
-            existing.SourceType = sourceType;
-            existing.Name = name;
-            existing.Value = value;
-            existing.Percentage = percentage;
-            existing.RelatedCompanyId = relatedCompanyId;
-            _revenue.Update(existing);
-            return existing.Id;
-        }
-        var row = new RevenueSource(sourceType, name, companyId)
-        {
-            Value = value, Percentage = percentage, RelatedCompanyId = relatedCompanyId,
-            DataSource = DataSource.MANUAL,
-            Status = NewRowStatus,
-            ContributedByUserId = IsReviewer ? null : CurrentUserId
-        };
-        _revenue.Add(row);
-        return row.Id;
-    }
-
-    private long? UpsertCost(long companyId, long? rowId, string classification, string name,
-        double? value, double? percentage, long? relatedCompanyId)
-    {
-        if (!Enum.TryParse<CostBase>(classification, out var costBase)) return null;
-        if (rowId is { } id)
-        {
-            var existing = _cost.GetById(id);
-            if (existing is null) return null;
-            // Non-reviewer edit: propose a superseding Pending copy, leave the live row untouched.
-            if (!IsReviewer)
-            {
-                var proposal = new CostSource(costBase, name, companyId)
-                {
-                    Value = value, Percentage = percentage, RelatedCompanyId = relatedCompanyId,
-                    DataSource = DataSource.MANUAL,
-                    Status = ContributionStatus.Pending,
-                    ContributedByUserId = CurrentUserId,
-                    SupersedesId = existing.Id
-                };
-                _cost.Add(proposal);
-                return proposal.Id;
-            }
-            existing.CostBase = costBase;
-            existing.Name = name;
-            existing.Value = value;
-            existing.Percentage = percentage;
-            existing.RelatedCompanyId = relatedCompanyId;
-            _cost.Update(existing);
-            return existing.Id;
-        }
-        var row = new CostSource(costBase, name, companyId)
-        {
-            Value = value, Percentage = percentage, RelatedCompanyId = relatedCompanyId,
-            DataSource = DataSource.MANUAL,
-            Status = NewRowStatus,
-            ContributedByUserId = IsReviewer ? null : CurrentUserId
-        };
-        _cost.Add(row);
-        return row.Id;
-    }
-
-    private long? UpsertRisk(long companyId, long? rowId, string classification, string name, string? note)
-    {
-        if (!Enum.TryParse<RiskScope>(classification, out var scope)) return null;
-        if (rowId is { } id)
-        {
-            var existing = _risks.GetById(id);
-            if (existing is null) return null;
-            // Non-reviewer edit: propose a superseding Pending copy, leave the live row untouched.
-            if (!IsReviewer)
-            {
-                var proposal = new CompanyRisk(scope, name, companyId)
-                {
-                    Note = note, DataSource = DataSource.MANUAL,
-                    Status = ContributionStatus.Pending,
-                    ContributedByUserId = CurrentUserId,
-                    SupersedesId = existing.Id
-                };
-                _risks.Add(proposal);
-                return proposal.Id;
-            }
-            existing.Scope = scope;
-            existing.Name = name;
-            existing.Note = note;
-            _risks.Update(existing);
-            return existing.Id;
-        }
-        var row = new CompanyRisk(scope, name, companyId)
-        {
-            Note = note, DataSource = DataSource.MANUAL,
-            Status = NewRowStatus,
-            ContributedByUserId = IsReviewer ? null : CurrentUserId
-        };
-        _risks.Add(row);
-        return row.Id;
     }
 
     // The company that owns a node's row (so References can scope the proof lookup without a row arg).
@@ -442,54 +303,6 @@ public class ExtractionController : Controller
         ExtractionNode.RISK => r.CompanyRiskId == rowId,
         _                   => r.RevenueSourceId == rowId,
     };
-
-    // One current proof per (row, field) — the unique index demands upsert, not blind insert. New
-    // proof clears any prior phase-2 verdict (stale-pass guard). The node decides which source FK
-    // and RelationKind the review carries.
-    private SourceFieldReview UpsertReviewByNode(
-        ExtractionNode node, long companyId, long rowId, ReviewableField field, string endpoint,
-        string pointer, string snapshot, string? referencedValue, long? filingId)
-    {
-        var review = _reviews.GetByCompany(companyId)
-            .FirstOrDefault(r => MatchesRow(r, node, rowId) && r.Field == field);
-        if (review is null)
-        {
-            review = new SourceFieldReview
-            {
-                CompanyId = companyId,
-                Relation = node switch
-                {
-                    ExtractionNode.COST => RelationKind.COST,
-                    ExtractionNode.RISK => RelationKind.RISK,
-                    _                   => RelationKind.REVENUE,
-                },
-                RevenueSourceId = node == ExtractionNode.REVENUE ? rowId : null,
-                CostSourceId    = node == ExtractionNode.COST ? rowId : null,
-                CompanyRiskId   = node == ExtractionNode.RISK ? rowId : null,
-                Field = field,
-                Endpoint = endpoint,
-                ReferencePointer = pointer,
-                ReferenceSnapshot = snapshot,
-                ReferencedValue = referencedValue,
-                FilingId = filingId
-            };
-            _reviews.Add(review);
-        }
-        else
-        {
-            review.Endpoint = endpoint;
-            review.ReferencePointer = pointer;
-            review.ReferenceSnapshot = snapshot;
-            review.ReferencedValue = referencedValue;
-            review.FilingId = filingId;
-            review.Mark = null;
-            review.Rationale = null;
-            review.ReviewedAt = null;
-            review.ReviewerModel = null;
-            _reviews.Update(review);
-        }
-        return review;
-    }
 
     // Mode A — run the phase-2 AI reviewer over this company's unreviewed cells (human-entered
     // value + proof). Returns the pass/fail tally so the page can refresh its marks.
@@ -855,20 +668,20 @@ public class ExtractionController : Controller
         var owner = _companies.GetById(req.CompanyId);
         if (owner is null) return NotFound();
 
-        var counterpartyId = req.ExistingCompanyId ?? await GetOrCreateCompanyAsync(req, owner);
+        var counterpartyId = req.ExistingCompanyId ?? await _provisioning.GetOrCreateCounterpartyAsync(req, owner);
 
         // CUSTOMER buys from us -> revenue source; SUPPLIER sells to us -> cost source.
         var node = string.Equals(req.Side, "SUPPLIER", StringComparison.OrdinalIgnoreCase)
             ? ExtractionNode.COST
             : ExtractionNode.REVENUE;
-        var rowId = UpsertRowByNode(node, req.CompanyId, null, req.Classification, req.Name,
-            value: req.Value, percentage: null, note: null, relatedCompanyId: counterpartyId);
+        var rowId = _writer.UpsertRow(node, req.CompanyId, null, req.Classification, req.Name,
+            value: req.Value, percentage: null, note: null, relatedCompanyId: counterpartyId, By);
         if (rowId is null) return BadRequest("Could not create the link (check the classification value).");
 
         // Save sonar's citation as proof on the new row's counterparty cell, so the web source the
         // relationship came from is recorded (and shown on the company's Details page).
         if (!string.IsNullOrWhiteSpace(req.SourceUrl))
-            UpsertReviewByNode(node, req.CompanyId, rowId.Value, ReviewableField.RELATED_COMPANY,
+            _writer.UpsertReview(node, req.CompanyId, rowId.Value, ReviewableField.RELATED_COMPANY,
                 endpoint: "Perplexity sonar", pointer: req.SourceUrl,
                 snapshot: string.IsNullOrWhiteSpace(req.Note) ? req.SourceUrl : req.Note,
                 referencedValue: req.Name, filingId: null);
@@ -878,103 +691,9 @@ public class ExtractionController : Controller
         // Details page shows nothing. Owner's revenue (counterparty is its CUSTOMER) -> counterparty's
         // cost (owner is its supplier, COGS); owner's cost (counterparty is its supplier) ->
         // counterparty's revenue (owner is its CUSTOMER).
-        EnsureReciprocal(node, counterpartyId, req.CompanyId, owner.Name, req.Value);
+        _writer.EnsureReciprocal(node, counterpartyId, req.CompanyId, owner.Name, req.Value, By);
 
         return Json(new { sourceId = rowId.Value, counterpartyId, node = node.ToString() });
-    }
-
-    // Create the mirror source on the counterparty pointing back at owner, unless one already exists
-    // (re-linking the same pair must not pile duplicates). Mirror node is the opposite of owner's:
-    // REVENUE<->COST, with the natural default classification for that side (CUSTOMER / COGS).
-    private void EnsureReciprocal(ExtractionNode node, long counterpartyId, long ownerId, string ownerName, double? value)
-    {
-        var (mirror, classification) = node == ExtractionNode.COST
-            ? (ExtractionNode.REVENUE, nameof(SourceType.CUSTOMER))
-            : (ExtractionNode.COST, nameof(CostBase.COGS));
-
-        var exists = mirror == ExtractionNode.COST
-            ? _cost.GetAll().Any(c => c.CompanyId == counterpartyId && c.RelatedCompanyId == ownerId)
-            : _revenue.GetAll().Any(r => r.CompanyId == counterpartyId && r.RelatedCompanyId == ownerId);
-        if (exists) return;
-
-        UpsertRowByNode(mirror, counterpartyId, null, classification, ownerName,
-            value: value, percentage: null, note: null, relatedCompanyId: ownerId);
-    }
-
-    // Reuse an existing company (fuzzy name match) or create one. When a ticker is known we run the
-    // same FMP-by-ticker pipeline the New Company form uses (real profile: sector/industry/CIK/revenue);
-    // otherwise fall back to a minimal company seeded from sonar's country/sector or the owner's.
-    private async Task<long> GetOrCreateCompanyAsync(LinkCounterpartyRequest req, Company owner)
-    {
-        if (_companies.MatchByName(req.Name) is { } existing) return existing.Id;
-
-        if (!string.IsNullOrWhiteSpace(req.Ticker))
-        {
-            FmpProfile? profile = null;
-            // FMP here is a best-effort enrichment of a linked counterparty — a missing user key (or
-            // FMP being down) just falls through to the minimal stub below, never blocks the link.
-            try { profile = await _fmp.GetProfileAsync(req.Ticker.Trim()); }
-            catch (Exception ex) when (ex is HttpRequestException or MissingApiKeyException) { /* -> stub below */ }
-
-            if (profile is { CompanyName.Length: > 0 })
-            {
-                // sonar's name may differ from FMP's canonical one — re-check before inserting.
-                if (_companies.MatchByName(profile.CompanyName) is { } byFmp) return byFmp.Id;
-
-                FmpIncome? income = null;
-                try { income = await _fmp.GetLatestIncomeAsync(req.Ticker.Trim()); }
-                catch (Exception ex) when (ex is HttpRequestException or MissingApiKeyException) { /* financials optional */ }
-
-                // Same enrichment kernel the New Company form uses: maps the profile, stamps AsOf,
-                // resolves industry (LLM on a label miss) and backfills Yahoo financials when income is
-                // gated. The note is form-only, so the link path discards it. Country falls back to the
-                // owner's here (vs the form's resolve/create), so it stays a per-caller concern.
-                var (model, _) = await _enricher.BuildModelAsync(profile, income, req.Ticker.Trim());
-                var entity = new Company(model.Name, ResolveCountryId(profile.Country, owner), model.Sector)
-                {
-                    Cik = model.Cik,
-                    Industry = model.Industry,
-                    RevenueTotal = model.RevenueTotal,
-                    GrossMargin = model.GrossMargin,
-                    MarketCap = model.MarketCap,
-                    AsOf = model.AsOf,
-                    Notes = model.Notes
-                };
-                _companies.Add(entity);
-
-                // Same dated financial history the New Company form pulls. Best-effort: a failure
-                // (premium-gated, unreachable) must not block linking the counterparty.
-                try { _companies.ReplaceFinancials(entity.Id, await _financials.BuildAsync(entity.Id, req.Ticker.Trim())); }
-                catch (Exception ex) when (ex is HttpRequestException or MissingApiKeyException) { /* financials unavailable — company still created */ }
-                return entity.Id;
-            }
-        }
-
-        // No ticker / FMP miss: minimal company so the link still works. Previously this left Industry
-        // null; resolve it within the sector (the same classifier the New Company form uses) so
-        // ticker-less companies aren't stuck unclassified. No ticker => treat as private.
-        var sec = ParseSector(req.Sector) ?? owner.Sector;
-        var stub = new Company(req.Name, ResolveCountryId(req.CountryCode, owner), sec)
-        {
-            Type = string.IsNullOrWhiteSpace(req.Ticker) ? CompanyType.PRIVATE : CompanyType.PUBLIC,
-            Industry = await _industryClassifier.ClassifyAsync(sec, req.Name, null)
-        };
-        _companies.Add(stub);
-        return stub.Id;
-    }
-
-    // Match an ISO-2 code against existing countries; fall back to the inspecting company's country
-    // (always valid). Avoids creating a half-populated Country row for a counterparty.
-    private long ResolveCountryId(string? iso2, Company owner) =>
-        !string.IsNullOrWhiteSpace(iso2) &&
-        _countries.GetAll().FirstOrDefault(c => string.Equals(c.Code, iso2, StringComparison.OrdinalIgnoreCase)) is { } m
-            ? m.Id : owner.CountryId;
-
-    // sonar returns GICS display form ("Information Technology"); the enum uses "INFORMATION_TECHNOLOGY".
-    private static Sector? ParseSector(string? sector)
-    {
-        var normalized = sector?.Trim().ToUpperInvariant().Replace(' ', '_');
-        return Enum.TryParse<Sector>(normalized, true, out var s) ? s : null;
     }
 
     // Upsert the proof filing by accession (globally unique) and return its id. Returns null when

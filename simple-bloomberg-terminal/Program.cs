@@ -146,6 +146,9 @@ builder.Services.AddHttpClient<ICompanyProfileDiscovery, CompanyProfileDiscovery
 // Shared DeepSeek-backed GICS industry classifier (New Company fetch, private discovery, and the
 // ticker-less counterparty stub all need to pick an industry within a sector).
 builder.Services.AddScoped<IIndustryClassifier, IndustryClassifier>();
+// Owns the FMP->enrich->financials->industry/country pipeline that turns a ticker (or a web-searched
+// name) into a company — shared by the New Company form, bulk backfill, and counterparty linking.
+builder.Services.AddScoped<ICompanyProvisioningService, CompanyProvisioningService>();
 // Caches a filing's cleaned section text so each chat turn doesn't re-download the document.
 builder.Services.AddMemoryCache();
 // Tracks detached auto-scan jobs (started on the extraction page, run in the background) so the

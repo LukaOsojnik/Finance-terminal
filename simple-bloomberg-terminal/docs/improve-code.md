@@ -104,7 +104,28 @@ don't add `IClock` speculatively).
 The two fat controllers mix HTTP concerns with real business logic. These are the
 biggest maintainability wins but need care — extract behavior-preserving services.
 
-### 2.1 `ExtractionController` (992 lines) → carve out extraction domain logic
+**Status (2026-06-15):** all four items done; build clean (0 warnings), 179/179 tests pass.
+- 2.1 — contribution writes (`UpsertRow`/`UpsertReview`/`EnsureReciprocal` + a `Contributor` struct carrying
+  the reviewer-gate context) moved into `IContributionWriter`; the FMP→enrich→financials→industry/country
+  pipeline (`GetOrCreateCompanyAsync`) moved into a new shared `ICompanyProvisioningService`. The controller
+  keeps the streaming/NDJSON glue, the read-side `References`, and `ResolveFilingId`.
+- 2.2 — `ICompanyProvisioningService` owns `BuildFromTicker`/`BuildPrivate`/`Backfill`/`ApplyFetchedData`
+  + country/industry/CIK resolution; both controllers delegate. The service returns a `CompanyDraft`
+  (model + country label + note) so ViewBag stays in the controller. Rediscover's background task resolves
+  the provisioning service from its own scope (key-capture path preserved). Killed the duplicated FMP
+  pipeline shared by 2.1's `GetOrCreateCompanyAsync` and 2.2's `BuildModelFromTickerAsync`.
+- 2.3 — `AccountController` no longer touches `DbContext`/`IDataProtector`/file I/O.
+  Key persistence + encryption moved into `UserApiKeyProvider.SaveAsync(ApiKeyEdit)`; the
+  provider then delegated its DB I/O to a new `IUserApiKeyRepository` (provider is now EF-free).
+  File ops moved to new `ProfilePictureService`; `AllowedTypes`/`MaxBytes` → `"ProfilePicture"`
+  config. Behavior change: an undecryptable stored key now shows "not set" (matches keyed clients).
+- 2.4 — new `IContributionWriter` owns the Approve/Reject state machine; widened the
+  `IContribution` marker (settable `Status` + `SupersedesId`) so the transition is one generic
+  `Approve<T>`/`Reject<T>` with the controller switch reduced to wiring repo delegates.
+  `ContributionsController.Company` N+1 fixed — contributor emails batch-loaded in one `IN`
+  query (was a blocking `FindByIdAsync` per distinct user).
+
+### 2.1 ✅ `ExtractionController` (992 lines) → carve out extraction domain logic
 **Problem.** Controller owns graph/contribution business rules, not just request handling.
 
 Move to a service (e.g. extend existing `IFilingExtractionService`/`IReviewService` or a
@@ -121,7 +142,7 @@ that's legitimately HTTP-shaped.
 **Risk.** Medium. These methods touch multiple repositories and the contribution
 state machine. Extract one method at a time; lean on existing extraction tests.
 
-### 2.2 `CompaniesController` (651 lines) → CompanyDiscovery/Profile service
+### 2.2 ✅ `CompaniesController` (651 lines) → CompanyDiscovery/Profile service
 **Problem.** FMP integration, country resolution, ticker parsing, LLM classification all
 inline.
 
@@ -139,7 +160,7 @@ thin orchestration.
 **Risk.** Medium. Background-task paths (`Rediscover :266-332`) capture keys via
 `IUserApiKeyProvider.Set` — preserve that exactly when relocating.
 
-### 2.3 `AccountController` — stop bypassing the repository layer + extract file I/O
+### 2.3 ✅ `AccountController` — stop bypassing the repository layer + extract file I/O
 **Problem.**
 - Direct `DbContext` on `UserApiKeys` (`AccountController.cs:134,154,158,165`) — the only
   controller that bypasses repositories.
@@ -152,7 +173,7 @@ likely already implied by `IUserApiKeyProvider` — reuse it). Move file ops beh
 
 **Risk.** Low–medium.
 
-### 2.4 `ContributionsController` — fix N+1 and move status transitions
+### 2.4 ✅ `ContributionsController` — fix N+1 and move status transitions
 **Problem.**
 - `Email(userId)` calls `FindByIdAsync` synchronously inside a loop — N+1
   (`ContributionsController.cs:75-83`).

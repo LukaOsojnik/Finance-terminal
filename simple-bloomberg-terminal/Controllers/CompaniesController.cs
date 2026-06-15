@@ -19,37 +19,25 @@ namespace simple_bloomberg_terminal.Controllers;
 public class CompaniesController : Controller
 {
     private readonly ICompanyRepository _companies;
-    private readonly ICountryRepository _countries;
-    private readonly IFmpApiClient _fmp;
-    private readonly IRestCountriesClient _restCountries;
-    private readonly ITickerProfileEnricher _enricher;
     private readonly ICompanyFinancialsService _financials;
-    private readonly IStockApiClient _stock;
     private readonly ICompanyProfileDiscovery _profileDiscovery;
-    private readonly IIndustryClassifier _industryClassifier;
+    private readonly ICompanyProvisioningService _provisioning;
     private readonly RediscoverJobStore _rediscoverJobs;
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly IUserApiKeyProvider _keys;
 
-    public CompaniesController(ICompanyRepository companies, ICountryRepository countries,
-        IFmpApiClient fmp, IRestCountriesClient restCountries,
-        ITickerProfileEnricher enricher,
-        ICompanyFinancialsService financials, IStockApiClient stock,
-        ICompanyProfileDiscovery profileDiscovery, IIndustryClassifier industryClassifier,
+    public CompaniesController(ICompanyRepository companies,
+        ICompanyFinancialsService financials,
+        ICompanyProfileDiscovery profileDiscovery, ICompanyProvisioningService provisioning,
         RediscoverJobStore rediscoverJobs, IServiceScopeFactory scopeFactory, IUserApiKeyProvider keys)
     {
         _rediscoverJobs = rediscoverJobs;
         _scopeFactory = scopeFactory;
         _keys = keys;
         _companies = companies;
-        _countries = countries;
-        _fmp = fmp;
-        _restCountries = restCountries;
-        _enricher = enricher;
         _financials = financials;
-        _stock = stock;
         _profileDiscovery = profileDiscovery;
-        _industryClassifier = industryClassifier;
+        _provisioning = provisioning;
     }
 
     [AllowAnonymous]
@@ -119,8 +107,8 @@ public class CompaniesController : Controller
         }
 
         var ticker = symbol.Trim();
-        CompanyCreateModel? model;
-        try { model = await BuildModelFromTickerAsync(ticker); }
+        CompanyDraft? draft;
+        try { draft = await _provisioning.BuildFromTickerAsync(ticker); }
         catch (HttpRequestException)
         {
             ModelState.AddModelError("", "FMP is unreachable. Try again or enter the company manually.");
@@ -134,45 +122,17 @@ public class CompaniesController : Controller
             return View("Create", new CompanyCreateModel());
         }
 
-        if (model is null)
+        if (draft is null)
         {
             ModelState.AddModelError("", $"No company found for ticker '{ticker}'.");
             return View("Create", new CompanyCreateModel());
         }
 
+        if (draft.CountryLabel != null) ViewBag.CountryLabel = draft.CountryLabel;
+        if (draft.Note != null) ViewBag.FetchNote = draft.Note;
         // Flags the banner + per-field "auto-filled" glow on the Create view.
         ViewBag.Fetched = true;
-        return View("Create", model);
-    }
-
-    // Shared real-API fetch used by both the New Company prefill (Fetch) and the bulk Backfill: pull
-    // FMP profile + income, map to a CompanyCreateModel, resolve industry (LLM fallback) and country,
-    // and backfill financials from Yahoo when FMP income is gated. Returns null if the profile is
-    // missing/empty; lets an FMP transport error (incl. 402/429) bubble for the caller to handle.
-    private async Task<CompanyCreateModel?> BuildModelFromTickerAsync(string ticker)
-    {
-        var profile = await _fmp.GetProfileAsync(ticker);
-        if (profile is null || string.IsNullOrWhiteSpace(profile.CompanyName)) return null;
-
-        // Financials are a premium endpoint for some symbols (e.g. non-US return HTTP 402), so
-        // treat income as optional — keep the profile-driven fields and leave financials blank.
-        FmpIncome? income = null;
-        try { income = await _fmp.GetLatestIncomeAsync(ticker); }
-        catch (HttpRequestException) { /* income unavailable on this plan/symbol */ }
-
-        // Shared kernel: maps the profile, stamps AsOf, resolves industry (LLM on a label miss) and
-        // backfills Yahoo financials when income is gated. Country + the note are surfaced per-caller.
-        var (model, note) = await _enricher.BuildModelAsync(profile, income, ticker);
-        if (note != null) ViewBag.FetchNote = note;
-
-        var country = await ResolveOrCreateCountry(profile.Country, _countries, _restCountries);
-        if (country != null)
-        {
-            model.CountryId = country.Id;
-            ViewBag.CountryLabel = country.Name;
-        }
-
-        return model;
+        return View("Create", draft.Model);
     }
 
     [HttpPost, Route("create"), ValidateAntiForgeryToken]
@@ -251,11 +211,11 @@ public class CompaniesController : Controller
             return View("Create", new CompanyCreateModel { Type = CompanyType.PRIVATE, Name = companyName });
         }
 
-        var (model, countryLabel) = await BuildPrivateModelAsync(result, companyName, _industryClassifier, _countries, _restCountries);
-        if (countryLabel != null) ViewBag.CountryLabel = countryLabel;
+        var draft = await _provisioning.BuildPrivateAsync(result, companyName);
+        if (draft.CountryLabel != null) ViewBag.CountryLabel = draft.CountryLabel;
         ViewBag.Fetched = true;
         ViewBag.FetchNote = "Profile and financials are AI-estimated from web search — review before saving.";
-        return View("Create", model);
+        return View("Create", draft.Model);
     }
 
     // Re-run Perplexity discovery for an EXISTING private company and overwrite its profile fields in
@@ -285,9 +245,7 @@ public class CompaniesController : Controller
             sp.GetRequiredService<IUserApiKeyProvider>().Set(keys);
             var companies = sp.GetRequiredService<ICompanyRepository>();
             var discovery = sp.GetRequiredService<ICompanyProfileDiscovery>();
-            var classifier = sp.GetRequiredService<IIndustryClassifier>();
-            var countries = sp.GetRequiredService<ICountryRepository>();
-            var restCountries = sp.GetRequiredService<IRestCountriesClient>();
+            var provisioning = sp.GetRequiredService<ICompanyProvisioningService>();
             try
             {
                 var company = companies.GetById(job.CompanyId);
@@ -298,7 +256,7 @@ public class CompaniesController : Controller
                 if (result is null) { job.Status = ScanJobStatus.Error; job.Error = "No profile found from web search."; return; }
 
                 job.Progress = "Mapping sector / industry / country…";
-                var (model, _) = await BuildPrivateModelAsync(result, company.Name, classifier, countries, restCountries);
+                var model = (await provisioning.BuildPrivateAsync(result, company.Name)).Model;
 
                 // Park the proposal for the user to judge in the widget — DO NOT save yet. ACCEPT applies
                 // this; REJECT dismisses it. Summarise proposed-vs-current so the verdict is informed.
@@ -344,7 +302,7 @@ public class CompaniesController : Controller
         if (company is null) return NotFound();
 
         var model = job.Proposed;
-        ApplyFetchedData(company, model);
+        _provisioning.ApplyFetchedData(company, model);
         // Mirror the background rule: a fresh revenue carries a fresh margin, so overwrite the old margin
         // too (even with null) rather than letting ApplyFetchedData keep a stale guess.
         if (model.RevenueTotal is not null) company.GrossMargin = model.GrossMargin;
@@ -368,144 +326,26 @@ public class CompaniesController : Controller
         return Ok();
     }
 
-    // Map a discovered private-company profile onto the create model: sector by enum name (FMP-label
-    // fallback), industry via the shared label map then LLM, country resolved/created, and the
-    // estimated revenue + gross margin filled for review. Static + service params so it runs both on
-    // the request (DiscoverPrivate) and on the detached re-discovery task. Returns the resolved
-    // country name for the caller to surface (the request path puts it in ViewBag.CountryLabel).
-    private static async Task<(CompanyCreateModel Model, string? CountryLabel)> BuildPrivateModelAsync(
-        CompanyProfileResult r, string fallbackName,
-        IIndustryClassifier classifier, ICountryRepository countries, IRestCountriesClient restCountries)
-    {
-        var model = new CompanyCreateModel
-        {
-            Type = CompanyType.PRIVATE,
-            Name = r.Name ?? fallbackName,
-            Notes = r.Description is { Length: > 2000 } d ? d[..2000] : r.Description,
-            // Date the row to the year the revenue figure is from (so the FY row reads e.g. FY2024),
-            // falling back to today when sonar couldn't pin a year.
-            AsOf = r.RevenueYear is { } yr ? new DateOnly(yr, 12, 31) : DateOnly.FromDateTime(DateTime.Today),
-            // sonar returns the exact GICS sector enum name; fall back to FMP's label map, then a default.
-            Sector = (Enum.TryParse<Sector>(r.Sector, ignoreCase: true, out var sec) ? sec : (Sector?)null)
-                     ?? FmpMapper.MapSector(r.Sector) ?? Sector.INFORMATION_TECHNOLOGY,
-            Industry = FmpMapper.MapIndustry(r.Industry),
-            RevenueTotal = r.RevenueUsd,
-            MarketCap = r.ValuationUsd,   // private-company "market cap" = latest valuation
-            GrossMargin = r.GrossMargin is { } gm ? Math.Round(gm, 2) : null
-        };
-
-        if (model.Industry == null)
-            await ResolveIndustryWithLlm(model, model.Name, r.Industry, classifier);
-
-        var country = await ResolveOrCreateCountry(r.CountryCode, countries, restCountries);
-        if (country != null)
-            model.CountryId = country.Id;
-        return (model, country?.Name);
-    }
-
-    // Bulk-refresh existing companies from the real APIs (most were AI-seeded). Resolves a ticker
-    // from each company's SEC CIK, skips any that already have financial history, then re-runs the
-    // same fetch the New Company form does — overwriting the profile fields AND pulling the dated
-    // financials. Stops cleanly when FMP's daily quota (HTTP 429) is hit, so a second click the next
-    // day resumes with the still-missing companies. Returns a JSON summary for the results popup.
+    // Bulk-refresh existing companies from the real APIs (most were AI-seeded): the provisioning
+    // service resolves each company's ticker from its SEC CIK, re-fetches FMP (stopping cleanly on the
+    // daily 429 quota), and fills missing industries. Returns a JSON summary for the results popup; a
+    // 503 when the SEC ticker map itself is unreachable.
     [HttpPost, Route("backfill"), ValidateAntiForgeryToken]
     public async Task<IActionResult> Backfill()
     {
-        IReadOnlyDictionary<string, string> tickerMap;
-        try { tickerMap = await _stock.GetCikTickerMap(); }
+        BackfillResult result;
+        try { result = await _provisioning.BackfillAsync(); }
         catch (HttpRequestException) { return StatusCode(503, "SEC ticker map is unreachable. Try again."); }
-
-        var withFmpFinancials = _companies.CompanyIdsWithFmpFinancials();
-        var eligible = _companies.GetAll()
-            .Where(c => !withFmpFinancials.Contains(c.Id))
-            .Select(c => (Company: c, Ticker: ResolveTickerForCik(c.Cik, tickerMap)))
-            .Where(x => x.Ticker != null)
-            .ToList();
-
-        var filled = new List<object>();
-        var failed = new List<object>();
-        var rateLimited = false;
-
-        foreach (var (company, ticker) in eligible)
-        {
-            try
-            {
-                var model = await BuildModelFromTickerAsync(ticker!);
-                if (model is null) { failed.Add(new { company.Name, ticker, reason = "no FMP profile" }); continue; }
-
-                ApplyFetchedData(company, model);
-                _companies.Update(company);
-
-                var fin = await _financials.BuildAsync(company.Id, ticker!);
-                _companies.ReplaceFinancials(company.Id, fin);
-                filled.Add(new { company.Name, ticker, rows = fin.Count, source = fin.FirstOrDefault()?.Source.ToString() ?? "—" });
-            }
-            // FMP daily cap -> stop so a second run tomorrow resumes with the rest.
-            catch (HttpRequestException ex) when (ex.StatusCode == HttpStatusCode.TooManyRequests)
-            {
-                rateLimited = true;
-                break;
-            }
-            catch (HttpRequestException ex)
-            {
-                failed.Add(new { company.Name, ticker, reason = $"FMP {(int?)ex.StatusCode}" });
-            }
-        }
-
-        var remaining = eligible.Count - filled.Count - failed.Count;
-
-        // Industry is independent of the FMP fetch: the LLM classifier works from name + sector alone,
-        // so resolve it for EVERY company still missing one — including those the loop above never
-        // touched (already-financialed and thus skipped, or non-US / no SEC CIK so no ticker, or left
-        // unprocessed when an FMP 429 broke the loop). Constrained to the sector's GICS industries, so
-        // it can only land a valid in-sector value. Best-effort per company; a classify miss leaves null.
-        var industriesFilled = new List<object>();
-        foreach (var c in _companies.GetAll().Where(c => c.Industry == null))
-        {
-            if (await _industryClassifier.ClassifyAsync(c.Sector, c.Name, null) is { } ind)
-            {
-                c.Industry = ind;
-                _companies.Update(c);
-                industriesFilled.Add(new { c.Name, industry = ind.ToString().Replace('_', ' ') });
-            }
-        }
 
         return Json(new
         {
-            filled,
-            failed,
-            industriesFilled,
-            rateLimited,
-            remaining,
-            message = rateLimited
-                ? $"Filled {filled.Count}. FMP daily limit reached — {remaining} eligible companies remain; click again tomorrow. Resolved {industriesFilled.Count} industries."
-                : $"Filled {filled.Count}, {failed.Count} failed, {remaining} eligible remaining. Resolved {industriesFilled.Count} industries."
+            filled = result.Filled,
+            failed = result.Failed,
+            industriesFilled = result.IndustriesFilled,
+            rateLimited = result.RateLimited,
+            remaining = result.Remaining,
+            message = result.Message
         });
-    }
-
-    // Map a company's stored CIK to its primary ticker via the SEC map. Null for a missing or
-    // placeholder (all-zeros) CIK, or one not in the map (e.g. a delisted ADR).
-    private static string? ResolveTickerForCik(string? cik, IReadOnlyDictionary<string, string> map)
-    {
-        if (string.IsNullOrWhiteSpace(cik)) return null;
-        var digits = new string(cik.Where(char.IsDigit).ToArray()).PadLeft(10, '0');
-        if (digits.Trim('0').Length == 0) return null; // placeholder 0000000000 (non-US, no SEC CIK)
-        return map.TryGetValue(digits, out var t) ? t : null;
-    }
-
-    // Overwrite the AI-seeded data fields with the real fetched values; preserve the curated Name,
-    // and keep an existing value when the API returned none (?? on the optional fields).
-    private static void ApplyFetchedData(Company e, CompanyCreateModel m)
-    {
-        e.Cik = m.Cik ?? e.Cik;
-        e.Sector = m.Sector;
-        e.Industry = m.Industry ?? e.Industry;
-        e.MarketCap = m.MarketCap ?? e.MarketCap;
-        e.RevenueTotal = m.RevenueTotal ?? e.RevenueTotal;
-        e.GrossMargin = m.GrossMargin ?? e.GrossMargin;
-        e.AsOf = m.AsOf ?? e.AsOf;
-        e.Notes = string.IsNullOrWhiteSpace(m.Notes) ? e.Notes : m.Notes;
-        if (m.CountryId > 0) e.CountryId = m.CountryId;
     }
 
     [HttpGet, ActionName("Edit"), Route("{id:long}/edit")]
@@ -564,50 +404,6 @@ public class CompaniesController : Controller
                 .Select(s => new { kind = "cost", direction = "inverse", id = s.Id, name = s.Name, type = s.CostBase.ToString(), value = s.Value, other = s.Company?.Name }));
 
         return Json(new { owned, inverse });
-    }
-
-    // Classify the company into one GICS industry within its already-resolved sector via the shared
-    // classifier. Works from a plain name + source label so it serves the private-company discovery
-    // (whose label comes from sonar). Leaves Industry null on a miss.
-    private static async Task ResolveIndustryWithLlm(CompanyCreateModel model, string? companyName, string? sourceLabel, IIndustryClassifier classifier)
-    {
-        if (await classifier.ClassifyAsync(model.Sector, companyName, sourceLabel) is { } industry)
-            model.Industry = industry;
-    }
-
-    // Find the Country matching FMP's ISO-2 code; if absent, look it up on REST Countries and
-    // create the row. Re-checks by cca2/cca3/name before inserting so a hand-entered country
-    // (which may use a different code format) isn't duplicated. Anything unresolved -> null
-    // (the user leaves it blank or picks one).
-    private static async Task<Country?> ResolveOrCreateCountry(string? iso2, ICountryRepository countries, IRestCountriesClient restCountries)
-    {
-        if (string.IsNullOrWhiteSpace(iso2)) return null;
-
-        var existing = countries.GetAll().ToList();
-        var match = existing.FirstOrDefault(c => string.Equals(c.Code, iso2, StringComparison.OrdinalIgnoreCase));
-        if (match != null) return match;
-
-        RestCountry? rc;
-        try { rc = await restCountries.GetByCodeAsync(iso2); }
-        catch (Exception ex) when (ex is HttpRequestException or System.Text.Json.JsonException) { return null; }
-        if (rc == null) return null;
-
-        match = existing.FirstOrDefault(c =>
-            string.Equals(c.Code, rc.Cca2, StringComparison.OrdinalIgnoreCase) ||
-            string.Equals(c.Code, rc.Cca3, StringComparison.OrdinalIgnoreCase) ||
-            string.Equals(c.Name, rc.Name?.Common, StringComparison.OrdinalIgnoreCase));
-        if (match != null) return match;
-
-        var created = new Country(
-            rc.Cca2 ?? iso2,
-            rc.Name?.Common ?? iso2,
-            rc.Region ?? "",
-            rc.Currencies?.Keys.FirstOrDefault() ?? "")
-        {
-            Population = rc.Population
-        };
-        countries.Add(created);
-        return created;
     }
 
     private void PopulateDropdowns()

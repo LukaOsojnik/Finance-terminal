@@ -49,7 +49,8 @@
       "Bash(rm -f cookies.txt)",
       "Bash(curl -s -c cookies.txt http://localhost:5213/Identity/Account/Register)",
       "Bash(mysql *)",
-      "Bash(pkill -f \"dotnet.*simple-bloomberg-terminal\")"
+      "Bash(pkill -f \"dotnet.*simple-bloomberg-terminal\")",
+      "PowerShell(dotnet test *)"
     ]
   },
   "outputStyle": "Learning"
