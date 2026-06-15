@@ -9,7 +9,7 @@ namespace simple_bloomberg_terminal.Models.Entities;
 /// revenue/cost rows it has no money figures — just a short Name, a <see cref="RiskScope"/> bucket,
 /// and a free-text Note. Proof per cell lives in <see cref="SourceFieldReview"/> (Relation = RISK).
 /// </summary>
-public class CompanyRisk
+public class CompanyRisk : IContribution
 {
     public CompanyRisk(RiskScope scope, string name, long companyId)
     {

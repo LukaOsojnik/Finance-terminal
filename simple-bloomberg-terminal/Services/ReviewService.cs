@@ -104,17 +104,11 @@ public class ReviewService : IReviewService
     private static bool TryParseVerdict(string raw, out int mark, out string rationale)
     {
         mark = 0; rationale = "";
-        var start = raw.IndexOf('{');
-        var end = raw.LastIndexOf('}');
-        if (start < 0 || end <= start) return false;
-        try
-        {
-            using var doc = JsonDocument.Parse(raw[start..(end + 1)]);
-            var root = doc.RootElement;
-            mark = root.GetProperty("mark").GetInt32() == 1 ? 1 : 0;
-            rationale = root.TryGetProperty("rationale", out var r) ? (r.GetString() ?? "") : "";
-            return true;
-        }
-        catch (JsonException) { return false; }
+        using var doc = LlmJson.ParseObject(raw);
+        if (doc is null) return false;
+        var root = doc.RootElement;
+        mark = root.GetProperty("mark").GetInt32() == 1 ? 1 : 0;
+        rationale = root.TryGetProperty("rationale", out var r) ? (r.GetString() ?? "") : "";
+        return true;
     }
 }

@@ -246,30 +246,20 @@ public class CounterpartyDiscoveryService : ICounterpartyDiscovery
         return (answer, citations);
     }
 
-    // Pull the planner's {"queries":[...]} out of its answer, tolerant of fences/prose around it (same
-    // slice-from-first-{-to-last-} trick as Parse). Trims, drops blanks, caps the count.
+    // Pull the planner's {"queries":[...]} out of its answer, tolerant of fences/prose around it.
+    // Trims, drops blanks, caps the count.
     private static List<string> ParseQueries(string answer)
     {
-        var start = answer.IndexOf('{');
-        var end = answer.LastIndexOf('}');
-        if (start < 0 || end <= start) return [];
-
-        JsonDocument doc;
-        try { doc = JsonDocument.Parse(answer[start..(end + 1)]); }
-        catch (JsonException) { return []; }
-
         var list = new List<string>();
-        using (doc)
-        {
-            if (!doc.RootElement.TryGetProperty("queries", out var arr) || arr.ValueKind != JsonValueKind.Array)
-                return list;
-            foreach (var q in arr.EnumerateArray())
-                if (q.ValueKind == JsonValueKind.String && q.GetString() is { } s && !string.IsNullOrWhiteSpace(s))
-                {
-                    list.Add(s.Trim());
-                    if (list.Count >= MaxQueries) break;
-                }
-        }
+        using var doc = LlmJson.ParseObject(answer);
+        if (doc is null || !doc.RootElement.TryGetProperty("queries", out var arr) || arr.ValueKind != JsonValueKind.Array)
+            return list;
+        foreach (var q in arr.EnumerateArray())
+            if (q.ValueKind == JsonValueKind.String && q.GetString() is { } s && !string.IsNullOrWhiteSpace(s))
+            {
+                list.Add(s.Trim());
+                if (list.Count >= MaxQueries) break;
+            }
         return list;
     }
 
@@ -278,80 +268,41 @@ public class CounterpartyDiscoveryService : ICounterpartyDiscovery
     // existing companies so the page can offer "link" instead of "create + link".
     private IReadOnlyList<CounterpartySuggestion> Parse(string answer, bool supplier, IReadOnlyList<string> citations)
     {
-        var start = answer.IndexOf('{');
-        var end = answer.LastIndexOf('}');
-        if (start < 0 || end <= start) return [];
-
-        JsonDocument doc;
-        var json = answer[start..(end + 1)];
-        try { doc = JsonDocument.Parse(json); }
-        catch (JsonException)
-        {
-            // Truncated response (finish_reason=length): the array was cut mid-stream so the outer
-            // structure never closed. Salvage every complete object by closing the array ourselves —
-            // `json` already ends at the last complete `}` (LastIndexOf above), so append `]}`.
-            try { doc = JsonDocument.Parse(json + "]}"); }
-            catch (JsonException) { return []; }
-        }
+        // Salvage a truncated response (finish_reason=length): the array was cut mid-stream so the
+        // outer structure never closed — closing it with `]}` recovers every complete object.
+        using var doc = LlmJson.ParseObject(answer, "]}");
+        if (doc is null) return [];
 
         var side = supplier ? "SUPPLIER" : "CUSTOMER";
         var list = new List<CounterpartySuggestion>();
-        using (doc)
+        if (!doc.RootElement.TryGetProperty("counterparties", out var arr) ||
+            arr.ValueKind != JsonValueKind.Array) return list;
+
+        foreach (var el in arr.EnumerateArray())
         {
-            if (!doc.RootElement.TryGetProperty("counterparties", out var arr) ||
-                arr.ValueKind != JsonValueKind.Array) return list;
+            var name = LlmJson.Str(el, "name");
+            if (string.IsNullOrWhiteSpace(name)) continue;
 
-            foreach (var el in arr.EnumerateArray())
-            {
-                var name = Str(el, "name");
-                if (string.IsNullOrWhiteSpace(name)) continue;
+            var classification = LlmJson.Str(el, "classification") ?? (supplier ? "COGS" : "CUSTOMER");
 
-                var classification = Str(el, "classification") ?? (supplier ? "COGS" : "CUSTOMER");
+            // Fuzzy match so "Microsoft Corporation" maps to an existing "Microsoft".
+            var existing = _companies.MatchByName(name);
 
-                // Fuzzy match so "Microsoft Corporation" maps to an existing "Microsoft".
-                var existing = _companies.MatchByName(name);
-
-                list.Add(new CounterpartySuggestion(
-                    Name: name!,
-                    Side: side,
-                    Segment: Str(el, "segment") ?? "",
-                    Classification: classification,
-                    Note: Str(el, "note"),
-                    SourceUrl: ResolveSource(el, citations),
-                    CountryCode: Str(el, "country_code"),
-                    Sector: Str(el, "sector"),
-                    Ticker: Str(el, "ticker"),
-                    ExistingCompanyId: existing?.Id,
-                    // Present only in valued mode; absent/null in plain mode.
-                    ContractValue: Num(el, "contract_value")));
-            }
+            list.Add(new CounterpartySuggestion(
+                Name: name!,
+                Side: side,
+                Segment: LlmJson.Str(el, "segment") ?? "",
+                Classification: classification,
+                Note: LlmJson.Str(el, "note"),
+                SourceUrl: ResolveSource(el, citations),
+                CountryCode: LlmJson.Str(el, "country_code"),
+                Sector: LlmJson.Str(el, "sector"),
+                Ticker: LlmJson.Str(el, "ticker"),
+                ExistingCompanyId: existing?.Id,
+                // Present only in valued mode; absent/null in plain mode.
+                ContractValue: LlmJson.Num(el, "contract_value")));
         }
         return list;
-    }
-
-    private static string? Str(JsonElement el, string prop)
-    {
-        if (el.ValueKind != JsonValueKind.Object || !el.TryGetProperty(prop, out var v)) return null;
-        if (v.ValueKind != JsonValueKind.String) return null;
-        var s = v.GetString();
-        // sonar sometimes emits the literal string "null" instead of JSON null — treat it as absent so
-        // we don't render a link to "null" or try to resolve a "null" country/sector.
-        return string.IsNullOrWhiteSpace(s) || string.Equals(s, "null", StringComparison.OrdinalIgnoreCase) ? null : s;
-    }
-
-    // Read a numeric field (contract_value). sonar may emit it as a JSON number or as a numeric string;
-    // despite the prompt it sometimes slips in "$" or commas, so strip those before parsing. Anything
-    // non-numeric (or the literal "null") => null.
-    private static double? Num(JsonElement el, string prop)
-    {
-        if (el.ValueKind != JsonValueKind.Object || !el.TryGetProperty(prop, out var v)) return null;
-        if (v.ValueKind == JsonValueKind.Number && v.TryGetDouble(out var d)) return d;
-        if (v.ValueKind != JsonValueKind.String) return null;
-        var s = v.GetString();
-        if (string.IsNullOrWhiteSpace(s)) return null;
-        s = s.Replace("$", "").Replace(",", "").Trim();
-        return double.TryParse(s, System.Globalization.NumberStyles.Any,
-            System.Globalization.CultureInfo.InvariantCulture, out var parsed) ? parsed : null;
     }
 
     // Resolve a counterparty's citation to a real URL. Models cite differently: base sonar puts an
@@ -366,7 +317,7 @@ public class CounterpartyDiscoveryService : ICounterpartyDiscovery
             return fromField;
 
         // Fallback: the first [n] citation marker the model dropped inside the note text.
-        var note = Str(el, "note");
+        var note = LlmJson.Str(el, "note");
         if (note != null && Regex.Match(note, @"\[(\d+)\]") is { Success: true } m
             && int.TryParse(m.Groups[1].Value, out var marker))
             return Cite(marker, citations);

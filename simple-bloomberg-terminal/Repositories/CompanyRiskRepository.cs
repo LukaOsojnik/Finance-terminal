@@ -1,73 +1,24 @@
 using Microsoft.EntityFrameworkCore;
 using simple_bloomberg_terminal.Data;
 using simple_bloomberg_terminal.Models.Entities;
-using simple_bloomberg_terminal.Models.Enums;
 
 namespace simple_bloomberg_terminal.Repositories;
 
-public class CompanyRiskRepository(AppDbContext db) : ICompanyRiskRepository
+public class CompanyRiskRepository(AppDbContext db)
+    : ContributionRepositoryBase<CompanyRisk>(db), ICompanyRiskRepository
 {
-    public IEnumerable<CompanyRisk> GetAll() =>
-        db.CompanyRisks
-            .Include(r => r.Company)
-            .Where(r => r.DeletedAt == null && r.Status == ContributionStatus.Approved)
-            .OrderBy(r => r.Company!.Name).ThenBy(r => r.Name)
-            .ToList();
+    protected override DbSet<CompanyRisk> Set => Db.CompanyRisks;
 
-    // Manager review feed: every pending contribution across all companies (light — Company only).
-    public IEnumerable<CompanyRisk> GetAllPending() =>
-        db.CompanyRisks
-            .Include(r => r.Company)
-            .Where(r => r.DeletedAt == null && r.Status == ContributionStatus.Pending)
-            .OrderBy(r => r.Company!.Name).ThenBy(r => r.Name)
-            .ToList();
+    protected override IQueryable<CompanyRisk> ListIncludes(IQueryable<CompanyRisk> q) =>
+        q.Include(r => r.Company);
 
-    // Pending contributions for one company's review page (ContributedBy for display).
-    public IEnumerable<CompanyRisk> GetPendingByCompany(long companyId) =>
-        db.CompanyRisks
-            .Include(r => r.ContributedBy)
-            .Where(r => r.CompanyId == companyId && r.DeletedAt == null && r.Status == ContributionStatus.Pending)
-            .OrderBy(r => r.Name)
-            .ToList();
+    protected override IQueryable<CompanyRisk> DetailIncludes(IQueryable<CompanyRisk> q) =>
+        q.Include(r => r.Company);
 
-    public CompanyRisk? GetById(long id) =>
-        db.CompanyRisks
-            .Include(r => r.Company)
-            .FirstOrDefault(r => r.Id == id && r.DeletedAt == null);
+    protected override IQueryable<CompanyRisk> PendingFeedIncludes(IQueryable<CompanyRisk> q) =>
+        q.Include(r => r.Company);
 
-    public IEnumerable<CompanyRisk> Search(string? term)
-    {
-        var q = db.CompanyRisks
-            .Include(r => r.Company)
-            .Where(r => r.DeletedAt == null && r.Status == ContributionStatus.Approved);
-        if (!string.IsNullOrWhiteSpace(term))
-        {
-            var t = term.Trim();
-            q = q.Where(r =>
-                EF.Functions.Like(r.Name, $"%{t}%") ||
-                (r.Company != null && EF.Functions.Like(r.Company.Name, $"%{t}%")));
-        }
-        return q.OrderBy(r => r.Company!.Name).ThenBy(r => r.Name).ToList();
-    }
-
-    public void Add(CompanyRisk entity) { db.CompanyRisks.Add(entity); db.SaveChanges(); }
-    public void Update(CompanyRisk entity) { db.CompanyRisks.Update(entity); db.SaveChanges(); }
-
-    public void SoftDelete(long id)
-    {
-        var entity = db.CompanyRisks.FirstOrDefault(r => r.Id == id);
-        if (entity == null || entity.DeletedAt != null) return;
-        entity.DeletedAt = DateTime.UtcNow;
-        db.SaveChanges();
-    }
-
-    public void ClearByCompanyAndDataSource(long companyId, DataSource source)
-    {
-        var rows = db.CompanyRisks
-            .Where(r => r.CompanyId == companyId && r.DataSource == source && r.DeletedAt == null)
-            .ToList();
-        if (rows.Count == 0) return;
-        foreach (var r in rows) r.DeletedAt = DateTime.UtcNow;
-        db.SaveChanges();
-    }
+    // Company's review page shows who proposed each pending row.
+    protected override IQueryable<CompanyRisk> PendingByCompanyIncludes(IQueryable<CompanyRisk> q) =>
+        q.Include(r => r.ContributedBy);
 }

@@ -4,7 +4,7 @@ using simple_bloomberg_terminal.Models.Enums;
 
 namespace simple_bloomberg_terminal.Models.Entities;
 
-public class CostSource
+public class CostSource : IContribution
 {
     public CostSource(CostBase costBase, string name, long companyId)
     {

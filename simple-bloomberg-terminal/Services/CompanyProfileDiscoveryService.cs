@@ -93,55 +93,26 @@ public class CompanyProfileDiscoveryService : ICompanyProfileDiscovery
         return Parse(answer, sources);
     }
 
-    // Slice the JSON object out of sonar's answer (tolerant of fences/prose), same trick as
-    // CounterpartyDiscoveryService.Parse. Returns null if nothing parseable / no name.
+    // Slice the JSON object out of sonar's answer (tolerant of fences/prose). Returns null if
+    // nothing parseable / no name.
     private static CompanyProfileResult? Parse(string answer, IReadOnlyList<string> sources)
     {
-        var start = answer.IndexOf('{');
-        var end = answer.LastIndexOf('}');
-        if (start < 0 || end <= start) return null;
+        using var doc = LlmJson.ParseObject(answer);
+        if (doc is null) return null;
 
-        JsonDocument doc;
-        try { doc = JsonDocument.Parse(answer[start..(end + 1)]); }
-        catch (JsonException) { return null; }
-
-        using (doc)
-        {
-            var el = doc.RootElement;
-            var name = Str(el, "name");
-            if (string.IsNullOrWhiteSpace(name)) return null;
-            return new CompanyProfileResult(
-                Name: name,
-                Sector: Str(el, "sector"),
-                Industry: Str(el, "industry"),
-                CountryCode: Str(el, "country_code"),
-                Description: Str(el, "description"),
-                RevenueUsd: Num(el, "revenue_usd"),
-                GrossMargin: Num(el, "gross_margin"),
-                RevenueYear: Num(el, "revenue_year") is { } y && y is >= 1900 and <= 2100 ? (int)y : null,
-                ValuationUsd: Num(el, "valuation_usd"),
-                Sources: sources);
-        }
-    }
-
-    private static string? Str(JsonElement el, string prop)
-    {
-        if (el.ValueKind != JsonValueKind.Object || !el.TryGetProperty(prop, out var v) || v.ValueKind != JsonValueKind.String)
-            return null;
-        var s = v.GetString();
-        return string.IsNullOrWhiteSpace(s) || string.Equals(s, "null", StringComparison.OrdinalIgnoreCase) ? null : s;
-    }
-
-    // sonar may emit numbers as JSON numbers or numeric strings (sometimes with $/commas); strip and parse.
-    private static double? Num(JsonElement el, string prop)
-    {
-        if (el.ValueKind != JsonValueKind.Object || !el.TryGetProperty(prop, out var v)) return null;
-        if (v.ValueKind == JsonValueKind.Number && v.TryGetDouble(out var d)) return d;
-        if (v.ValueKind != JsonValueKind.String) return null;
-        var s = v.GetString();
-        if (string.IsNullOrWhiteSpace(s)) return null;
-        s = s.Replace("$", "").Replace(",", "").Trim();
-        return double.TryParse(s, System.Globalization.NumberStyles.Any,
-            System.Globalization.CultureInfo.InvariantCulture, out var parsed) ? parsed : null;
+        var el = doc.RootElement;
+        var name = LlmJson.Str(el, "name");
+        if (string.IsNullOrWhiteSpace(name)) return null;
+        return new CompanyProfileResult(
+            Name: name,
+            Sector: LlmJson.Str(el, "sector"),
+            Industry: LlmJson.Str(el, "industry"),
+            CountryCode: LlmJson.Str(el, "country_code"),
+            Description: LlmJson.Str(el, "description"),
+            RevenueUsd: LlmJson.Num(el, "revenue_usd"),
+            GrossMargin: LlmJson.Num(el, "gross_margin"),
+            RevenueYear: LlmJson.Num(el, "revenue_year") is { } y && y is >= 1900 and <= 2100 ? (int)y : null,
+            ValuationUsd: LlmJson.Num(el, "valuation_usd"),
+            Sources: sources);
     }
 }

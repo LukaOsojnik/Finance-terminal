@@ -1,4 +1,3 @@
-using System.Globalization;
 using System.Text;
 using System.Text.Json;
 using Microsoft.Extensions.Caching.Memory;
@@ -204,26 +203,18 @@ public class FilingExtractionService : IFilingExtractionService
     // Pull the chosen heading ids out of the triage JSON, keeping only valid, distinct, in-range ids.
     private static List<int> ParseIds(string answer, int count)
     {
-        var start = answer.IndexOf('{');
-        var end = answer.LastIndexOf('}');
-        if (start < 0 || end <= start) return [];
-
-        try
+        using var doc = LlmJson.ParseObject(answer);
+        if (doc is null || !doc.RootElement.TryGetProperty("ids", out var ids) || ids.ValueKind != JsonValueKind.Array)
+            return [];
+        var seen = new HashSet<int>();
+        foreach (var el in ids.EnumerateArray())
         {
-            using var doc = JsonDocument.Parse(answer[start..(end + 1)]);
-            if (!doc.RootElement.TryGetProperty("ids", out var ids) || ids.ValueKind != JsonValueKind.Array)
-                return [];
-            var seen = new HashSet<int>();
-            foreach (var el in ids.EnumerateArray())
-            {
-                int? id = el.ValueKind == JsonValueKind.Number && el.TryGetInt32(out var n) ? n
-                        : el.ValueKind == JsonValueKind.String && int.TryParse(el.GetString(), out var s) ? s
-                        : null;
-                if (id is { } v && v >= 0 && v < count) seen.Add(v);
-            }
-            return seen.ToList();
+            int? id = el.ValueKind == JsonValueKind.Number && el.TryGetInt32(out var n) ? n
+                    : el.ValueKind == JsonValueKind.String && int.TryParse(el.GetString(), out var s) ? s
+                    : null;
+            if (id is { } v && v >= 0 && v < count) seen.Add(v);
         }
-        catch (JsonException) { return []; }
+        return seen.ToList();
     }
 
     private async Task<List<FilingHeading>> GetOrParseHeadingsAsync(
@@ -332,39 +323,32 @@ public class FilingExtractionService : IFilingExtractionService
     // Pull suggestions out of the model's JSON, tolerant of code fences and string-or-number values.
     private static IEnumerable<ExtractionSuggestion> Parse(string answer, string section)
     {
-        var start = answer.IndexOf('{');
-        var end = answer.LastIndexOf('}');
-        if (start < 0 || end <= start) yield break;
+        using var doc = LlmJson.ParseObject(answer);
+        if (doc is null ||
+            !doc.RootElement.TryGetProperty("sources", out var sources) ||
+            sources.ValueKind != JsonValueKind.Array) yield break;
 
-        JsonDocument doc;
-        try { doc = JsonDocument.Parse(answer[start..(end + 1)]); }
-        catch (JsonException) { yield break; }
-
-        using (doc)
+        foreach (var el in sources.EnumerateArray())
         {
-            if (!doc.RootElement.TryGetProperty("sources", out var sources) ||
-                sources.ValueKind != JsonValueKind.Array) yield break;
-
-            foreach (var el in sources.EnumerateArray())
-            {
-                var name = Str(el, "name");
-                if (string.IsNullOrWhiteSpace(name)) continue;
-                var proof = el.TryGetProperty("proof", out var p) ? p : default;
-                yield return new ExtractionSuggestion(
-                    Name: name!,
-                    Classification: Str(el, "classification"),
-                    Value: Num(el, "value"),
-                    Percentage: Num(el, "percentage"),
-                    RelatedCompany: Str(el, "related_company"),
-                    Section: section,
-                    Proof: new ExtractionProof(
-                        Str(proof, "name"), Str(proof, "value"), Str(proof, "percentage"),
-                        Str(proof, "classification"), Str(proof, "related_company"), Str(proof, "note")),
-                    Note: Str(el, "note"));
-            }
+            var name = Str(el, "name");
+            if (string.IsNullOrWhiteSpace(name)) continue;
+            var proof = el.TryGetProperty("proof", out var p) ? p : default;
+            yield return new ExtractionSuggestion(
+                Name: name!,
+                Classification: Str(el, "classification"),
+                Value: LlmJson.Num(el, "value"),
+                Percentage: LlmJson.Num(el, "percentage"),
+                RelatedCompany: Str(el, "related_company"),
+                Section: section,
+                Proof: new ExtractionProof(
+                    Str(proof, "name"), Str(proof, "value"), Str(proof, "percentage"),
+                    Str(proof, "classification"), Str(proof, "related_company"), Str(proof, "note")),
+                Note: Str(el, "note"));
         }
     }
 
+    // Local to this service: unlike LlmJson.Str, it surfaces JSON numbers as their string form (proof
+    // substrings and value cells can arrive as numbers) and keeps a literal "null" verbatim.
     private static string? Str(JsonElement el, string prop)
     {
         if (el.ValueKind != JsonValueKind.Object || !el.TryGetProperty(prop, out var v)) return null;
@@ -374,15 +358,5 @@ public class FilingExtractionService : IFilingExtractionService
             JsonValueKind.Number => v.ToString(),
             _ => null
         };
-    }
-
-    private static double? Num(JsonElement el, string prop)
-    {
-        if (el.ValueKind != JsonValueKind.Object || !el.TryGetProperty(prop, out var v)) return null;
-        if (v.ValueKind == JsonValueKind.Number && v.TryGetDouble(out var n)) return n;
-        if (v.ValueKind == JsonValueKind.String &&
-            double.TryParse(v.GetString()?.Replace(",", "").Replace("$", "").Replace("%", ""),
-                NumberStyles.Any, CultureInfo.InvariantCulture, out var s)) return s;
-        return null;
     }
 }

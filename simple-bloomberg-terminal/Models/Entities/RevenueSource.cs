@@ -4,7 +4,7 @@ using simple_bloomberg_terminal.Models.Enums;
 
 namespace simple_bloomberg_terminal.Models.Entities;
 
-public class RevenueSource
+public class RevenueSource : IContribution
 {
     public RevenueSource(SourceType sourceType, string name, long companyId)
     {

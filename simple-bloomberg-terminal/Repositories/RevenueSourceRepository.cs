@@ -1,78 +1,24 @@
 using Microsoft.EntityFrameworkCore;
 using simple_bloomberg_terminal.Data;
 using simple_bloomberg_terminal.Models.Entities;
-using simple_bloomberg_terminal.Models.Enums;
 
 namespace simple_bloomberg_terminal.Repositories;
 
-public class RevenueSourceRepository(AppDbContext db) : IRevenueSourceRepository
+public class RevenueSourceRepository(AppDbContext db)
+    : ContributionRepositoryBase<RevenueSource>(db), IRevenueSourceRepository
 {
-    public IEnumerable<RevenueSource> GetAll() =>
-        db.RevenueSources
-            .Include(r => r.Company)
-            .Include(r => r.RelatedCompany)
-            .Where(r => r.DeletedAt == null && r.Status == ContributionStatus.Approved)
-            .OrderBy(r => r.Company!.Name).ThenBy(r => r.Name)
-            .ToList();
+    protected override DbSet<RevenueSource> Set => Db.RevenueSources;
 
-    // Manager review feed: every pending contribution across all companies (light — Company only,
-    // for grouping + counts on the review index).
-    public IEnumerable<RevenueSource> GetAllPending() =>
-        db.RevenueSources
-            .Include(r => r.Company)
-            .Where(r => r.DeletedAt == null && r.Status == ContributionStatus.Pending)
-            .OrderBy(r => r.Company!.Name).ThenBy(r => r.Name)
-            .ToList();
+    protected override IQueryable<RevenueSource> ListIncludes(IQueryable<RevenueSource> q) =>
+        q.Include(r => r.Company).Include(r => r.RelatedCompany);
 
-    // Pending contributions for one company's review page (RelatedCompany + ContributedBy for display).
-    public IEnumerable<RevenueSource> GetPendingByCompany(long companyId) =>
-        db.RevenueSources
-            .Include(r => r.RelatedCompany)
-            .Include(r => r.ContributedBy)
-            .Where(r => r.CompanyId == companyId && r.DeletedAt == null && r.Status == ContributionStatus.Pending)
-            .OrderBy(r => r.Name)
-            .ToList();
+    protected override IQueryable<RevenueSource> DetailIncludes(IQueryable<RevenueSource> q) =>
+        q.Include(r => r.Company).Include(r => r.RelatedCompany);
 
-    public RevenueSource? GetById(long id) =>
-        db.RevenueSources
-            .Include(r => r.Company)
-            .Include(r => r.RelatedCompany)
-            .FirstOrDefault(r => r.Id == id && r.DeletedAt == null);
+    protected override IQueryable<RevenueSource> PendingFeedIncludes(IQueryable<RevenueSource> q) =>
+        q.Include(r => r.Company);
 
-    public IEnumerable<RevenueSource> Search(string? term)
-    {
-        var q = db.RevenueSources
-            .Include(r => r.Company)
-            .Include(r => r.RelatedCompany)
-            .Where(r => r.DeletedAt == null && r.Status == ContributionStatus.Approved);
-        if (!string.IsNullOrWhiteSpace(term))
-        {
-            var t = term.Trim();
-            q = q.Where(r =>
-                EF.Functions.Like(r.Name, $"%{t}%") ||
-                (r.Company != null && EF.Functions.Like(r.Company.Name, $"%{t}%")));
-        }
-        return q.OrderBy(r => r.Company!.Name).ThenBy(r => r.Name).ToList();
-    }
-
-    public void Add(RevenueSource entity) { db.RevenueSources.Add(entity); db.SaveChanges(); }
-    public void Update(RevenueSource entity) { db.RevenueSources.Update(entity); db.SaveChanges(); }
-
-    public void SoftDelete(long id)
-    {
-        var entity = db.RevenueSources.FirstOrDefault(r => r.Id == id);
-        if (entity == null || entity.DeletedAt != null) return;
-        entity.DeletedAt = DateTime.UtcNow;
-        db.SaveChanges();
-    }
-
-    public void ClearByCompanyAndDataSource(long companyId, DataSource source)
-    {
-        var rows = db.RevenueSources
-            .Where(r => r.CompanyId == companyId && r.DataSource == source && r.DeletedAt == null)
-            .ToList();
-        if (rows.Count == 0) return;
-        foreach (var r in rows) r.DeletedAt = DateTime.UtcNow;
-        db.SaveChanges();
-    }
+    // Company's review page shows the counterparty + who proposed each pending row.
+    protected override IQueryable<RevenueSource> PendingByCompanyIncludes(IQueryable<RevenueSource> q) =>
+        q.Include(r => r.RelatedCompany).Include(r => r.ContributedBy);
 }
