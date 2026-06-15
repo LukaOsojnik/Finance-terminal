@@ -18,7 +18,17 @@ public interface IUserApiKeyProvider
 
     // Override the keys for this scope (used by detached jobs that have no HttpContext).
     void Set(UserApiKeys keys);
+
+    // Persist the current user's keys from a profile-page submission (encrypts new values, honours
+    // per-key clear/keep). Owns the encryption so the controller never touches the protector.
+    Task SaveAsync(ApiKeyEdit edit, CancellationToken ct = default);
 }
+
+/// <summary>One profile-page submission: per key, a new value (blank = keep existing) or a clear flag.</summary>
+public record ApiKeyEdit(
+    string? DeepSeek, bool ClearDeepSeek,
+    string? Fmp, bool ClearFmp,
+    string? Perplexity, bool ClearPerplexity);
 
 public static class UserApiKeyProviderExtensions
 {

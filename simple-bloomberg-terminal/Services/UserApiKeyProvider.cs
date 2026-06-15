@@ -1,8 +1,8 @@
 using System.Security.Claims;
 using System.Security.Cryptography;
 using Microsoft.AspNetCore.DataProtection;
-using Microsoft.EntityFrameworkCore;
-using simple_bloomberg_terminal.Data;
+using simple_bloomberg_terminal.Models.Entities;
+using simple_bloomberg_terminal.Repositories;
 
 namespace simple_bloomberg_terminal.Services;
 
@@ -14,14 +14,14 @@ public class UserApiKeyProvider : IUserApiKeyProvider
     public const string Purpose = "UserApiKeys.v1";
 
     private readonly IHttpContextAccessor _http;
-    private readonly AppDbContext _db;
+    private readonly IUserApiKeyRepository _repo;
     private readonly IDataProtector _protector;
     private UserApiKeys? _cached;
 
-    public UserApiKeyProvider(IHttpContextAccessor http, AppDbContext db, IDataProtectionProvider dp)
+    public UserApiKeyProvider(IHttpContextAccessor http, IUserApiKeyRepository repo, IDataProtectionProvider dp)
     {
         _http = http;
-        _db = db;
+        _repo = repo;
         _protector = dp.CreateProtector(Purpose);
     }
 
@@ -31,16 +31,41 @@ public class UserApiKeyProvider : IUserApiKeyProvider
     {
         if (_cached is not null) return _cached;
 
-        var userId = _http.HttpContext?.User.FindFirstValue(ClaimTypes.NameIdentifier);
+        var userId = CurrentUserId();
         if (string.IsNullOrEmpty(userId)) return _cached = UserApiKeys.Empty;
 
-        var row = await _db.UserApiKeys.AsNoTracking().FirstOrDefaultAsync(k => k.UserId == userId, ct);
+        var row = await _repo.GetAsync(userId, ct);
         if (row is null) return _cached = UserApiKeys.Empty;
 
         return _cached = new UserApiKeys(
             Decrypt(row.DeepSeekKey),
             Decrypt(row.FmpKey),
             Decrypt(row.PerplexityKey));
+    }
+
+    public async Task SaveAsync(ApiKeyEdit edit, CancellationToken ct = default)
+    {
+        var userId = CurrentUserId();
+        if (string.IsNullOrEmpty(userId)) return;
+
+        var row = await _repo.GetAsync(userId, ct) ?? new UserApiKey { UserId = userId };
+
+        row.DeepSeekKey = Apply(row.DeepSeekKey, edit.DeepSeek, edit.ClearDeepSeek);
+        row.FmpKey = Apply(row.FmpKey, edit.Fmp, edit.ClearFmp);
+        row.PerplexityKey = Apply(row.PerplexityKey, edit.Perplexity, edit.ClearPerplexity);
+
+        await _repo.UpsertAsync(row, ct);
+        _cached = null; // next GetAsync re-reads the saved values
+    }
+
+    private string? CurrentUserId() => _http.HttpContext?.User.FindFirstValue(ClaimTypes.NameIdentifier);
+
+    // Decide a column's new ciphertext: clear -> null; new value -> encrypt; blank -> keep existing.
+    private string? Apply(string? current, string? input, bool clear)
+    {
+        if (clear) return null;
+        if (string.IsNullOrWhiteSpace(input)) return current;
+        return _protector.Protect(input.Trim());
     }
 
     // Ciphertext -> plaintext. A protector/key-ring change (or tampered value) throws

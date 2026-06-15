@@ -98,7 +98,11 @@ builder.Services.AddRazorPages();
 // antiforgery) and makes the key-ring explicit.
 builder.Services.AddDataProtection();
 builder.Services.AddHttpContextAccessor();
+builder.Services.AddScoped<IUserApiKeyRepository, UserApiKeyRepository>();
 builder.Services.AddScoped<IUserApiKeyProvider, UserApiKeyProvider>();
+// Stores/validates the signed-in user's profile picture on disk (wwwroot/uploads/profiles). Keeps all
+// File/Directory access out of AccountController; limits/types come from the "ProfilePicture" config.
+builder.Services.AddScoped<ProfilePictureService>();
 
 // Scoped = one instance per HTTP request (was Singleton — Singleton cannot hold a Scoped DbContext).
 // Spring equivalent: @Transactional method scope vs application-scoped bean.
