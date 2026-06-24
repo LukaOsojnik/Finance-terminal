@@ -54,7 +54,7 @@ public class StockService(
 
     private void MapRevenue(EdgarFacts? facts, long companyId)
     {
-        var rev = LatestAnnual(facts, "Revenues", "RevenueFromContractWithCustomerExcludingAssessedTax");
+        var rev = XbrlFacts.LatestAnnual(facts, "Revenues", "RevenueFromContractWithCustomerExcludingAssessedTax");
         if (rev is null) return;
         revenue.Add(new RevenueSource(SourceType.SEGMENT, $"Revenue {PeriodLabel(rev)}", companyId)
             { Value = rev.Val, DataSource = DataSource.EDGAR });
@@ -62,32 +62,15 @@ public class StockService(
 
     private void MapCosts(EdgarFacts? facts, long companyId)
     {
-        var cogs = LatestAnnual(facts, "CostOfRevenue", "CostOfGoodsAndServicesSold");
+        var cogs = XbrlFacts.LatestAnnual(facts, "CostOfRevenue", "CostOfGoodsAndServicesSold");
         if (cogs is not null)
             cost.Add(new CostSource(CostBase.COGS, $"COGS {PeriodLabel(cogs)}", companyId)
                 { Value = cogs.Val, DataSource = DataSource.EDGAR });
 
-        var opex = LatestAnnual(facts, "OperatingExpenses");
+        var opex = XbrlFacts.LatestAnnual(facts, "OperatingExpenses");
         if (opex is not null)
             cost.Add(new CostSource(CostBase.OPEX, $"OPEX {PeriodLabel(opex)}", companyId)
                 { Value = opex.Val, DataSource = DataSource.EDGAR });
-    }
-
-    // Most recent full-year (10-K) USD data point for the first concept name that has one.
-    private static EdgarFact? LatestAnnual(EdgarFacts? facts, params string[] names)
-    {
-        if (facts?.UsGaap is null) return null;
-        foreach (var name in names)
-        {
-            if (!facts.UsGaap.TryGetValue(name, out var concept)) continue;
-            if (concept.Units is null || !concept.Units.TryGetValue("USD", out var points)) continue;
-            var p = points
-                .Where(x => x.Form == "10-K" && x.Val.HasValue && x.End != null)
-                .OrderByDescending(x => x.End)
-                .FirstOrDefault();
-            if (p is not null) return p;
-        }
-        return null;
     }
 
     private static string PeriodLabel(EdgarFact f) =>

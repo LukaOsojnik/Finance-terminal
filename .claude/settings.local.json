@@ -4,7 +4,19 @@
       "Bash(ls Helpers)",
       "Bash(ls Extensions)",
       "Skill(claude-api)",
-      "WebSearch"
+      "WebSearch",
+      "PowerShell(dotnet build *)",
+      "Bash(curl -s -H \"User-Agent: research lukaosojnikinfo@gmail.com\" \"https://data.sec.gov/api/xbrl/companyfacts/CIK0000320193.json\" -o /tmp/aapl.json)",
+      "Read(//tmp/**)",
+      "Bash(python -c \"import json;d=json.load\\(open\\('/tmp/aapl.json'\\)\\);print\\('taxonomies:',list\\(d['facts'].keys\\(\\)\\)\\);print\\('us-gaap concept count:',len\\(d['facts'].get\\('us-gaap',{}\\)\\)\\)\")",
+      "WebFetch(domain:site.financialmodelingprep.com)",
+      "PowerShell(dotnet build simple-bloomberg-terminal/simple-bloomberg-terminal.csproj -nologo -clp:ErrorsOnly /p:UseAppHost=false -o \"$env:TEMP\\\\sbt-build-check\" 2>&1 | Select-String -Pattern \"error|Build succeeded\" | Select-Object -First 5)",
+      "PowerShell(& \"$env:USERPROFILE\\\\.dotnet\\\\tools\\\\dotnet-ef.exe\" migrations add AddStockIndexSectorRegionSize --project simple-bloomberg-terminal\\\\simple-bloomberg-terminal.csproj --startup-project simple-bloomberg-terminal\\\\simple-bloomberg-terminal.csproj)",
+      "Read(//c/tmp/**)",
+      "Bash(curl -s -L -A \"Mozilla/5.0\" \"https://www.ssga.com/library-content/products/fund-data/etfs/us/holdings-daily-us-en-spy.xlsx\" -o spy.xlsx)",
+      "PowerShell(& \"$env:USERPROFILE\\\\.dotnet\\\\tools\\\\dotnet-ef.exe\" migrations add AddIndexImportJobs --project simple-bloomberg-terminal/simple-bloomberg-terminal.csproj --startup-project simple-bloomberg-terminal/simple-bloomberg-terminal.csproj 2>&1 | Select-Object -Last 30)",
+      "PowerShell(& \"$env:USERPROFILE\\\\.dotnet\\\\tools\\\\dotnet-ef.exe\" database update --project simple-bloomberg-terminal/simple-bloomberg-terminal.csproj --startup-project simple-bloomberg-terminal/simple-bloomberg-terminal.csproj 2>&1 | Select-Object -Last 25)",
+      "PowerShell(dotnet test *)"
     ]
   },
   "outputStyle": "Learning"

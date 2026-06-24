@@ -41,6 +41,10 @@
         </div>
         <div class="detail-hero-sub" id="cvHeroSub">
             INDUSTRY: <span class="detail-hero-accent">@Model.IndustryLabel</span>
+            @if (Model.SubIndustryLabel != "—")
+            {
+                <text>&middot; SUB: <span class="detail-hero-accent">@Model.SubIndustryLabel</span></text>
+            }
         </div>
     </div>
 

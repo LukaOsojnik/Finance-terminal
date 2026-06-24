@@ -24,8 +24,11 @@ public interface IContributionWriter
 {
     // Create or update the source row for the active node, returning its id. Null when the
     // classification can't be parsed, or an existing-row id pointed at no row.
+    // <paramref name="reference"/> is the per-record source passage stored on the saved row
+    // (CostSource/RevenueSource/CompanyRisk.Reference) — the verbatim filing excerpt the row came from.
     long? UpsertRow(ExtractionNode node, long companyId, long? rowId, string classification,
-        string name, double? value, double? percentage, string? note, long? relatedCompanyId, Contributor by);
+        string name, double? value, double? percentage, string? note, long? relatedCompanyId, Contributor by,
+        string? reference = null);
 
     // One current proof per (row, field) — upsert, not blind insert. A new proof clears any prior
     // phase-2 verdict (stale-pass guard).
@@ -46,15 +49,16 @@ public class ContributionWriter(
     : IContributionWriter
 {
     public long? UpsertRow(ExtractionNode node, long companyId, long? rowId, string classification,
-        string name, double? value, double? percentage, string? note, long? relatedCompanyId, Contributor by) => node switch
+        string name, double? value, double? percentage, string? note, long? relatedCompanyId, Contributor by,
+        string? reference = null) => node switch
     {
-        ExtractionNode.COST => UpsertCost(companyId, rowId, classification, name, value, percentage, relatedCompanyId, by),
-        ExtractionNode.RISK => UpsertRisk(companyId, rowId, classification, name, note, by),
-        _                   => UpsertRevenue(companyId, rowId, classification, name, value, percentage, relatedCompanyId, by),
+        ExtractionNode.COST => UpsertCost(companyId, rowId, classification, name, value, percentage, relatedCompanyId, reference, by),
+        ExtractionNode.RISK => UpsertRisk(companyId, rowId, classification, name, note, reference, by),
+        _                   => UpsertRevenue(companyId, rowId, classification, name, value, percentage, relatedCompanyId, reference, by),
     };
 
     private long? UpsertRevenue(long companyId, long? rowId, string classification, string name,
-        double? value, double? percentage, long? relatedCompanyId, Contributor by)
+        double? value, double? percentage, long? relatedCompanyId, string? reference, Contributor by)
     {
         if (!Enum.TryParse<SourceType>(classification, out var sourceType)) return null;
         if (rowId is { } id)
@@ -68,6 +72,7 @@ public class ContributionWriter(
                 var proposal = new RevenueSource(sourceType, name, companyId)
                 {
                     Value = value, Percentage = percentage, RelatedCompanyId = relatedCompanyId,
+                    Reference = reference,
                     DataSource = DataSource.MANUAL,
                     Status = ContributionStatus.Pending,
                     ContributedByUserId = by.UserId,
@@ -81,12 +86,14 @@ public class ContributionWriter(
             existing.Value = value;
             existing.Percentage = percentage;
             existing.RelatedCompanyId = relatedCompanyId;
+            if (reference is not null) existing.Reference = reference;   // keep an existing citation when an edit omits one
             revenue.Update(existing);
             return existing.Id;
         }
         var row = new RevenueSource(sourceType, name, companyId)
         {
             Value = value, Percentage = percentage, RelatedCompanyId = relatedCompanyId,
+            Reference = reference,
             DataSource = DataSource.MANUAL,
             Status = by.NewStatus,
             ContributedByUserId = by.StampUserId
@@ -96,7 +103,7 @@ public class ContributionWriter(
     }
 
     private long? UpsertCost(long companyId, long? rowId, string classification, string name,
-        double? value, double? percentage, long? relatedCompanyId, Contributor by)
+        double? value, double? percentage, long? relatedCompanyId, string? reference, Contributor by)
     {
         if (!Enum.TryParse<CostBase>(classification, out var costBase)) return null;
         if (rowId is { } id)
@@ -109,6 +116,7 @@ public class ContributionWriter(
                 var proposal = new CostSource(costBase, name, companyId)
                 {
                     Value = value, Percentage = percentage, RelatedCompanyId = relatedCompanyId,
+                    Reference = reference,
                     DataSource = DataSource.MANUAL,
                     Status = ContributionStatus.Pending,
                     ContributedByUserId = by.UserId,
@@ -122,12 +130,14 @@ public class ContributionWriter(
             existing.Value = value;
             existing.Percentage = percentage;
             existing.RelatedCompanyId = relatedCompanyId;
+            if (reference is not null) existing.Reference = reference;   // keep an existing citation when an edit omits one
             cost.Update(existing);
             return existing.Id;
         }
         var row = new CostSource(costBase, name, companyId)
         {
             Value = value, Percentage = percentage, RelatedCompanyId = relatedCompanyId,
+            Reference = reference,
             DataSource = DataSource.MANUAL,
             Status = by.NewStatus,
             ContributedByUserId = by.StampUserId
@@ -136,7 +146,7 @@ public class ContributionWriter(
         return row.Id;
     }
 
-    private long? UpsertRisk(long companyId, long? rowId, string classification, string name, string? note, Contributor by)
+    private long? UpsertRisk(long companyId, long? rowId, string classification, string name, string? note, string? reference, Contributor by)
     {
         if (!Enum.TryParse<RiskScope>(classification, out var scope)) return null;
         if (rowId is { } id)
@@ -148,7 +158,7 @@ public class ContributionWriter(
             {
                 var proposal = new CompanyRisk(scope, name, companyId)
                 {
-                    Note = note, DataSource = DataSource.MANUAL,
+                    Note = note, Reference = reference, DataSource = DataSource.MANUAL,
                     Status = ContributionStatus.Pending,
                     ContributedByUserId = by.UserId,
                     SupersedesId = existing.Id
@@ -159,12 +169,13 @@ public class ContributionWriter(
             existing.Scope = scope;
             existing.Name = name;
             existing.Note = note;
+            if (reference is not null) existing.Reference = reference;   // keep an existing citation when an edit omits one
             risks.Update(existing);
             return existing.Id;
         }
         var row = new CompanyRisk(scope, name, companyId)
         {
-            Note = note, DataSource = DataSource.MANUAL,
+            Note = note, Reference = reference, DataSource = DataSource.MANUAL,
             Status = by.NewStatus,
             ContributedByUserId = by.StampUserId
         };

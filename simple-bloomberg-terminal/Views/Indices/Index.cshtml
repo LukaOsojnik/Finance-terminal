@@ -1,0 +1,313 @@
+@using simple_bloomberg_terminal.Models.Entities
+@using simple_bloomberg_terminal.Models.Enums
+@model simple_bloomberg_terminal.Models.ViewModels.IndicesPageViewModel
+@{
+    ViewData["Title"] = "Indices";
+
+    // Group the tracked indices by sector for the catalog: null sector = a broad-market index. Order
+    // groups (and indices within a group) by size — Σ constituent market cap stamped at import — so the
+    // biggest indices in each sector surface first.
+    var groups = Model.Indices
+        .GroupBy(i => i.Sector)
+        .Select(g => new
+        {
+            Label = g.Key?.ToString().Replace('_', ' ') ?? "BROAD MARKET",
+            Size = g.Sum(i => i.TotalMarketCap ?? 0),
+            Items = g.OrderByDescending(i => i.TotalMarketCap ?? 0).ToList()
+        })
+        .OrderByDescending(g => g.Size)
+        .ToList();
+}
+
+@functions {
+    // Compact USD market-cap label: $2.41T / $612.3B / $48.0M / — for null.
+    static string Money(double? v) => v switch
+    {
+        null or 0 => "—",
+        >= 1e12 => $"${v.Value / 1e12:0.##}T",
+        >= 1e9 => $"${v.Value / 1e9:0.##}B",
+        _ => $"${v.Value / 1e6:0.##}M"
+    };
+
+    // Bootstrap badge class per job status (Partial = continuable, the one we want to stand out).
+    static string StatusBadge(ImportJobStatus s) => s switch
+    {
+        ImportJobStatus.Done => "badge bg-success",
+        ImportJobStatus.Partial => "badge bg-warning text-dark",
+        ImportJobStatus.Error => "badge bg-danger",
+        _ => "badge bg-info text-dark"
+    };
+}
+
+<div class="page-header"><h2><span class="page-header-accent">//</span> Market Indices</h2></div>
+
+@if (TempData["Error"] != null) { <div class="alert alert-danger">@TempData["Error"]</div> }
+@if (TempData["Message"] != null) { <div class="alert alert-success">@TempData["Message"]</div> }
+
+@* One hidden antiforgery token reused by every import POST + the discover fetch. *@
+<form id="afForm">@Html.AntiForgeryToken()</form>
+
+@* Shared progress line for any running import (discover pick or SPDR box). *@
+<div id="importStatus" class="alert alert-info" style="display:none;"></div>
+
+<div class="row g-3 mb-4">
+    <div class="col-12 col-lg-6">
+        <div class="detail-section-label">// DISCOVER (PERPLEXITY)</div>
+        <div class="detail-card">
+            <p class="form-text">Describe what you want (e.g. "European tech indices", "major Asian benchmarks"). Perplexity finds matching indices; pick which to import. Where a SPDR ETF tracks the index its real weights are used, else Wikipedia + cap-weight.</p>
+            <div class="d-flex" style="gap:0.75rem; align-items:center;">
+                <input type="text" id="discoverQuery" class="form-control" placeholder="Describe indices to find..." />
+                <button type="button" id="discoverBtn" class="btn btn-secondary btn-sm">SEARCH</button>
+            </div>
+            <span id="discoverStatus" class="form-text" style="margin:0.5rem 0 0;"></span>
+            <div id="discoverResults" class="d-flex flex-wrap" style="gap:0.75rem; margin-top:1rem;"></div>
+        </div>
+    </div>
+    <div class="col-12 col-lg-6">
+        <div class="detail-section-label">// IMPORT FROM SPDR ETF</div>
+        <div class="detail-card">
+            <p class="form-text">Enter a State Street SPDR ETF ticker to import its index with <strong>real published weights</strong> and a per-holding sector — e.g. <code>SPY</code> (S&amp;P 500), <code>DIA</code> (Dow 30), <code>XLK</code> (US tech), <code>XLF</code> (US financials).</p>
+            <div class="d-flex" style="gap:0.75rem; align-items:center;">
+                <input type="text" id="spdrTicker" class="form-control" placeholder="SPY" style="max-width:160px; text-transform:uppercase;" />
+                <button type="button" id="spdrBtn" class="btn btn-primary btn-sm">+ IMPORT</button>
+            </div>
+            <span id="spdrStatus" class="form-text" style="margin:0.5rem 0 0;"></span>
+        </div>
+    </div>
+</div>
+
+@* ── IMPORT JOBS ── persisted + global: a Partial import (its FMP provisioning capped by a missing/
+   spent key) is shown to everyone and can be continued by any user under their own key. *@
+@if (Model.Jobs.Any())
+{
+    <div class="detail-section-label">// IMPORT JOBS</div>
+    <p class="form-text">An import whose auto-provisioning ran out of FMP quota (or had no key) lands <strong>Partial</strong> — anyone can <strong>Continue</strong> it under their own key to link the members still missing. Existing members re-link for free; only the missing ones use quota.</p>
+    <table class="terminal-table">
+        <thead>
+            <tr>
+                <th>Job</th>
+                <th>Source</th>
+                <th>Status</th>
+                <th style="text-align:right;">Coverage</th>
+                <th>Started by</th>
+                <th>Continued by</th>
+                <th>When</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var j in Model.Jobs)
+            {
+                <tr>
+                    <td class="name-cell">@j.Label</td>
+                    <td class="muted-cell">@(j.EtfTicker ?? j.Code)</td>
+                    <td><span class="@StatusBadge(j.Status)">@j.Status</span></td>
+                    <td class="num-cell">@(j.TotalConstituents > 0 ? $"{j.Matched}/{j.TotalConstituents}" : "—")</td>
+                    <td class="muted-cell">@(j.StartedBy ?? "—")</td>
+                    <td class="muted-cell">@(j.ContinuedBy ?? "—")</td>
+                    <td class="muted-cell">@j.CreatedAt.ToLocalTime().ToString("g")</td>
+                    <td>
+                        @if (j.IndexId is { } iid)
+                        {
+                            <a asp-action="Details" asp-route-id="@iid" class="btn-detail">BREAKDOWN →</a>
+                        }
+                        @if (j.Status == ImportJobStatus.Partial || j.Status == ImportJobStatus.Error)
+                        {
+                            <button type="button" class="btn btn-primary btn-sm" data-continue-job="@j.Id">CONTINUE</button>
+                        }
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </table>
+}
+
+<div class="detail-section-label" style="margin-top:1.25rem;">// TRACKED INDICES</div>
+@if (!Model.Indices.Any())
+{
+    <div class="empty-state">NO INDICES IMPORTED YET</div>
+}
+else
+{
+    @foreach (var group in groups)
+    {
+        <div class="detail-section-label" style="margin-top:1.25rem;">@group.Label <span class="form-text" style="margin-left:0.5rem;">@Money(group.Size)</span></div>
+        <table class="terminal-table">
+            <thead>
+                <tr>
+                    <th>Code</th>
+                    <th>Name</th>
+                    <th>Region</th>
+                    <th>Source</th>
+                    <th style="text-align:right;">Members</th>
+                    <th style="text-align:right;">Size</th>
+                    <th>As Of</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var i in group.Items)
+                {
+                    <tr>
+                        <td class="code-cell">@i.Code</td>
+                        <td class="name-cell">@i.Name</td>
+                        <td class="muted-cell">@(i.Region ?? "—")</td>
+                        <td class="muted-cell">@(i.Provider ?? "—")</td>
+                        <td class="num-cell">@i.Constituents.Count</td>
+                        <td class="num-cell">@Money(i.TotalMarketCap)</td>
+                        <td class="muted-cell">@(i.AsOf?.ToShortDateString() ?? "—")</td>
+                        <td><a asp-action="Details" asp-route-id="@i.Id" class="btn-detail">BREAKDOWN →</a></td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    }
+}
+
+@section Scripts {
+<script>
+(function () {
+    const token = document.querySelector('#afForm input[name="__RequestVerificationToken"]').value;
+    const importStatus = document.getElementById('importStatus');
+
+    // Kick off a detached import, then poll its status until done; on success go to the breakdown.
+    async function startImport(params, statusEl) {
+        importStatus.style.display = 'block';
+        importStatus.className = 'alert alert-info';
+        importStatus.textContent = 'Starting import…';
+        try {
+            const body = new URLSearchParams({ ...params, __RequestVerificationToken: token });
+            const resp = await fetch('@Url.Action("Import")', {
+                method: 'POST',
+                headers: { 'X-Requested-With': 'XMLHttpRequest' },
+                body
+            });
+            if (!resp.ok) { fail('Import failed (' + resp.status + ').'); return; }
+            const { jobId } = await resp.json();
+            poll(jobId);
+        } catch (e) {
+            fail('Import error.');
+        }
+    }
+
+    function poll(jobId) {
+        const tick = async () => {
+            try {
+                const resp = await fetch('/indices/import/' + jobId + '/status');
+                if (!resp.ok) { fail('Lost track of the import.'); return; }
+                const j = await resp.json();
+                if (j.status === 'Done') {
+                    importStatus.className = 'alert alert-success';
+                    importStatus.textContent = (j.message || 'Imported.') + ' Opening breakdown…';
+                    if (j.indexId) { window.location = '/indices/' + j.indexId + '/breakdown'; }
+                    else { setTimeout(() => window.location.reload(), 800); }
+                    return;
+                }
+                // Partial: imported, but FMP provisioning was capped (no key / daily limit). Surface the
+                // gap and refresh so the job shows a Continue button for whoever has remaining quota.
+                if (j.status === 'Partial') {
+                    importStatus.className = 'alert alert-warning';
+                    importStatus.textContent = (j.message || 'Imported partially.') +
+                        ' FMP quota ran out — Continue from the Import Jobs list (your key, or another user’s) to add the rest.';
+                    setTimeout(() => window.location.reload(), 3000);
+                    return;
+                }
+                if (j.status === 'Error') { fail(j.error || 'Import failed.'); return; }
+                importStatus.textContent = j.progress || 'Working…';
+                setTimeout(tick, 1200);
+            } catch (e) {
+                fail('Import error.');
+            }
+        };
+        tick();
+    }
+
+    function fail(msg) {
+        importStatus.style.display = 'block';
+        importStatus.className = 'alert alert-danger';
+        importStatus.textContent = msg;
+    }
+
+    // ── Discover (Perplexity) ──
+    const discBtn = document.getElementById('discoverBtn');
+    const queryEl = document.getElementById('discoverQuery');
+    const discStatus = document.getElementById('discoverStatus');
+    const results = document.getElementById('discoverResults');
+
+    async function discover() {
+        const query = queryEl.value.trim();
+        if (!query) { discStatus.textContent = 'Enter a query.'; return; }
+        discBtn.disabled = true; discStatus.textContent = 'Searching…'; results.innerHTML = '';
+        try {
+            const body = new URLSearchParams({ query, __RequestVerificationToken: token });
+            const resp = await fetch('@Url.Action("Discover")', {
+                method: 'POST', headers: { 'X-Requested-With': 'XMLHttpRequest' }, body
+            });
+            if (resp.status === 424) { discStatus.textContent = 'Add your Perplexity API key first (Account → API Keys).'; return; }
+            if (!resp.ok) { discStatus.textContent = 'Search failed (' + resp.status + ').'; return; }
+            const items = await resp.json();
+            if (!items.length) { discStatus.textContent = 'No indices found.'; return; }
+            discStatus.textContent = items.length + ' found — click to import:';
+            for (const it of items) { results.appendChild(buildButton(it)); }
+        } catch (e) {
+            discStatus.textContent = 'Search error.';
+        } finally {
+            discBtn.disabled = false;
+        }
+    }
+
+    // Each suggestion becomes a button that starts the same async import. SPDR is auto-used when the
+    // suggestion carries an etfTicker; otherwise Wikipedia. Sector/region come along for catalog grouping.
+    function buildButton(it) {
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'btn btn-primary btn-sm';
+        const tag = it.etfTicker ? ' [' + it.etfTicker + ']' : '';
+        btn.textContent = '+ ' + (it.region ? (it.name + ' (' + it.region + ')') : it.name) + tag;
+        btn.addEventListener('click', () => startImport({
+            code: it.code || '', name: it.name || '', wikiPage: it.wikiPage || '',
+            etfTicker: it.etfTicker || '', sector: it.sector || '', region: it.region || ''
+        }));
+        return btn;
+    }
+
+    discBtn.addEventListener('click', discover);
+    queryEl.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); discover(); } });
+
+    // ── SPDR manual import ──
+    const spdrBtn = document.getElementById('spdrBtn');
+    const spdrEl = document.getElementById('spdrTicker');
+    function importSpdr() {
+        const t = spdrEl.value.trim().toUpperCase();
+        if (!t) { document.getElementById('spdrStatus').textContent = 'Enter a ticker.'; return; }
+        startImport({ etfTicker: t });
+    }
+    spdrBtn.addEventListener('click', importSpdr);
+    spdrEl.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); importSpdr(); } });
+
+    // ── Continue a partial/errored job under THIS user's key ──
+    async function continueJob(id, btn) {
+        importStatus.style.display = 'block';
+        importStatus.className = 'alert alert-info';
+        importStatus.textContent = 'Continuing import…';
+        if (btn) btn.disabled = true;
+        try {
+            const resp = await fetch('/indices/import/' + id + '/continue', {
+                method: 'POST',
+                headers: { 'X-Requested-With': 'XMLHttpRequest' },
+                body: new URLSearchParams({ __RequestVerificationToken: token })
+            });
+            if (resp.status === 400) { fail('That import is already running.'); return; }
+            if (!resp.ok) { fail('Continue failed (' + resp.status + ').'); return; }
+            const { jobId } = await resp.json();
+            poll(jobId);
+        } catch (e) {
+            fail('Continue error.');
+            if (btn) btn.disabled = false;
+        }
+    }
+    document.querySelectorAll('[data-continue-job]').forEach(btn =>
+        btn.addEventListener('click', () => continueJob(btn.getAttribute('data-continue-job'), btn)));
+})();
+</script>
+}

@@ -94,6 +94,14 @@ public class CompanyRepository(AppDbContext db) : ICompanyRepository
             .FirstOrDefault(c => NormalizeName(c.Name) == norm);
     }
 
+    public Company? MatchByCik(string? cik)
+    {
+        var norm = Services.Cik.Normalize(cik);
+        if (norm is null) return null;
+        return db.Companies.Where(c => c.DeletedAt == null && c.Cik != null).AsEnumerable()
+            .FirstOrDefault(c => Services.Cik.Normalize(c.Cik) == norm);
+    }
+
     // Lowercase, drop punctuation, then drop common corporate-suffix tokens so two spellings of the
     // same company collapse to one key. "The Coca-Cola Company" -> "coca cola"; "NVIDIA Corp" -> "nvidia".
     private static readonly HashSet<string> NameNoise = new(StringComparer.Ordinal)
@@ -128,6 +136,39 @@ public class CompanyRepository(AppDbContext db) : ICompanyRepository
         db.CompanyFinancials.RemoveRange(db.CompanyFinancials.Where(f => f.CompanyId == companyId));
         db.CompanyFinancials.AddRange(rows);
         db.SaveChanges();
+    }
+
+    public IReadOnlyDictionary<string, long> CikToIdMap()
+    {
+        var map = new Dictionary<string, long>();
+        var rows = db.Companies
+            .Where(c => c.DeletedAt == null && c.Cik != null)
+            .Select(c => new { c.Id, c.Cik })
+            .ToList();
+        foreach (var r in rows)
+        {
+            var norm = Services.Cik.Normalize(r.Cik);
+            if (norm != null) map.TryAdd(norm, r.Id);  // first company per CIK wins
+        }
+        return map;
+    }
+
+    public IReadOnlyDictionary<long, double?> MarketCapsByIds(IEnumerable<long> ids)
+    {
+        var idList = ids.ToList();
+        return db.Companies
+            .Where(c => idList.Contains(c.Id) && c.DeletedAt == null)
+            .Select(c => new { c.Id, c.MarketCap })
+            .ToDictionary(x => x.Id, x => x.MarketCap);
+    }
+
+    public IReadOnlyDictionary<long, Models.Enums.Sector> SectorsByIds(IEnumerable<long> ids)
+    {
+        var idList = ids.ToList();
+        return db.Companies
+            .Where(c => idList.Contains(c.Id) && c.DeletedAt == null)
+            .Select(c => new { c.Id, c.Sector })
+            .ToDictionary(x => x.Id, x => x.Sector);
     }
 
     public HashSet<long> CompanyIdsWithFmpFinancials() =>

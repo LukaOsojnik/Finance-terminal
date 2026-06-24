@@ -134,6 +134,7 @@ public class SaveBatchItem
     public string? Note { get; set; }
     public string? RelatedCompany { get; set; }
     public string? RelatedCompanyTicker { get; set; }   // enables the FMP/Yahoo create path
+    public string? Reference { get; set; }               // per-record source passage → {Cost|Revenue}Source/CompanyRisk.Reference
     public ExtractionProof? Proof { get; set; }
 }
 
@@ -223,6 +224,30 @@ public class LinkCounterpartyRequest
     public double? Value { get; set; }             // estimated contract value (USD) from valued discovery; stored on the row
 }
 
+/// <summary>
+/// The audited XBRL tagged facts extracted for one filing+node, surfaced to the UI as structured data
+/// (the same figures the chat grounding text is built from). Built by
+/// <c>IExtractionChatService.GetXbrlViewAsync</c> for the numeric nodes (COST, REVENUE); null for RISK,
+/// or when the filing tags nothing. <see cref="SumCheck"/> is the Σ-segment-revenue-vs-total tie test
+/// (null when not computable).
+/// </summary>
+public record XbrlView(
+    string Node, string? PeriodEnd,
+    IReadOnlyList<XbrlFactLine> Totals,
+    IReadOnlyList<XbrlSegmentLine> Segments,
+    XbrlSumCheck? SumCheck);
+
+/// <summary>One company-total tagged fact (e.g. "Total revenue", "Cost of revenue") in USD.</summary>
+public record XbrlFactLine(string Label, double? Value);
+
+/// <summary>One business segment's figure: the cost or revenue (<see cref="Value"/>), an optional
+/// <see cref="Detail"/> line (cost shows "revenue − operating income"), and <see cref="Reconciles"/>
+/// (the 0 ≤ cost ≤ revenue sanity flag; always true for revenue, which needs no subtraction).</summary>
+public record XbrlSegmentLine(string Segment, double Value, string? Detail, bool Reconciles);
+
+/// <summary>The Σ-segment-revenue vs company-total-revenue check.</summary>
+public record XbrlSumCheck(double SegmentSum, double Total, bool Ties);
+
 /// <summary>One visible chat turn (the grounding/system context is added server-side, not here).</summary>
 public record ChatMessage(string Role, string Content);
 
@@ -232,15 +257,16 @@ public record ChatMessage(string Role, string Content);
 public class ScanJobReplyRequest
 {
     public List<ChatMessage> Messages { get; set; } = [];
+
+    // True when this turn delivers a cross-segment hand-off to an EXISTING target job: the agent must
+    // record it (receiver prompt) and not re-route, exactly like a freshly-spawned hand-off.
+    public bool Handoff { get; set; }
 }
 
-/// <summary>A chat send: which filing grounds the conversation + the visible turns so far.</summary>
-public class ChatRequest
+/// <summary>Body for a worker-less cross-segment hand-off spawn: the seed prompt the source segment's
+/// agent wrote (the user's request + the verbatim source passage), run as the target segment's first
+/// and only auto turn — no worker re-scan. See docs/extraction/cross-extraction.md.</summary>
+public class ScanHandoffRequest
 {
-    public long CompanyId { get; set; }
-    public string Accession { get; set; } = string.Empty;
-    public string Doc { get; set; } = string.Empty;
-    public string Node { get; set; } = "REVENUE";
-    public string? Form { get; set; }   // SEC form (e.g. 10-K), passed to the sec2md sidecar
-    public List<ChatMessage> Messages { get; set; } = [];
+    public string Seed { get; set; } = "";
 }

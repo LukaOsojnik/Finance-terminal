@@ -20,33 +20,25 @@ public class CompanyGraphConverter : ITypeConverter<Company, GraphResponse>
         var edges = new List<GraphEdge>();
 
         // A source connects to the EDGAR filings that prove it — proof is per field, so a source
-        // may cite several filings via its reviews. Dedup the filing node PER SIDE (revenue vs
-        // cost): a filing cited by both a revenue and a cost source gets one node in each cluster,
-        // so the two clusters don't share a node that springs them together. Dedup edges per source.
-        var filingSeen = new HashSet<string>();
-        void AddFilingLinks(IEnumerable<SourceFieldReview> reviews, string sourceNodeId, string side)
+        // may cite several filings via its reviews. These are no longer drawn as graph nodes;
+        // instead each source's distinct proof filings are collected here and carried on its leaf
+        // node, so the click popup can list them without cluttering the canvas. Dedup per source.
+        static IReadOnlyList<GraphFiling> CollectFilings(IEnumerable<SourceFieldReview> reviews)
         {
-            var linked = new HashSet<long>();
+            var seen = new HashSet<long>();
+            var filings = new List<GraphFiling>();
             foreach (var f in reviews
                          .Where(rv => rv.DeletedAt == null && rv.Filing != null && rv.Filing.DeletedAt == null)
                          .Select(rv => rv.Filing!))
             {
-                if (!linked.Add(f.Id)) continue;   // already drew this source's edge to f
-
-                var filingId = $"filing:{side}:{f.Id}";
-                if (filingSeen.Add(filingId))
-                {
-                    var date = f.FilingDate?.ToString("yyyy-MM-dd");
-                    nodes.Add(new GraphNode(
-                        Id: filingId,
-                        Label: f.Form ?? "Filing",
-                        Group: "filing",
-                        Title: $"{f.AccessionNumber}{(date is null ? "" : " · " + date)}",
-                        ValueUsd: null
-                    ));
-                }
-                edges.Add(new GraphEdge(sourceNodeId, filingId, "proof", "filing"));
+                if (!seen.Add(f.Id)) continue;
+                var date = f.FilingDate?.ToString("yyyy-MM-dd");
+                filings.Add(new GraphFiling(
+                    Label: f.Form ?? "Filing",
+                    Detail: $"{f.AccessionNumber}{(date is null ? "" : " · " + date)}"
+                ));
             }
+            return filings;
         }
 
         var centerId = $"company:{company.Id}";
@@ -72,17 +64,19 @@ public class CompanyGraphConverter : ITypeConverter<Company, GraphResponse>
             foreach (var r in revenues)
             {
                 var nodeId = $"rev:{r.Id}";
-                var navId = (r.RelatedCompany != null && r.RelatedCompany.DeletedAt == null) ? (long?)r.RelatedCompanyId : null;
+                var linked = r.RelatedCompany != null && r.RelatedCompany.DeletedAt == null;
+                var navId = linked ? (long?)r.RelatedCompanyId : null;
                 nodes.Add(new GraphNode(
                     Id: nodeId,
-                    Label: r.Name,
+                    Label: linked ? r.RelatedCompany!.Name : r.Name,
                     Group: "revenue",
                     Title: $"{r.SourceType} · ${(r.Value ?? 0) / 1e9:F2}B",
                     ValueUsd: r.Value,
-                    RelatedCompanyId: navId
+                    RelatedCompanyId: navId,
+                    Filings: CollectFilings(r.Reviews),
+                    MarketCapUsd: linked ? r.RelatedCompany!.MarketCap : null
                 ));
                 edges.Add(new GraphEdge(hubId, nodeId, r.Value.HasValue ? $"${r.Value.Value / 1e9:F1}B" : null, "revenue"));
-                AddFilingLinks(r.Reviews, nodeId, "rev");
             }
         }
 
@@ -94,17 +88,19 @@ public class CompanyGraphConverter : ITypeConverter<Company, GraphResponse>
             foreach (var c in costs)
             {
                 var nodeId = $"cost:{c.Id}";
-                var navId = (c.RelatedCompany != null && c.RelatedCompany.DeletedAt == null) ? (long?)c.RelatedCompanyId : null;
+                var linked = c.RelatedCompany != null && c.RelatedCompany.DeletedAt == null;
+                var navId = linked ? (long?)c.RelatedCompanyId : null;
                 nodes.Add(new GraphNode(
                     Id: nodeId,
-                    Label: c.Name,
+                    Label: linked ? c.RelatedCompany!.Name : c.Name,
                     Group: "cost",
                     Title: $"{c.CostBase} · ${(c.Value ?? 0) / 1e9:F2}B",
                     ValueUsd: c.Value,
-                    RelatedCompanyId: navId
+                    RelatedCompanyId: navId,
+                    Filings: CollectFilings(c.Reviews),
+                    MarketCapUsd: linked ? c.RelatedCompany!.MarketCap : null
                 ));
                 edges.Add(new GraphEdge(hubId, nodeId, c.Value.HasValue ? $"${c.Value.Value / 1e9:F1}B" : null, "cost"));
-                AddFilingLinks(c.Reviews, nodeId, "cost");
             }
         }
 

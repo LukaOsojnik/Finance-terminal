@@ -14,7 +14,16 @@ public record GraphNode(
     string Group,
     string? Title,
     double? ValueUsd,
-    long? RelatedCompanyId = null
+    long? RelatedCompanyId = null,
+    IReadOnlyList<GraphFiling>? Filings = null,
+    double? MarketCapUsd = null
+);
+
+// Proof filings a source cites — carried on the leaf node (not drawn as graph nodes) so the
+// click popup can list them without cluttering the canvas.
+public record GraphFiling(
+    string Label,
+    string? Detail
 );
 
 public record GraphEdge(

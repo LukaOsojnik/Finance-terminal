@@ -19,6 +19,12 @@ public class RevenueSource : IContribution
     public string Name { get; set; }
     public double? Value { get; set; }
     public double? Percentage { get; set; }
+
+    // Per-record source passage: the verbatim filing excerpt (SEC Item or note + source text) the
+    // whole revenue row was drawn from, set by the extraction agent. Distinct from the per-field proof
+    // rows in <see cref="Reviews"/> — those back one field each; this cites the record overall.
+    public string? Reference { get; set; }
+
     public DataSource? DataSource { get; set; }
     public long CompanyId { get; set; }
     public long? RelatedCompanyId { get; set; }

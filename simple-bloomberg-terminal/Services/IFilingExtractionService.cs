@@ -27,5 +27,5 @@ public interface IFilingExtractionService
     /// SEC form, e.g. 10-K) is passed to the sec2md sidecar.</summary>
     Task<AutoScanResult> ScanAutoAsync(
         long companyId, string accession, string doc, ExtractionNode node, string? filingType = null,
-        CancellationToken ct = default);
+        Action<ScanProgress>? onProgress = null, CancellationToken ct = default);
 }

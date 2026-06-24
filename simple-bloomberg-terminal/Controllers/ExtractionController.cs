@@ -32,9 +32,7 @@ public class ExtractionController : Controller
     private readonly ISourceFieldReviewRepository _reviews;
     private readonly ICompanyRepository _companies;
     private readonly IFilingRepository _filings;
-    private readonly IReviewService _reviewer;
     private readonly IFilingExtractionService _extractor;
-    private readonly IExtractionChatService _chat;
     private readonly ICounterpartyDiscovery _discovery;
     private readonly IContributionWriter _writer;
     private readonly ICompanyProvisioningService _provisioning;
@@ -50,9 +48,7 @@ public class ExtractionController : Controller
         ISourceFieldReviewRepository reviews,
         ICompanyRepository companies,
         IFilingRepository filings,
-        IReviewService reviewer,
         IFilingExtractionService extractor,
-        IExtractionChatService chat,
         ICounterpartyDiscovery discovery,
         IContributionWriter writer,
         ICompanyProvisioningService provisioning,
@@ -67,9 +63,7 @@ public class ExtractionController : Controller
         _reviews = reviews;
         _companies = companies;
         _filings = filings;
-        _reviewer = reviewer;
         _extractor = extractor;
-        _chat = chat;
         _discovery = discovery;
         _writer = writer;
         _provisioning = provisioning;
@@ -250,7 +244,7 @@ public class ExtractionController : Controller
             }
 
             var rowId = _writer.UpsertRow(node, req.CompanyId, null, item.Classification, item.Name,
-                item.Value, item.Percentage, item.Note, counterpartyId, By);
+                item.Value, item.Percentage, item.Note, counterpartyId, By, item.Reference);
             if (rowId is null) continue;   // unparseable classification — skip this item
             saved++;
 
@@ -300,23 +294,6 @@ public class ExtractionController : Controller
         ExtractionNode.RISK => r.CompanyRiskId == rowId,
         _                   => r.RevenueSourceId == rowId,
     };
-
-    // Mode A — run the phase-2 AI reviewer over this company's unreviewed cells (human-entered
-    // value + proof). Returns the pass/fail tally so the page can refresh its marks.
-    [HttpPost, Route("review/{companyId:long}")]
-    public async Task<IActionResult> Review(long companyId)
-    {
-        if (_companies.GetById(companyId) is null) return NotFound();
-        try
-        {
-            var result = await _reviewer.ReviewCompanyAsync(companyId);
-            return Json(result);
-        }
-        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
-        {
-            return StatusCode(StatusCodes.Status503ServiceUnavailable, "DeepSeek unreachable.");
-        }
-    }
 
     // Mode B — AI reads one filing and proposes revenue rows + per-field proof for the human to
     // confirm. Persists nothing; the page fills the form and the existing save path freezes proof.
@@ -387,6 +364,11 @@ public class ExtractionController : Controller
             Form = form,
             FilingLabel = filingLabel ?? form ?? "filing"
         };
+        // Prefill the section boxes from the node's known SEC Items so the widget shows the layout
+        // immediately (spinning) while triage/fetch run. The Planned event replaces these with the
+        // real per-Item chunk rows once the scan has decided what to read.
+        foreach (var item in FilingSections.ItemsFor(parsedNode))
+            job.Sections.Add(new ScanSection { Item = $"Item {item}" });
         _jobs.Add(job);
 
         _ = Task.Run(async () =>
@@ -397,10 +379,14 @@ public class ExtractionController : Controller
             var chat = scope.ServiceProvider.GetRequiredService<IExtractionChatService>();
             try
             {
-                // Coarse phase reporting around the one awaited call — the widget polls Progress so
-                // the user sees the worker is alive and what it's doing (no per-chunk hook exists).
+                // Coarse phase text for the pre-triage window; once chunks are planned the widget shows
+                // the live section tree instead (filled by the progress callback below).
                 job.Progress = $"Reading the {job.FilingLabel} & triaging sections with parallel agents…";
-                job.Report = await extractor.ScanAutoAsync(companyId, accession, doc, parsedNode, form);
+                job.Report = await extractor.ScanAutoAsync(
+                    companyId, accession, doc, parsedNode, form, p => ApplyScanProgress(job, p));
+                // The audited tagged XBRL facts (COST/REVENUE; null for RISK) for the widget's table —
+                // also primes the cache the summary turn below grounds on, so it's one SEC round-trip.
+                job.Xbrl = await chat.GetXbrlViewAsync(companyId, accession, parsedNode);
                 // Auto AI summary: one chat turn grounded on the digest the scan just cached, so the
                 // notification opens with a real answer rather than just counts.
                 job.Progress = $"Found {job.Report.Found} candidate(s) · writing summary…";
@@ -408,10 +394,19 @@ public class ExtractionController : Controller
                 {
                     new("user", "Summarize the candidates you found in this filing.")
                 };
-                var sb = new StringBuilder();
+                // Stream the first answer into the SAME live buffers the follow-up replies use, so the
+                // widget shows the summary generating token-by-token (with its reasoning trace) instead
+                // of the whole thing appearing at once when the job flips to Done.
+                job.Replying = true;
+                job.ReplyBuffer = "";
+                job.ReplyThink = "";
                 await foreach (var d in chat.StreamReplyAsync(companyId, accession, doc, parsedNode, seed, form))
-                    if (d.Kind == "text") sb.Append(d.Text);
-                job.Summary = sb.ToString();
+                {
+                    if (d.Kind == "text") job.ReplyBuffer += d.Text;
+                    else if (d.Kind == "reasoning") job.ReplyThink += d.Text;
+                }
+                job.Summary = job.ReplyBuffer;
+                job.Replying = false;
                 job.Progress = "";
                 job.Status = ScanJobStatus.Done;
             }
@@ -420,6 +415,87 @@ public class ExtractionController : Controller
                 job.Status = ScanJobStatus.Error;
                 job.Error = ex.Message;
                 job.Progress = "";
+                job.Replying = false;   // a crash mid-summary must not leave the widget "replying" forever
+            }
+            finally
+            {
+                job.CompletedAt = DateTimeOffset.UtcNow;
+            }
+        });
+
+        return Json(new { jobId = job.Id });
+    }
+
+    // Cross-segment hand-off (worker-less). The SOURCE segment's agent already FOUND the fact and
+    // emitted a ```handoff``` block; this spins up the TARGET segment's agent to re-dress it in that
+    // segment's save schema — NO worker re-scan (scanIfMissing:false grounds on whatever's cached + the
+    // seed + the cheap XBRL view). It runs one turn whose first user message IS the seed, so the target
+    // widget opens with a proposed ```save``` block ready to tick + Save. See docs/extraction/cross-extraction.md.
+    [HttpPost, Route("scan-handoff/{companyId:long}")]
+    public async Task<IActionResult> ScanHandoff(
+        long companyId, [FromBody] ScanHandoffRequest req,
+        [FromQuery] string accession, [FromQuery] string doc,
+        [FromQuery] string? node, [FromQuery] string? form,
+        [FromQuery] string? companyName, [FromQuery] string? filingLabel)
+    {
+        if (_companies.GetById(companyId) is null) return NotFound();
+        if (string.IsNullOrWhiteSpace(accession) || string.IsNullOrWhiteSpace(doc))
+            return BadRequest("accession and doc are required.");
+        if (req is null || string.IsNullOrWhiteSpace(req.Seed)) return BadRequest("seed is required.");
+
+        // Runs on DeepSeek. Verify the user's key now (throw -> 424 popup) and snapshot it for the
+        // detached scope (no HttpContext there).
+        var keys = await _keys.GetAsync();
+        if (string.IsNullOrWhiteSpace(keys.DeepSeek)) throw MissingApiKeyException.DeepSeek();
+
+        var parsedNode = ParseNode(node);
+        var seed = req.Seed;
+        var job = new ScanJob
+        {
+            CompanyId = companyId,
+            CompanyName = companyName ?? _companies.GetById(companyId)?.Name ?? "",
+            Accession = accession,
+            Doc = doc,
+            Node = parsedNode.ToString(),
+            Form = form,
+            FilingLabel = filingLabel ?? form ?? "filing"
+        };
+        _jobs.Add(job);
+
+        _ = Task.Run(async () =>
+        {
+            using var scope = _scopeFactory.CreateScope();
+            scope.ServiceProvider.GetRequiredService<IUserApiKeyProvider>().Set(keys);
+            var chat = scope.ServiceProvider.GetRequiredService<IExtractionChatService>();
+            try
+            {
+                // No ScanAutoAsync — the source agent already found this; we only re-dress it in this
+                // segment's schema. The XBRL view is a cheap cached read (audited figures if tagged).
+                job.Xbrl = await chat.GetXbrlViewAsync(companyId, accession, parsedNode);
+                job.Progress = "Recording the handed-over item…";
+                job.Replying = true;
+                job.ReplyBuffer = "";
+                job.ReplyThink = "";
+                // The seed IS the first turn (not the canned "summarize the candidates"); scanIfMissing
+                // :false keeps the workers off.
+                var history = new List<ChatMessage> { new("user", seed) };
+                await foreach (var d in chat.StreamReplyAsync(
+                    companyId, accession, doc, parsedNode, history, form, handoff: true))
+                {
+                    if (d.Kind == "text") job.ReplyBuffer += d.Text;
+                    else if (d.Kind == "reasoning") job.ReplyThink += d.Text;
+                }
+                job.Summary = job.ReplyBuffer;   // lets ensureChatHistory reconstruct the assistant turn
+                job.Replying = false;
+                job.Progress = "";
+                job.Status = ScanJobStatus.Done;
+            }
+            catch (Exception ex)
+            {
+                job.Status = ScanJobStatus.Error;
+                job.Error = ex.Message;
+                job.Progress = "";
+                job.Replying = false;
             }
             finally
             {
@@ -447,24 +523,87 @@ public class ExtractionController : Controller
         return Json(list);
     }
 
-    private static object ScanDto(ScanJob j) => new
+    // Fold one scan progress event into the job's live section tree. Called from concurrent worker
+    // threads, so all mutation is under the job's lock; ScanDto snapshots under the same lock.
+    private static void ApplyScanProgress(ScanJob job, ScanProgress p)
     {
-        kind = "scan",
-        id = j.Id,
-        status = j.Status.ToString(),
-        progress = j.Progress,
-        replying = j.Replying,
-        createdAt = j.CreatedAt,
-        companyId = j.CompanyId,
-        companyName = j.CompanyName,
-        accession = j.Accession,
-        doc = j.Doc,
-        node = j.Node,
-        form = j.Form,
-        filingLabel = j.FilingLabel,
-        found = j.Report?.Found ?? 0,
-        summary = j.Summary,
-        error = j.Error
+        lock (job.SectionsLock)
+        {
+            if (p.Phase == ScanChunkPhase.Planned)
+            {
+                job.Sections.Clear();
+                job.ChunkList.Clear();
+                foreach (var info in p.Plan ?? [])
+                {
+                    var state = new ScanChunkState { Titles = info.Titles };
+                    job.ChunkList.Add(state);   // index-aligned with info.Index
+                    var section = job.Sections.FirstOrDefault(s => s.Item == info.Item);
+                    if (section is null) { section = new ScanSection { Item = info.Item }; job.Sections.Add(section); }
+                    section.Chunks.Add(state);
+                }
+            }
+            else if (p.Index >= 0 && p.Index < job.ChunkList.Count)
+            {
+                var state = job.ChunkList[p.Index];
+                state.Status = p.Phase.ToString();
+                if (p.Phase == ScanChunkPhase.Done) state.Found = p.Found;
+                // Stash the verbatim prompt + reply for the widget's per-chunk inspector (Done/Error only).
+                if (p.Prompt != null) state.Prompt = p.Prompt;
+                if (p.Response != null) state.Response = p.Response;
+            }
+        }
+    }
+
+    private static object ScanDto(ScanJob j)
+    {
+        // Snapshot the live section tree under the same lock the worker threads write it with.
+        object[] sections;
+        lock (j.SectionsLock)
+            sections = j.Sections.Select(s => (object)new
+            {
+                item = s.Item,
+                // idx is the chunk's position in the flat ChunkList — the key the inspector endpoint
+                // takes; hasDetail flags that the prompt/reply are captured (chunk finished), so the
+                // widget only makes finished rows clickable.
+                chunks = s.Chunks.Select(c => new
+                {
+                    titles = c.Titles, status = c.Status, found = c.Found,
+                    idx = j.ChunkList.IndexOf(c), hasDetail = c.Prompt.Length > 0
+                }).ToArray()
+            }).ToArray();
+
+        return new
+        {
+            kind = "scan",
+            id = j.Id,
+            status = j.Status.ToString(),
+            progress = j.Progress,
+            replying = j.Replying,
+            createdAt = j.CreatedAt,
+            companyId = j.CompanyId,
+            companyName = j.CompanyName,
+            accession = j.Accession,
+            doc = j.Doc,
+            node = j.Node,
+            form = j.Form,
+            filingLabel = j.FilingLabel,
+            found = j.Report?.Found ?? 0,
+            sections,
+            xbrl = XbrlDto(j.Xbrl),
+            summary = j.Summary,
+            error = j.Error
+        };
+    }
+
+    // Project the structured XBRL view into the camelCase shape the widget's xbrlBox() reads. Null when
+    // the node is RISK or the filing tagged nothing — the widget then renders no XBRL box.
+    private static object? XbrlDto(XbrlView? x) => x is null ? null : new
+    {
+        node = x.Node,
+        periodEnd = x.PeriodEnd,
+        totals = x.Totals.Select(t => new { label = t.Label, value = t.Value }).ToArray(),
+        segments = x.Segments.Select(s => new { segment = s.Segment, value = s.Value, detail = s.Detail, reconciles = s.Reconciles }).ToArray(),
+        sumCheck = x.SumCheck is { } c ? new { segmentSum = c.SegmentSum, total = c.Total, ties = c.Ties } : null
     };
 
     // Project a re-discovery job into the same shape the widget consumes, with the chat-only fields
@@ -493,6 +632,22 @@ public class ExtractionController : Controller
         error = j.Error
     };
 
+    // Inspector: the verbatim prompt one worker agent saw + its raw reply. Fetched lazily when the
+    // user expands a chunk row, so the heavy excerpt text never rides the 2s status poll. `index` is
+    // the chunk's position in the flat ChunkList (the `idx` the status DTO hands the widget).
+    [HttpGet, Route("scan-jobs/{jobId}/chunk/{index:int}")]
+    public IActionResult ScanJobChunk(string jobId, int index)
+    {
+        var job = _jobs.Get(jobId);
+        if (job is null) return NotFound();
+        lock (job.SectionsLock)
+        {
+            if (index < 0 || index >= job.ChunkList.Count) return NotFound();
+            var c = job.ChunkList[index];
+            return Json(new { titles = c.Titles, status = c.Status, found = c.Found, prompt = c.Prompt, response = c.Response });
+        }
+    }
+
     // Drop a job the user dismissed from the widget. Try both stores — the id is from either.
     [HttpPost, Route("scan-jobs/dismiss/{jobId}")]
     public IActionResult DismissScanJob(string jobId)
@@ -520,6 +675,7 @@ public class ExtractionController : Controller
 
         var node = ParseNode(job.Node);
         var history = req?.Messages ?? [];
+        var handoff = req?.Handoff ?? false;
         job.Replying = true;
         job.ReplyBuffer = "";
         job.ReplyThink = "";
@@ -532,7 +688,7 @@ public class ExtractionController : Controller
             var chat = scope.ServiceProvider.GetRequiredService<IExtractionChatService>();
             try
             {
-                await foreach (var d in chat.StreamReplyAsync(job.CompanyId, job.Accession, job.Doc, node, history, job.Form))
+                await foreach (var d in chat.StreamReplyAsync(job.CompanyId, job.Accession, job.Doc, node, history, job.Form, handoff))
                 {
                     if (d.Kind == "text") job.ReplyBuffer += d.Text;
                     else if (d.Kind == "reasoning") job.ReplyThink += d.Text;
@@ -564,41 +720,6 @@ public class ExtractionController : Controller
         return Json(new { replying = job.Replying, reply = job.ReplyBuffer, think = job.ReplyThink, error = job.ReplyError });
     }
 
-    // Mode B (conversational) — stream a chat grounded on the open filing. Emits NDJSON lines
-    // {"t":"reasoning"|"text","c":"..."} as fragments arrive, so the page renders the thinking trace
-    // and answer live. Persists nothing; ```save``` blocks in the answer pre-fill the form.
-    [HttpPost, Route("chat")]
-    public async Task Chat([FromBody] ChatRequest req, CancellationToken ct)
-    {
-        if (req is null || _companies.GetById(req.CompanyId) is null)
-        {
-            Response.StatusCode = StatusCodes.Status404NotFound;
-            return;
-        }
-
-        // Chat streams via DeepSeek — verify the user's key BEFORE the NDJSON body starts, so a
-        // missing key returns a clean 424 the popup can read (not a half-written stream).
-        if (string.IsNullOrWhiteSpace((await _keys.GetAsync(ct)).DeepSeek))
-        {
-            await WriteMissingKeyAsync(MissingApiKeyException.DeepSeek(), ct);
-            return;
-        }
-
-        Response.ContentType = "application/x-ndjson; charset=utf-8";
-        try
-        {
-            await foreach (var d in _chat.StreamReplyAsync(req.CompanyId, req.Accession, req.Doc, ParseNode(req.Node), req.Messages, req.Form, ct))
-            {
-                await Response.WriteAsync(JsonSerializer.Serialize(new { t = d.Kind, c = d.Text }) + "\n", ct);
-                await Response.Body.FlushAsync(ct);
-            }
-        }
-        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
-        {
-            await Response.WriteAsync(JsonSerializer.Serialize(new { t = "error", c = "DeepSeek unreachable." }) + "\n", ct);
-        }
-    }
-
     // Web discovery — ask Perplexity sonar for the named counterparties behind the company's revenue
     // (Side=CUSTOMER) or cost (Side=SUPPLIER) segments. Runs Perplexity-style: a planner decomposes the
     // request into focused sub-queries, each its own grounded search. Streams NDJSON lines as it goes
@@ -621,6 +742,11 @@ public class ExtractionController : Controller
         }
 
         Response.ContentType = "application/x-ndjson; charset=utf-8";
+        // Flush headers NOW, before the planner LLM call. Otherwise the response stays uncommitted until
+        // the first "plan" event (seconds later), so the client's `await fetch` doesn't resolve and the
+        // button shows no "Planning searches…" feedback. The 424 key-check above already returned, so
+        // committing here is safe.
+        await Response.Body.FlushAsync(ct);
         var side = string.Equals(req.Side, "SUPPLIER", StringComparison.OrdinalIgnoreCase) ? "SUPPLIER" : "CUSTOMER";
         // Empty segments is allowed: the planner then identifies the company's segments itself (so
         // discovery works on a company that has no sources on record yet).

@@ -25,6 +25,10 @@ public class AppDbContext : IdentityDbContext<AppUser>
     public DbSet<Scenario> Scenarios { get; set; }
     public DbSet<ScenarioShock> ScenarioShocks { get; set; }
     public DbSet<UserApiKey> UserApiKeys { get; set; }
+    public DbSet<StockIndex> StockIndices { get; set; }
+    public DbSet<IndexConstituent> IndexConstituents { get; set; }
+    public DbSet<IndexImportJob> IndexImportJobs { get; set; }
+    public DbSet<FmpIndustryMapping> FmpIndustryMappings { get; set; }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -114,6 +118,30 @@ public class AppDbContext : IdentityDbContext<AppUser>
         modelBuilder.Entity<CompanyRisk>()
             .HasOne(r => r.ContributedBy).WithMany()
             .HasForeignKey(r => r.ContributedByUserId).OnDelete(DeleteBehavior.SetNull);
+
+        // Index membership as a payload-carrying N:M: the junction's own composite key
+        // (StockIndexId, CompanyId) doubles as the importer's upsert key. Cascade from the index so
+        // deleting an index drops its rows; Restrict from Company so an index membership can't quietly
+        // hard-delete a company (companies are soft-deleted anyway).
+        modelBuilder.Entity<IndexConstituent>(e =>
+        {
+            e.HasKey(ic => new { ic.StockIndexId, ic.CompanyId });
+
+            e.HasOne(ic => ic.StockIndex)
+                .WithMany(i => i.Constituents)
+                .HasForeignKey(ic => ic.StockIndexId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            e.HasOne(ic => ic.Company)
+                .WithMany()
+                .HasForeignKey(ic => ic.CompanyId)
+                .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        // One mapping row per distinct vendor label — the upsert/lookup key for the learned
+        // FMP-label -> GICS sub-industry cache.
+        modelBuilder.Entity<FmpIndustryMapping>()
+            .HasIndex(m => m.Label).IsUnique();
 
         // A user's bring-your-own API keys: 1:1 with the user via a shared primary key (UserId is
         // both PK and FK). Cascade-delete so the keys vanish when the account is removed.

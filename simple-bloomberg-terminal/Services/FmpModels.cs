@@ -59,3 +59,4 @@ public record FmpCashFlow(
     string? Period,
     double? OperatingCashFlow,
     double? FreeCashFlow);
+

@@ -41,23 +41,20 @@
                     <li class="nav-item">
                         <a class="nav-link" asp-area="" asp-controller="Home" asp-action="Index">Terminal</a>
                     </li>
-                    <li class="nav-item">
-                        <a class="nav-link" asp-area="" asp-controller="Countries" asp-action="Index">Countries</a>
+                    <li class="nav-item dropdown">
+                        <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown">Countries</a>
+                        <ul class="dropdown-menu terminal-dropdown">
+                            <li><a class="dropdown-item" asp-controller="Countries" asp-action="Index">Countries</a></li>
+                            <li><a class="dropdown-item" asp-controller="TradeBlocs" asp-action="Index">Trade Blocs</a></li>
+                        </ul>
                     </li>
-                    <li class="nav-item">
-                        <a class="nav-link" asp-area="" asp-controller="Companies" asp-action="Index">Companies</a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link" asp-area="" asp-controller="Events" asp-action="Index">Events</a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link" asp-area="" asp-controller="TradeBlocs" asp-action="Index">Trade Blocs</a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link" asp-area="" asp-controller="Graph" asp-action="Index">Graph</a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link" asp-area="" asp-route="ImpactIndex">Impact</a>
+                    <li class="nav-item dropdown">
+                        <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown">Markets</a>
+                        <ul class="dropdown-menu terminal-dropdown">
+                            <li><h6 class="dropdown-header">Stocks</h6></li>
+                            <li><a class="dropdown-item" asp-controller="Companies" asp-action="Index">Companies</a></li>
+                            <li><a class="dropdown-item" asp-controller="Indices" asp-action="Index">Indices</a></li>
+                        </ul>
                     </li>
                     @if (User is { } reviewer && (reviewer.IsInRole("Admin") || reviewer.IsInRole("Manager")))
                     {
@@ -68,12 +65,9 @@
                     <li class="nav-item dropdown">
                         <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown">More</a>
                         <ul class="dropdown-menu terminal-dropdown">
-                            <li><a class="dropdown-item" asp-controller="CountryDetails" asp-action="Index">Country Details</a></li>
-                            <li><a class="dropdown-item" asp-controller="CountryAdvantages" asp-action="Index">Advantages</a></li>
-                            <li><a class="dropdown-item" asp-controller="CountryChallenges" asp-action="Index">Challenges</a></li>
-                            <li><a class="dropdown-item" asp-controller="GdpSnapshots" asp-action="Index">GDP Snapshots</a></li>
-                            <li><a class="dropdown-item" asp-controller="RevenueSources" asp-action="Index">Revenue Sources</a></li>
-                            <li><a class="dropdown-item" asp-controller="CostSources" asp-action="Index">Cost Sources</a></li>
+                            <li><a class="dropdown-item" asp-controller="Events" asp-action="Index">Events</a></li>
+                            <li><a class="dropdown-item" asp-controller="Graph" asp-action="Index">Graph</a></li>
+                            <li><a class="dropdown-item" asp-area="" asp-route="ImpactIndex">Impact</a></li>
                             <li><a class="dropdown-item" asp-controller="Extraction" asp-action="Index">Extraction</a></li>
                         </ul>
                     </li>
@@ -135,10 +129,17 @@
         <span id="scanNotifyBadge" class="scan-notify-badge">0</span>
     </button>
     <div id="scanNotifyPanel" class="scan-notify-panel" hidden>
+        <div id="scanNotifyWGrip" class="scan-notify-wgrip" hidden title="Drag to resize width"></div>
         <div class="scan-notify-head">
             <span>FILING SCANS</span>
             <button id="scanNotifyClose" class="scan-notify-x" type="button" aria-label="Close">&times;</button>
         </div>
+        <!-- Filing document + its TOC: shown only when the open chat's scan ran on a filing. Pinned
+             static on the left while the existing list+chat widget resizes on the right. -->
+        <div id="scanNotifyDoc" class="scan-notify-doc" hidden>
+            <div id="scanNotifyDocPane" class="scan-notify-doc-pane"></div>
+        </div>
+        <nav id="scanNotifyToc" class="scan-notify-toc" hidden></nav>
         <div id="scanNotifyList" class="scan-notify-list"></div>
         <div id="scanNotifyChat" class="scan-notify-chat" hidden>
             <button id="scanNotifyBack" class="scan-notify-back" type="button">&larr; All scans</button>
@@ -151,7 +152,6 @@
                           placeholder="Ask about this filing…"></textarea>
                 <button id="scanNotifySend" class="scan-notify-send" type="button">Send</button>
             </div>
-            <button id="scanNotifyOpen" class="scan-notify-open" type="button">Open in Extraction &rarr;</button>
         </div>
     </div>
 </div>
@@ -167,6 +167,26 @@
         <div class="scan-edit-foot">
             <button id="scanEditCancel" class="scan-edit-btn-ghost" type="button">Cancel</button>
             <button id="scanEditApply" class="scan-notify-save-btn" type="button">Apply</button>
+        </div>
+    </div>
+</div>
+
+<!-- Under-the-hood inspector: the exact prompt one scan agent saw + its raw reply. -->
+<div id="scanChunkModal" class="scan-edit-overlay" hidden>
+    <div class="scan-edit-box scan-chunk-box">
+        <div class="scan-edit-head">
+            <span id="scanChunkTitle">Agent call</span>
+            <button id="scanChunkClose" class="scan-notify-x" type="button" aria-label="Close">&times;</button>
+        </div>
+        <div class="scan-chunk-inspect">
+            <div class="scan-chunk-pane">
+                <div class="scan-chunk-pane-head">Prompt sent to AI</div>
+                <pre id="scanChunkPrompt" class="scan-chunk-pre"></pre>
+            </div>
+            <div class="scan-chunk-pane">
+                <div class="scan-chunk-pane-head">AI response</div>
+                <pre id="scanChunkResponse" class="scan-chunk-pre"></pre>
+            </div>
         </div>
     </div>
 </div>

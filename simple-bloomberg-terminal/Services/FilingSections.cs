@@ -5,8 +5,11 @@ using simple_bloomberg_terminal.Models.Enums;
 
 namespace simple_bloomberg_terminal.Services;
 
-/// <summary>One paragraph-sized slice of a filing, tagged with the SEC Item it came from.</summary>
-public record FilingChunk(string Section, string Text);
+/// <summary>One slice of a filing handed to a single worker call. <paramref name="Section"/> is the
+/// provenance label; <paramref name="Item"/> is the SEC Item it belongs to (for grouping in the widget)
+/// and <paramref name="Titles"/> are the sub-heading titles this chunk bundles (one call may pack
+/// several small headings — see the heading-packing in FilingExtractionService).</summary>
+public record FilingChunk(string Section, string Text, string Item = "", IReadOnlyList<string>? Titles = null);
 
 /// <summary>A bold sub-heading within a target Item, plus the text under it (until the next heading).</summary>
 public record FilingHeading(string Section, string Title, string Body);
@@ -24,10 +27,13 @@ public static class FilingSections
     public static string[] ItemsFor(ExtractionNode node) => node switch
     {
         ExtractionNode.RISK => ["1A", "7A"],
-        _                   => ["7", "8"],   // REVENUE and COST share the financial-detail Items
+        // COST adds Item 1 (Business) — "Sources & Availability of Raw Materials" is the canonical
+        // named-supplier / single-source disclosure, which the financial Items don't carry.
+        ExtractionNode.COST => ["1", "7", "8"],
+        _                   => ["7", "8"],   // REVENUE: financial-detail Items
     };
 
-    private const int MaxChunkChars = 4000;        // ~1k tokens/chunk — many small, cheap calls
+    public const int MaxChunkChars = 4000;         // ~1k tokens/chunk — the per-worker text budget
     private const int MaxChunksPerSection = 12;    // keep one giant section from hogging every slot
     private const int MaxChunks = 36;              // overall safety cap (≈3 sections × 12)
 
@@ -42,7 +48,7 @@ public static class FilingSections
             int n = 0;
             foreach (var chunk in Paragraphs(body))
             {
-                chunks.Add(new FilingChunk($"Item {item}", chunk));
+                chunks.Add(new FilingChunk($"Item {item}", chunk, $"Item {item}"));
                 if (++n >= MaxChunksPerSection) break;          // fair share to the next section
                 if (chunks.Count >= MaxChunks) return chunks;
             }
@@ -64,7 +70,7 @@ public static class FilingSections
         var chunks = new List<FilingChunk>();
         foreach (var chunk in Paragraphs(body))
         {
-            chunks.Add(new FilingChunk($"Item {item}", chunk));
+            chunks.Add(new FilingChunk($"Item {item}", chunk, $"Item {item}"));
             if (chunks.Count >= maxChunks) break;
         }
         return chunks;

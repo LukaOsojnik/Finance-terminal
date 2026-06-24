@@ -25,26 +25,7 @@
                 Required = false,
                 Placeholder = "Type company name..."
             })
-            <button type="button" id="loadBtn" class="ext-btn ext-btn-secondary ext-btn-load">LOAD EDGAR ROWS</button>
-            <button type="button" id="reviewBtn" class="ext-btn ext-btn-secondary ext-btn-load">AI REVIEW</button>
             <div id="loadStatus" class="ext-status"></div>
-        </div>
-
-        <!-- Mode B: chat grounded on the open filing. AI surfaces sources & proposes saves. -->
-        <div id="aiChat" class="ai-chat" hidden>
-            <div class="ai-chat-head">
-                <span>AI Chat <span id="aiChatCtx" class="ai-chat-ctx"></span></span>
-                <button type="button" class="ext-btn ext-btn-ghost ai-chat-close" id="aiChatClose">✕</button>
-            </div>
-            <!-- Auto-scan triage report: every heading offered, with the AI's picks marked. -->
-            <div id="scanReport" class="scan-report" hidden></div>
-            <div id="aiChatLog" class="ai-chat-log"></div>
-            <!-- Proposed saves parsed from the reply; click a card to fill the cells above. -->
-            <div id="aiSaveList" class="ai-suggest-list"></div>
-            <div class="ai-chat-input">
-                <textarea id="aiChatText" rows="2" placeholder="Ask about this filing… (Enter to send, Shift+Enter for newline)"></textarea>
-                <button type="button" id="aiChatSend" class="ext-btn ext-btn-primary">Send</button>
-            </div>
         </div>
 
         <div class="extraction-pane-head">
@@ -108,10 +89,8 @@
         <div class="extraction-pane-head">
             <span class="extraction-pane-title">EDGAR — select proof text</span>
             <div class="extraction-pane-actions">
-                <button type="button" id="factsBtn" class="ext-btn ext-btn-secondary">Company Facts</button>
                 <button type="button" id="filingsBtn" class="ext-btn ext-btn-secondary">Filings</button>
                 <button type="button" id="autoScanBtn" class="ext-btn ext-btn-ref">Auto-Scan</button>
-                <button type="button" id="aiChatBtn" class="ext-btn ext-btn-ref">AI Chat</button>
             </div>
         </div>
         <div id="endpointLabel" class="ext-endpoint"></div>
@@ -211,9 +190,10 @@
         min-width: 0; background: var(--bg-card); border: 1px solid var(--border-subtle);
         border-radius: var(--radius-md); padding: 1.1rem 1.25rem;
     }
-    /* Left pane is pinned to a width (drag-adjustable); right pane fills the rest. */
-    #leftPane  { flex: 0 0 50%; }
-    #rightPane { flex: 1; }
+    /* Left pane is pinned to a compact width (drag-adjustable); right pane fills the rest so
+       the EDGAR doc + its tables get most of the screen. */
+    #leftPane  { flex: 0 0 380px; }
+    #rightPane { flex: 1; min-width: 0; }
 
     /* Drag handle between the panes. */
     .extraction-gutter {
@@ -243,102 +223,6 @@
     .ref-info .ref-fail { color: var(--red); font-weight: bold; }
     .ref-info .ref-ptr { color: var(--muted); }
     .ref-info .ref-snip { color: var(--text-secondary); font-style: italic; }
-
-    /* ── AI suggestions panel (Mode B) ── */
-    .ai-suggest {
-        margin: .25rem 0 1rem; border: 1px solid var(--border-accent); border-radius: var(--radius-sm);
-        background: #00d4ff08;
-    }
-    .ai-suggest-head {
-        display: flex; align-items: center; justify-content: space-between; gap: .5rem;
-        padding: .5rem .7rem; border-bottom: 1px solid var(--border-subtle);
-        font-family: var(--font-display); font-size: .7rem; font-weight: 600; letter-spacing: .12em;
-        text-transform: uppercase; color: var(--text-secondary);
-    }
-    .ai-suggest-count { color: var(--accent); }
-    .ai-suggest-close { padding: .1rem .45rem; font-size: .7rem; }
-    .ai-suggest-list { max-height: 240px; overflow: auto; padding: .5rem; display: flex; flex-direction: column; gap: .4rem; }
-    .ai-suggest-card {
-        text-align: left; background: var(--bg-card); border: 1px solid var(--border-subtle);
-        border-radius: var(--radius-sm); padding: .5rem .65rem; cursor: pointer;
-        transition: border-color var(--transition), box-shadow var(--transition);
-    }
-    .ai-suggest-card:hover { border-color: var(--accent-dim); box-shadow: var(--accent-glow); }
-    .ai-suggest-name { font-family: var(--font-mono); font-size: .8rem; color: var(--text-primary); font-weight: 600; }
-    .ai-suggest-meta { font-family: var(--font-mono); font-size: .7rem; color: var(--muted); margin-top: .2rem; }
-    .ai-suggest-meta .as-tag { color: var(--accent); }
-
-    /* ── AI chat panel (Mode B, streaming) ── */
-    .ai-chat {
-        margin: .25rem 0 1rem; border: 1px solid var(--border-accent); border-radius: var(--radius-sm);
-        background: #00d4ff08; display: flex; flex-direction: column;
-    }
-    .ai-chat-head {
-        display: flex; align-items: center; justify-content: space-between; gap: .5rem;
-        padding: .5rem .7rem; border-bottom: 1px solid var(--border-subtle);
-        font-family: var(--font-display); font-size: .7rem; font-weight: 600; letter-spacing: .12em;
-        text-transform: uppercase; color: var(--text-secondary);
-    }
-    .ai-chat-ctx { color: var(--accent); font-weight: 400; letter-spacing: .04em; }
-    .ai-chat-close { padding: .1rem .45rem; font-size: .7rem; }
-    .ai-chat-log { max-height: 320px; overflow: auto; padding: .6rem; display: flex; flex-direction: column; gap: .55rem; }
-    .ai-chat-msg { display: flex; flex-direction: column; gap: .25rem; }
-    .ai-chat-user .ai-chat-body {
-        align-self: flex-end; background: var(--accent); color: var(--bg-base);
-        border-radius: var(--radius-sm); padding: .4rem .6rem; max-width: 85%;
-    }
-    .ai-chat-assistant .ai-chat-body {
-        align-self: flex-start; background: var(--bg-card); border: 1px solid var(--border-subtle);
-        color: var(--text-primary); border-radius: var(--radius-sm); padding: .4rem .6rem; max-width: 92%;
-        white-space: pre-wrap; word-break: break-word;
-    }
-    .ai-chat-body { font-family: var(--font-mono); font-size: .78rem; line-height: 1.5; }
-    /* The dim live "thinking" trace (v4 reasoning tokens) — collapsible. */
-    .ai-chat-think {
-        align-self: flex-start; max-width: 92%; border-left: 2px solid var(--border-subtle);
-    }
-    .ai-chat-think-summary {
-        cursor: pointer; list-style: none; font-family: var(--font-display); font-size: .6rem;
-        letter-spacing: .08em; text-transform: uppercase; color: var(--muted);
-        padding: .1rem .5rem; display: flex; align-items: center; gap: .3rem; user-select: none;
-    }
-    .ai-chat-think-summary::-webkit-details-marker { display: none; }
-    .ai-chat-think-summary::before {
-        content: '▾'; display: inline-block; transition: transform .15s ease;
-    }
-    .ai-chat-think:not([open]) .ai-chat-think-summary::before { transform: rotate(-90deg); }
-    .ai-chat-think-body {
-        font-family: var(--font-mono); font-size: .7rem; line-height: 1.45; color: var(--muted);
-        font-style: italic; white-space: pre-wrap; word-break: break-word; padding: .1rem .5rem .2rem;
-        max-height: 120px; overflow: auto;
-    }
-    .ai-chat-input { display: flex; gap: .4rem; padding: .5rem; border-top: 1px solid var(--border-subtle); }
-    .ai-chat-input textarea {
-        flex: 1; resize: vertical; font-family: var(--font-mono); font-size: .78rem;
-        background: var(--bg-base); color: var(--text-primary);
-        border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); padding: .4rem .5rem;
-    }
-    #aiSaveList:empty { display: none; }
-    #aiSaveList { padding: 0 .6rem .4rem; }
-
-    /* ── Auto-scan triage report (all titles + the AI's picks) ── */
-    .scan-report {
-        margin: .5rem .6rem 0; border: 1px solid var(--border-subtle); border-radius: var(--radius-sm);
-        background: var(--bg-base); max-height: 200px; overflow: auto; padding: .5rem .6rem;
-    }
-    .scan-report-head {
-        font-family: var(--font-display); font-size: .66rem; font-weight: 600; letter-spacing: .1em;
-        text-transform: uppercase; color: var(--accent); margin-bottom: .45rem;
-    }
-    .scan-report-sec {
-        font-family: var(--font-mono); font-size: .68rem; color: var(--text-secondary);
-        margin: .4rem 0 .2rem; letter-spacing: .04em;
-    }
-    .scan-report-row { display: flex; gap: .45rem; font-family: var(--font-mono); font-size: .74rem; padding: .1rem 0; }
-    .scan-report-row .sr-mark { width: 1em; flex-shrink: 0; text-align: center; }
-    .sr-picked { color: var(--text-primary); }
-    .sr-picked .sr-mark { color: var(--green); }
-    .sr-skipped { color: var(--muted); opacity: .6; }
 
     .ext-endpoint { font-family: var(--font-mono); font-size: .7rem; color: var(--muted);
         letter-spacing: .04em; margin-bottom: .5rem; min-height: 1em; }
@@ -484,7 +368,6 @@
         $('pctRow').hidden = isRisk();
         $('counterpartyRow').hidden = isRisk();
         $('noteRow').hidden = !isRisk();
-        $('loadBtn').textContent = isRisk() ? 'LOAD COMPANY' : 'LOAD EDGAR ROWS';
     }
 
     // ---- Drag the gutter to widen the filing pane (only left pane's width changes) ----
@@ -513,8 +396,8 @@
             gutter.addEventListener('pointermove', onMove);
             gutter.addEventListener('pointerup', onUp);
         });
-        // Double-click the gutter to reset to an even split.
-        gutter.addEventListener('dblclick', () => { left.style.flexBasis = '50%'; });
+        // Double-click the gutter to reset to the compact default.
+        gutter.addEventListener('dblclick', () => { left.style.flexBasis = '380px'; });
     })();
 
     function showText(text, endpoint) {
@@ -648,47 +531,13 @@
         loadExistingRefs(currentRowId);
     }
 
-    // ---- LOAD: refresh persists+pre-fills the left, then show Company Facts on the right ----
-    $('loadBtn').addEventListener('click', async () => {
-        const id = companyId();
-        const status = $('loadStatus');
-        if (!id) { status.textContent = 'Pick a company first.'; return; }
-        status.textContent = 'Refreshing rows…';
-        try {
-            const res = await fetch(`/api/stock/refresh/${id}`, { method: 'POST' });
-            if (!res.ok) { status.textContent = `Refresh failed (${res.status}): ${await res.text()}`; return; }
-            const dto = await res.json();
-
-            // Risk has no structured EDGAR rows — its rows come from the filing via AI, not refresh.
-            const src = node === 'COST' ? (dto.costSources || [])
-                      : node === 'RISK' ? []
-                      : (dto.revenueSources || []);
-            const byKey = new Map();
-            src.filter(r => r.dataSource === 'EDGAR')
-                .forEach(r => byKey.set(r.name, r)); // later (higher-id) wins
-            edgarRows = [...byKey.values()];
-            rowPicker.innerHTML = '<option value="">— new row —</option>';
-            edgarRows.forEach(r => {
-                const o = document.createElement('option');
-                o.value = r.id; o.textContent = `${r.name} (#${r.id})`;
-                rowPicker.appendChild(o);
-            });
-            if (edgarRows.length) { rowPicker.value = edgarRows[0].id; fillCells(edgarRows[0]); }
-            else fillCells(null);
-            status.textContent = isRisk()
-                ? 'Loaded. Open a filing and use AI Chat to extract risks.'
-                : `Pre-filled ${edgarRows.length} EDGAR row(s).`;
-        } catch (e) { status.textContent = 'Network error: ' + e.message; return; }
-        loadFacts();
-    });
-
     rowPicker.addEventListener('change', () => {
         const r = edgarRows.find(x => String(x.id) === rowPicker.value);
         fillCells(r || null);
     });
 
-    // Initialise the node UI, then react to the dropdown: switching node resets the row + cells and
-    // drops any open chat (a new node grounds on different sections).
+    // Initialise the node UI, then react to the dropdown: switching node resets the row + cells
+    // (a new node grounds on different sections).
     $('nodeSelect').value = node;
     applyNode();
     $('nodeSelect').addEventListener('change', () => {
@@ -697,7 +546,6 @@
         rowPicker.innerHTML = '<option value="">— new row —</option>';
         applyNode();
         fillCells(null);
-        chatHistory = []; aiChatLog.innerHTML = ''; aiSaveList.innerHTML = ''; chatFiling = null;
     });
 
     // ---- right pane: Company Facts ----
@@ -711,7 +559,6 @@
         try { body = JSON.stringify(JSON.parse(body), null, 2); } catch { /* leave raw */ }
         showText(body, `GET /api/stock/facts/${id}`);
     }
-    $('factsBtn').addEventListener('click', loadFacts);
 
     // ---- Wide filings browser (overlay) ----
     const filingsModal = $('filingsModal');
@@ -760,7 +607,7 @@
         $('filingsEmpty').hidden = true;
         openFilingsModal();
         const res = await fetch(`/api/stock/filings/${id}`);
-        if (!res.ok) { $('filingsCount').textContent = `failed (${res.status})`; return; }
+        if (!res.ok) { $('filingsCount').textContent = `failed (${res.status}): ${(await res.text()) || res.statusText}`; return; }
         allFilings = await res.json();
         renderFilings(allFilings);
     });
@@ -858,200 +705,6 @@
     }
     $('saveBtn').addEventListener('click', saveRow);
 
-    // ---- Mode B: conversational extraction (streaming chat grounded on the open filing) ----
-    const validClassification = c => c && Array.from($('f_sourceType').options).some(o => o.value === c);
-
-    function fillFromSuggestion(s) {
-        rowPicker.value = '';            // an AI suggestion is a new proposed row, not an EDGAR one
-        currentRowId = null;
-        if (validClassification(s.classification)) $('f_sourceType').value = s.classification;
-        $('f_name').value = s.name || '';
-        $('f_value').value = s.value != null ? s.value : '';
-        $('f_percentage').value = s.percentage != null ? s.percentage : '';
-        $('f_note').value = s.note != null ? s.note : '';
-        // Counterparty needs a DB id (name resolution stays manual) — surface the name as a hint.
-        const relInput = relatedHidden()?.closest('.autocomplete')?.querySelector('.autocomplete-input');
-        if (relInput && s.relatedCompany) relInput.value = s.relatedCompany;
-
-        // Stash per-field proof so "Use as reference" freezes it with no manual selection needed.
-        aiProof = {};
-        const p = s.proof || {};
-        const map = { NAME: p.name, VALUE: p.value, PERCENTAGE: p.percentage,
-                      CLASSIFICATION: p.classification, RELATED_COMPANY: p.relatedCompany, NOTE: p.note };
-        clearRefs();
-        Object.entries(map).forEach(([field, snap]) => {
-            if (snap && snap.trim()) {
-                aiProof[field] = snap;
-                renderRef(field, { pointer: 'ai-suggested', snapshot: snap, endpoint: currentEndpoint });
-            }
-        });
-    }
-
-    // A ```save {json}``` block in the reply → normalize snake_case to the form-fill shape.
-    function normalizeSave(j) {
-        return {
-            name: j.name || '',
-            classification: j.classification || null,
-            value: j.value != null && j.value !== '' ? Number(j.value) : null,
-            percentage: j.percentage != null && j.percentage !== '' ? Number(j.percentage) : null,
-            relatedCompany: j.related_company || j.relatedCompany || null,
-            note: j.note ?? null,
-            section: 'AI chat',
-            proof: {
-                name: j.proof?.name ?? null, value: j.proof?.value ?? null,
-                percentage: j.proof?.percentage ?? null, classification: j.proof?.classification ?? null,
-                relatedCompany: j.proof?.related_company ?? j.proof?.relatedCompany ?? null,
-                note: j.proof?.note ?? null
-            }
-        };
-    }
-
-    // ---- chat panel state ----
-    const aiChat = $('aiChat'), aiChatLog = $('aiChatLog'), aiChatText = $('aiChatText'), aiSaveList = $('aiSaveList');
-    let chatHistory = [];      // visible turns only; the filing grounding is added server-side
-    let chatFiling = null;     // accession the open chat is grounded on (reset when a new filing opens)
-    let chatBusy = false;
-
-    $('aiChatClose').addEventListener('click', () => { aiChat.hidden = true; });
-
-    function chatBubble(role) {
-        const wrap = document.createElement('div');
-        wrap.className = 'ai-chat-msg ai-chat-' + role;
-        const thinkWrap = document.createElement('details'); thinkWrap.className = 'ai-chat-think'; thinkWrap.hidden = true; thinkWrap.open = false;
-        const summary = document.createElement('summary'); summary.className = 'ai-chat-think-summary'; summary.textContent = 'Thinking';
-        const think = document.createElement('div'); think.className = 'ai-chat-think-body';
-        thinkWrap.append(summary, think);
-        const body = document.createElement('div'); body.className = 'ai-chat-body';
-        wrap.append(thinkWrap, body);
-        aiChatLog.appendChild(wrap);
-        aiChatLog.scrollTop = aiChatLog.scrollHeight;
-        return { thinkWrap, think, body };
-    }
-
-    // Reply prose hides the raw save blocks; each becomes a clickable "fill the form" card.
-    const stripSave = t => t.replace(/```save[\s\S]*?```/g, '📌 (proposed save below)');
-    function renderSaveCards(text) {
-        const re = /```save\s*([\s\S]*?)```/g; let m;
-        while ((m = re.exec(text)) !== null) {
-            let j; try { j = JSON.parse(m[1].trim()); } catch { continue; }
-            const s = normalizeSave(j);
-            if (!s.name) continue;
-            const card = document.createElement('button');
-            card.type = 'button'; card.className = 'ai-suggest-card';
-            const bits = [];
-            if (s.value != null) bits.push('$' + Number(s.value).toLocaleString());
-            if (s.percentage != null) bits.push(s.percentage + '%');
-            if (s.relatedCompany) bits.push('↔ ' + s.relatedCompany);
-            if (s.note) bits.push('“' + shortText(s.note, 50) + '”');
-            card.innerHTML =
-                `<div class="ai-suggest-name">＋ ${escapeHtml(s.name)}</div>` +
-                `<div class="ai-suggest-meta"><span class="as-tag">${escapeHtml(s.classification || '—')}</span>` +
-                (bits.length ? ' · ' + escapeHtml(bits.join(' · ')) : '') + `</div>`;
-            card.addEventListener('click', () => fillFromSuggestion(s));
-            aiSaveList.appendChild(card);
-        }
-    }
-
-    async function sendChat(text) {
-        if (chatBusy || !text.trim()) return;
-        const id = companyId();
-        if (!id) { uiAlert('Pick a company first.'); return; }
-        if (!currentFiling?.accessionNumber || !currentFiling?.primaryDocument) {
-            uiAlert('Open a filing in the right pane first (Filings → pick one).'); return;
-        }
-        chatBusy = true; aiChatText.value = '';
-        chatHistory.push({ role: 'user', content: text });
-        chatBubble('user').body.textContent = text;
-        const out = chatBubble('assistant');
-        let full = '', think = '';
-        try {
-            const res = await fetch('/extraction/chat', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'RequestVerificationToken': token },
-                body: JSON.stringify({
-                    companyId: Number(id),
-                    accession: currentFiling.accessionNumber,
-                    doc: currentFiling.primaryDocument,
-                    node,
-                    form: currentFiling.form || null,
-                    messages: chatHistory
-                })
-            });
-            if (!res.ok || !res.body) { out.body.textContent = `[error ${res.status}]`; chatBusy = false; return; }
-            const reader = res.body.getReader(), dec = new TextDecoder();
-            let buf = '';
-            while (true) {
-                const { value, done } = await reader.read();
-                if (done) break;
-                buf += dec.decode(value, { stream: true });
-                let nl;
-                while ((nl = buf.indexOf('\n')) >= 0) {
-                    const line = buf.slice(0, nl).trim(); buf = buf.slice(nl + 1);
-                    if (!line) continue;
-                    let ev; try { ev = JSON.parse(line); } catch { continue; }
-                    if (ev.t === 'status') { if (!full) out.body.textContent = '⏳ ' + ev.c; }
-                    else if (ev.t === 'reasoning') { think += ev.c; out.thinkWrap.hidden = false; out.think.textContent = think; }
-                    else if (ev.t === 'text') { full += ev.c; out.body.textContent = stripSave(full); }
-                    else if (ev.t === 'error') { out.body.textContent += `\n[${ev.c}]`; }
-                    aiChatLog.scrollTop = aiChatLog.scrollHeight;
-                }
-            }
-            chatHistory.push({ role: 'assistant', content: full });
-            renderSaveCards(full);
-        } catch (e) { out.body.textContent = '[network error]'; }
-        chatBusy = false;
-    }
-
-    $('aiChatSend').addEventListener('click', () => sendChat(aiChatText.value));
-    aiChatText.addEventListener('keydown', e => {
-        if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendChat(aiChatText.value); }
-    });
-
-    // Open the chat from the right pane. A different filing (or reset=true after a curated scan)
-    // clears the conversation; the first open seeds the "find the sources" question.
-    function openChat(reset) {
-        if (!currentFiling?.accessionNumber || !currentFiling?.primaryDocument) {
-            uiAlert('Open a filing in the right pane first (Filings → pick one).'); return;
-        }
-        aiChat.hidden = false;
-        if (reset || chatFiling !== currentFiling.accessionNumber) {
-            chatFiling = currentFiling.accessionNumber;
-            chatHistory = []; aiChatLog.innerHTML = ''; aiSaveList.innerHTML = '';
-            clearScanReport();   // the previous filing's triage list no longer applies
-        }
-        $('aiChatCtx').textContent = currentFiling.form ? `· ${currentFiling.form} ${currentFiling.filingDate || ''}` : '';
-        aiChatText.focus();
-        const seed = {
-            COST: 'List the most significant cost sources and key suppliers in this filing, with values or percentages where stated, then ask me which I want to save.',
-            RISK: 'List the most significant risks disclosed in this filing, grouped by scope (macroeconomic, industry, business, legal/regulatory, financial, general), then ask me which I want to save.',
-            REVENUE: 'List the most interesting revenue sources in this filing, with values or percentages where stated, then ask me which I want to save.'
-        };
-        if (!chatHistory.length) sendChat(seed[node] || seed.REVENUE);
-    }
-    $('aiChatBtn').addEventListener('click', () => openChat(false));
-
-    // Read-only triage report: list every heading the model saw, grouped by Item, with the ones it
-    // chose to scan marked (✓) and the rest dimmed — so the user sees what was offered and picked.
-    const scanReport = $('scanReport');
-    function clearScanReport() { scanReport.hidden = true; scanReport.innerHTML = ''; }
-    function renderScanReport(r) {
-        if (!r.headings || !r.headings.length) { clearScanReport(); return; }
-        const chosen = r.headings.filter(h => h.picked).length;
-        const bySec = {};
-        r.headings.forEach(h => { (bySec[h.section] ||= []).push(h); });
-        let html = `<div class="scan-report-head">AI triaged ${r.headings.length} titles · chose ${chosen} · ${r.found} candidates</div>`;
-        Object.entries(bySec).forEach(([sec, items]) => {
-            html += `<div class="scan-report-sec">${escapeHtml(sec)}</div>`;
-            items.forEach(h => {
-                html += `<div class="scan-report-row ${h.picked ? 'sr-picked' : 'sr-skipped'}">` +
-                    `<span class="sr-mark">${h.picked ? '✓' : '·'}</span>` +
-                    `<span class="sr-title">${escapeHtml(h.title)}</span></div>`;
-            });
-        });
-        scanReport.innerHTML = html;
-        scanReport.hidden = false;
-    }
-
     // ---- Auto-Scan: AI triages every heading by title, scans the relevant ones in parallel, then
     // grounds the chat on the digest. No picking — the model decides which sections to read. ----
     $('autoScanBtn').addEventListener('click', async () => {
@@ -1085,24 +738,6 @@
         finally { btn.disabled = false; btn.textContent = label; }
     });
 
-    // ---- Mode A: run the phase-2 AI reviewer over this company's saved cells ----
-    $('reviewBtn').addEventListener('click', async () => {
-        const id = companyId();
-        if (!id) { uiAlert('Pick a company first.'); return; }
-        const status = $('loadStatus');
-        status.textContent = 'AI reviewing saved cells…';
-        try {
-            const res = await fetch(`/extraction/review/${id}`,
-                { method: 'POST', headers: { 'RequestVerificationToken': token } });
-            if (!res.ok) { status.textContent = `Review failed (${res.status}): ${await res.text()}`; return; }
-            const r = await res.json();
-            status.textContent =
-                `Reviewed ${r.reviewed}: ${r.passed} pass, ${r.failed} fail` +
-                (r.skipped ? `, ${r.skipped} skipped` : '') + '.';
-            loadExistingRefs(currentRowId);   // refresh marks on the bound row
-        } catch (e) { status.textContent = 'Network error: ' + e.message; }
-    });
-
     // ---- Prefill: opened from a source's "Add references" — bind that row and show its proof ----
     (function bootstrapPrefill() {
         const island = document.getElementById('prefillData');
@@ -1116,37 +751,6 @@
         rowPicker.value = row.id;
         fillCells(row);          // sets cells + currentRowId + loads existing refs
         loadFacts();             // open the right pane so the user can browse/select proof
-    })();
-
-    // ---- Rehydrate from a notification "Open in Extraction" link: reopen the scanned filing and
-    // replay the widget conversation so the proposed-save cards are ready to click. Company + node
-    // are restored server-side from the query string (see ExtractionController.Index). ----
-    (async function bootstrapFromScan() {
-        const q = new URLSearchParams(window.location.search);
-        const accession = q.get('accession'), doc = q.get('doc'), jobId = q.get('jobId');
-        const id = companyId();
-        if (!accession || !doc || !id) return;
-
-        await openFiling(id, {
-            accessionNumber: accession, primaryDocument: doc,
-            form: q.get('form') || '', filingDate: '', documentUrl: ''
-        });
-        if (!currentFiling) return;   // filing failed to load — leave the page as-is
-
-        // Reveal the chat panel without firing the seed question.
-        aiChat.hidden = false;
-        chatFiling = currentFiling.accessionNumber;
-        chatHistory = []; aiChatLog.innerHTML = ''; aiSaveList.innerHTML = '';
-        $('aiChatCtx').textContent = currentFiling.form ? `· ${currentFiling.form}` : '';
-
-        let stored = [];
-        if (jobId) { try { stored = JSON.parse(localStorage.getItem(`bbt.scanChat.${jobId}`)) ?? []; } catch { } }
-        stored.forEach(m => {
-            chatHistory.push(m);
-            chatBubble(m.role).body.textContent = stripSave(m.content);
-            if (m.role === 'assistant') renderSaveCards(m.content);
-        });
-        if (!stored.length) openChat(true);   // no widget history → behave like a fresh scan chat
     })();
 })();
 </script>

@@ -898,6 +898,109 @@
 
 ---
 
+## /indices
+
+| Field | Value |
+|---|---|
+| Controller | IndicesController |
+| Action | Index |
+| HTTP | GET |
+| Route source | `[Route("indices")]` + `[Route("")]` (`[AllowAnonymous]`) |
+| View | Views/Indices/Index.cshtml |
+| Parameters | — |
+| Notes | Returns an `IndicesPageViewModel` (indices + recent import jobs) instead of `IEnumerable<StockIndex>`. Lists the tracked `StockIndex` rows grouped by sector and sorted by size (Σ member market cap), plus the recent import jobs. The old `ViewBag.Catalog` of hardcoded one-click import indices has been removed — there are no longer hardcoded catalog import buttons |
+
+---
+
+## /indices/{id}/breakdown
+
+| Field | Value |
+|---|---|
+| Controller | IndicesController |
+| Action | Details |
+| HTTP | GET |
+| Route source | `[Route("indices")]` + `[Route("{id:long}/breakdown")]` (`[AllowAnonymous]`) |
+| View | Views/Indices/Details.cshtml |
+| Parameters | id: long (route, constrained) |
+| Notes | Shows the index's sector + industry breakdown — grouped live from each member's `Company.Sector` / `Company.Industry`, weighted by the stored per-member `IndexConstituent.WeightPct` — plus the constituent list. ViewModel: `IndexDetailViewModel`. Returns 404 when the index is not found |
+
+---
+
+## /indices/discover
+
+| Field | Value |
+|---|---|
+| Controller | IndicesController |
+| Action | Discover (async) |
+| HTTP | POST |
+| Route source | `[Route("indices")]` + `[Route("discover")]` (ValidateAntiForgeryToken) |
+| View | — (JSON array of DiscoveredIndex: code, name, wikiPage, region, sector, etf_ticker) |
+| Parameters | query: string (form); ct: CancellationToken |
+| Auth | `[Authorize(Roles = "Admin,Manager")]` (class-level) |
+| Notes | Web-searches the stock-market indices matching a free-text query via Perplexity sonar (`IIndexDiscovery`). Each suggestion carries its English-Wikipedia constituents-page path plus a sector and ETF ticker so the page can render one-click import buttons that POST to `/indices/import`. Persists nothing. 400 if query blank; 424 if the user has no Perplexity key |
+
+---
+
+## /indices/import
+
+| Field | Value |
+|---|---|
+| Controller | IndicesController |
+| Action | Import |
+| HTTP | POST |
+| Route source | `[Route("indices")]` + `[Route("import")]` (ValidateAntiForgeryToken) |
+| View | — (JSON `{ jobId }` — starts a detached background import job, no redirect) |
+| Parameters | code: string?, name: string?, wikiPage: string?, etfTicker: string?, sector: string?, region: string? (all form) |
+| Auth | `[Authorize(Roles = "Admin,Manager")]` |
+| Notes | Starts a detached background import job (registered in the in-memory `IndexImportJobStore`) and returns its `jobId` at once so the slow Wikipedia scrape / SPDR fetch + SEC map can't time out the request; the page polls `import/{jobId}/status`. Routes to the SPDR holdings source for real weights when an ETF ticker is known, else scrapes Wikipedia membership (cap-weighted). Used by both the Perplexity-discovered suggestion buttons (code+wikiPage+sector+etfTicker) and the manual SPDR ETF import box (etfTicker only). 400 if neither a code nor an ETF ticker is provided |
+
+---
+
+## /indices/import/{id}/continue
+
+| Field | Value |
+|---|---|
+| Controller | IndicesController |
+| Action | Continue (async) |
+| HTTP | POST |
+| Route source | `[Route("indices")]` + `[Route("import/{id:long}/continue", Name = "StockIndexImportContinue")]` (ValidateAntiForgeryToken) |
+| View | — (JSON `{ jobId }` — flips the job to Running and re-runs the detached import, no redirect) |
+| Parameters | id: long (route, constrained) |
+| Auth | `[Authorize(Roles = "Admin,Manager")]` (class-level) |
+| Notes | Continues a job whose FMP auto-provisioning was cut short (Partial) — or retries one that errored — under THIS user's API keys. Re-runs the stored `IndexImportRequest`: existing members re-link for free via the SEC CIK map, and only the still-missing members spend the continuing user's FMP quota. Any authorized user may continue any user's job (stamps `ContinuedBy`). Returns 404 when the job id is unknown; 400 when the job is already Running |
+
+---
+
+## /indices/import/{id}/status
+
+| Field | Value |
+|---|---|
+| Controller | IndicesController |
+| Action | ImportStatus |
+| HTTP | GET |
+| Route source | `[Route("indices")]` + `[Route("import/{id:long}/status")]` |
+| View | — (JSON `{ status, progress, indexId, message, error }`) |
+| Parameters | id: long (route, constrained) |
+| Auth | `[Authorize(Roles = "Admin,Manager")]` (class-level) |
+| Notes | Polls one import job's live status. The page polls it to show progress and, on success, link to the breakdown (`indices/{indexId}/breakdown`) of the index that was just imported. Returns 404 when the job id is unknown |
+
+---
+
+## /indices/{id}/delete
+
+| Field | Value |
+|---|---|
+| Controller | IndicesController |
+| Action | Delete |
+| HTTP | POST |
+| Route source | `[Route("indices")]` + `[Route("{id:long}/delete", Name = "StockIndexDelete")]` (ValidateAntiForgeryToken) |
+| View | — (soft-delete, redirects to Index) |
+| Parameters | id: long (route, constrained) |
+| Auth | `[Authorize(Roles = "Admin,Manager")]` |
+| Notes | Soft-deletes the index and redirects to Index |
+
+---
+
 ## /extraction
 
 | Field | Value |
@@ -968,20 +1071,6 @@
 
 ---
 
-## /extraction/review/{companyId}
-
-| Field | Value |
-|---|---|
-| Controller | ExtractionController |
-| Action | Review |
-| HTTP | POST |
-| Route source | `[Route("extraction")]` + `[Route("review/{companyId:long}")]` |
-| View | — (JSON tally: reviewed, passed, failed, skipped) |
-| Parameters | companyId: long (route, constrained) |
-| Notes | Mode A — runs the phase-2 AI reviewer (`IReviewService`) over the company's unreviewed SourceFieldReview cells (human-entered value + proof) and returns the pass/fail tally so the page can refresh its marks. Responses: 200 OK; 404 (no such company); 503 (Claude unreachable) |
-
----
-
 ## /extraction/auto-extract/{companyId}
 
 | Field | Value |
@@ -993,20 +1082,6 @@
 | View | — (JSON source suggestions for the human to confirm) |
 | Parameters | companyId: long (route, constrained); accession: string (query, required); doc: string (query, required); node: string? (query string, optional — `REVENUE`\|`COST`\|`RISK`, default `REVENUE`); form: string? (query string, optional — SEC form type, e.g. `10-K`, forwarded to the sec2md markdown sidecar) |
 | Notes | Mode B — AI (`IFilingExtractionService`) reads one SEC filing and proposes rows + per-field proof for the active node (revenue / cost / company-risk) for the human to confirm; persists nothing (the page fills the form and the existing save path freezes proof). Responses: 200 OK; 400 (missing accession/doc); 404 (no such company); 503 (Claude unreachable) |
-
----
-
-## /extraction/chat
-
-| Field | Value |
-|---|---|
-| Controller | ExtractionController |
-| Action | Chat |
-| HTTP | POST |
-| Route source | `[Route("extraction")]` + `[Route("chat")]` |
-| View | — (streaming `application/x-ndjson` body of `{"t":"reasoning"\|"text"\|"error","c":"..."}` lines, not a normal JSON/view response) |
-| Parameters | req: ChatRequest (body) — { companyId, accession, doc, node (`REVENUE`\|`COST`\|`RISK`, default `REVENUE`), form (SEC form type, e.g. `10-K`, forwarded to the sec2md markdown sidecar), messages:[{role,content}] }; ct: CancellationToken |
-| Notes | Mode B — streams a conversational extraction grounded on one open SEC filing; persists nothing (`​```save```​` blocks in the reply pre-fill the extraction form). Responses: 200 OK (NDJSON stream); 404 (no such company) |
 
 ---
 
@@ -1048,7 +1123,7 @@
 | Route source | `[Route("extraction")]` + `[Route("scan-jobs")]` |
 | View | — (JSON array of jobs: `{ id, status, companyId, companyName, accession, doc, node, form, filingLabel, found, summary, error, replying }`) |
 | Parameters | ids: string? (query string — comma-separated job ids the browser is tracking) |
-| Notes | Returns the status/found-count/AI summary of the background jobs whose ids the browser holds (in localStorage). Resolves each id against both the `ScanJobStore` and the `RediscoverJobStore`, MERGING filing-scan and private-company re-discovery jobs into one list — each entry carries a `kind` (`"scan"` or `"rediscover"`) so the widget can tell a chat-capable scan from a fire-and-forget re-discovery. Unknown/dismissed ids are skipped. Backs the global bottom-right notification widget, which shows the summary, lets the user chat (via `POST /extraction/chat`), and links back to `/extraction` to save the yielded objects |
+| Notes | Returns the status/found-count/AI summary of the background jobs whose ids the browser holds (in localStorage). Resolves each id against both the `ScanJobStore` and the `RediscoverJobStore`, MERGING filing-scan and private-company re-discovery jobs into one list — each entry carries a `kind` (`"scan"` or `"rediscover"`) so the widget can tell a chat-capable scan from a fire-and-forget re-discovery. Unknown/dismissed ids are skipped. Backs the global bottom-right notification widget, which shows the summary and links back to `/extraction` to save the yielded objects |
 
 ---
 
@@ -1534,7 +1609,7 @@
 
 ASP.NET Core Identity now gates the existing controllers as follows:
 
-- **MVC entity controllers** (Countries, Companies, Events, TradeBlocs, CountryDetails, CountryAdvantages, CountryChallenges, GdpSnapshots, RevenueSources, CostSources): read GETs (`Index`/`Search`/`Details`/`Lookup`/`ValidateCountry` and the like) are `[AllowAnonymous]`; `Create`/`Edit`/`Delete` (and the other mutating actions) require `[Authorize(Roles = "Admin,Manager")]`.
+- **MVC entity controllers** (Countries, Companies, Events, TradeBlocs, CountryDetails, CountryAdvantages, CountryChallenges, GdpSnapshots, RevenueSources, CostSources, Indices): read GETs (`Index`/`Search`/`Details`/`Lookup`/`ValidateCountry` and the like) are `[AllowAnonymous]`; `Create`/`Edit`/`Delete` (and the other mutating actions) require `[Authorize(Roles = "Admin,Manager")]`.
 - **API controllers** (Controllers/Api — GraphController, StockController, CompanyRisks, CompanyFinancials, Filings, SourceFieldReviews, Scenarios, ScenarioShocks): `GET` requires `[Authorize]` (any authenticated user); `POST`/`PUT`/`DELETE` require `[Authorize(Roles = "Admin,Manager")]`.
 - **Public** (no auth): Home, Ticker, Graph, Impact.
 - **ExtractionController**: `[Authorize(Roles = "Admin,Manager")]` for the whole controller.
@@ -1559,4 +1634,4 @@ ASP.NET Core Identity now gates the existing controllers as follows:
 
 ## Navigation (Views/Shared/_Layout.cshtml)
 
-Top nav links: Countries, Companies, Events, Trade Blocs, Graph, plus a "More" dropdown containing: Country Details, Country Advantages, Country Challenges, GDP Snapshots, Revenue Sources, Cost Sources, Extraction.
+Top nav links: Countries, Companies, Indices, Events, Trade Blocs, Graph, plus a "More" dropdown containing: Country Details, Country Advantages, Country Challenges, GDP Snapshots, Revenue Sources, Cost Sources, Extraction.

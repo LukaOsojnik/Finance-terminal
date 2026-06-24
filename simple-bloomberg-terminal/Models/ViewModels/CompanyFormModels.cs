@@ -22,6 +22,13 @@ public class CompanyCreateModel
     public CompanyType Type { get; set; } = CompanyType.PUBLIC;
 
     public GicsIndustry? Industry { get; set; }
+
+    // Raw vendor (FMP / sonar) industry label + the LLM-resolved GICS sub-industry. Carried from the
+    // prefill through to the Create POST so the saved company keeps both the source label and the
+    // fine-tier classification (Industry above is the rollup of the sub-industry).
+    public string? FmpIndustry { get; set; }
+    public GicsSubIndustry? GicsSubIndustry { get; set; }
+
     public double? RevenueTotal { get; set; }
     public double? MarketCap { get; set; }
 

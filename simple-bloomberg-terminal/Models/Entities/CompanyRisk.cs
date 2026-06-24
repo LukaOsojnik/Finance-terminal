@@ -23,6 +23,12 @@ public class CompanyRisk : IContribution
     public RiskScope Scope { get; set; }
     public string Name { get; set; }
     public string? Note { get; set; }
+
+    // Per-record source passage: the verbatim filing excerpt (SEC Item 1A/7A + source text) the whole
+    // risk row was drawn from, set by the extraction agent. Distinct from the per-field proof rows in
+    // <see cref="Reviews"/> — those back one field each; this cites the record overall.
+    public string? Reference { get; set; }
+
     public DataSource? DataSource { get; set; }
     public long CompanyId { get; set; }
     public DateTime? DeletedAt { get; set; }

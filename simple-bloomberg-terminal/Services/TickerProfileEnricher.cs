@@ -1,3 +1,4 @@
+using simple_bloomberg_terminal.Models.Enums;
 using simple_bloomberg_terminal.Models.ViewModels;
 
 namespace simple_bloomberg_terminal.Services;
@@ -44,10 +45,10 @@ public class TickerProfileEnricher : ITickerProfileEnricher
         // often premium-gated -> null, which would otherwise leave AsOf unset).
         model.AsOf = DateOnly.FromDateTime(DateTime.Today);
 
-        // The static label map only covers common FMP/Yahoo labels; on a miss let the classifier pick
-        // the industry within the already-resolved sector so the user doesn't have to.
-        if (model.Industry == null)
-            model.Industry = await _industryClassifier.ClassifyAsync(model.Sector, model.Name, profile.Industry);
+        // Resolve the GICS sub-industry from the vendor label (cached, else cheap LLM) and roll it up to
+        // the Industry tier so the user doesn't have to pick either.
+        model.GicsSubIndustry = await _industryClassifier.ResolveSubIndustryAsync(model.Sector, model.FmpIndustry, model.Name);
+        model.Industry = model.GicsSubIndustry?.GetIndustry();
 
         string? note = null;
         if (income == null)

@@ -20,6 +20,15 @@ public class Company
     public CompanyType Type { get; set; } = CompanyType.PUBLIC;
     public long CountryId { get; set; }
     public Sector Sector { get; set; }
+
+    // The raw vendor (FMP) industry label, stored verbatim — the finest, source-of-truth tier. Kept
+    // so industry can be re-resolved later without re-fetching FMP, and as the LLM's strongest signal.
+    public string? FmpIndustry { get; set; }
+
+    // GICS sub-industry (163-tier), reasoned by the LLM from FmpIndustry. Industry is its rollup.
+    public GicsSubIndustry? GicsSubIndustry { get; set; }
+
+    // GICS Industry (74-tier) — a denormalized cache of GicsSubIndustry.GetIndustry() for cheap querying.
     public GicsIndustry? Industry { get; set; }
     public double? RevenueTotal { get; set; }
     public double? GrossMargin { get; set; }

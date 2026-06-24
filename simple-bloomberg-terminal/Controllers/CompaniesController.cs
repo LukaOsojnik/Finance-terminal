@@ -23,15 +23,18 @@ public class CompaniesController : Controller
     private readonly ICompanyProfileDiscovery _profileDiscovery;
     private readonly ICompanyProvisioningService _provisioning;
     private readonly RediscoverJobStore _rediscoverJobs;
+    private readonly BackfillJobStore _backfillJobs;
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly IUserApiKeyProvider _keys;
 
     public CompaniesController(ICompanyRepository companies,
         ICompanyFinancialsService financials,
         ICompanyProfileDiscovery profileDiscovery, ICompanyProvisioningService provisioning,
-        RediscoverJobStore rediscoverJobs, IServiceScopeFactory scopeFactory, IUserApiKeyProvider keys)
+        RediscoverJobStore rediscoverJobs, BackfillJobStore backfillJobs,
+        IServiceScopeFactory scopeFactory, IUserApiKeyProvider keys)
     {
         _rediscoverJobs = rediscoverJobs;
+        _backfillJobs = backfillJobs;
         _scopeFactory = scopeFactory;
         _keys = keys;
         _companies = companies;
@@ -78,6 +81,9 @@ public class CompaniesController : Controller
             SectorLabel = company.Sector.ToString().Replace("_", " "),
             IndustryLabel = company.Industry.HasValue
                 ? company.Industry.Value.ToString().Replace("_", " ")
+                : "—",
+            SubIndustryLabel = company.GicsSubIndustry.HasValue
+                ? company.GicsSubIndustry.Value.ToString().Replace("_SUB", "").Replace("_", " ")
                 : "—"
         };
         return View(vm);
@@ -139,17 +145,7 @@ public class CompaniesController : Controller
     public async Task<IActionResult> Create(CompanyCreateModel model)
     {
         if (!ModelState.IsValid) { PopulateDropdowns(); return View(model); }
-        var entity = new Company(model.Name, model.CountryId, model.Sector)
-        {
-            Cik = model.Cik,
-            Type = model.Type,
-            Industry = model.Industry,
-            RevenueTotal = model.RevenueTotal,
-            GrossMargin = model.GrossMargin,
-            MarketCap = model.MarketCap,
-            AsOf = model.AsOf,
-            Notes = model.Notes
-        };
+        var entity = CompanyMapper.ToEntity(model, model.CountryId);
         _companies.Add(entity);
 
         // Prefilled from a ticker -> pull the dated financial history (FMP, or Yahoo fallback) and
@@ -326,25 +322,88 @@ public class CompaniesController : Controller
         return Ok();
     }
 
-    // Bulk-refresh existing companies from the real APIs (most were AI-seeded): the provisioning
-    // service resolves each company's ticker from its SEC CIK, re-fetches FMP (stopping cleanly on the
-    // daily 429 quota), and fills missing industries. Returns a JSON summary for the results popup; a
-    // 503 when the SEC ticker map itself is unreachable.
-    [HttpPost, Route("backfill"), ValidateAntiForgeryToken]
-    public async Task<IActionResult> Backfill()
+    // Backfill #1 — real financial history + profile refresh from FMP/Yahoo. Runs DETACHED so the page
+    // can show live per-company progress and Cancel can stop it. Returns the job id to poll.
+    [HttpPost, Route("backfill/financials"), ValidateAntiForgeryToken]
+    public async Task<IActionResult> BackfillFinancials()
     {
-        BackfillResult result;
-        try { result = await _provisioning.BackfillAsync(); }
-        catch (HttpRequestException) { return StatusCode(503, "SEC ticker map is unreachable. Try again."); }
+        var keys = await _keys.GetAsync();   // captured here (the detached task has no HttpContext)
+        var job = new BackfillJob();
+        _backfillJobs.Add(job);
+        RunBackfillDetached(job.Id, keys, (svc, p, ct) => svc.BackfillFinancialsAsync(p, ct));
+        return Json(new { jobId = job.Id });
+    }
 
-        return Json(new
+    // Backfill #2 — resolve missing GICS sub-industries (cheap LLM, cache-deduped). Same detached
+    // progress/cancel machinery; Cancel aborts the in-flight LLM call.
+    [HttpPost, Route("backfill/industries"), ValidateAntiForgeryToken]
+    public async Task<IActionResult> BackfillIndustries()
+    {
+        var keys = await _keys.GetAsync();
+        var job = new BackfillJob();
+        _backfillJobs.Add(job);
+        RunBackfillDetached(job.Id, keys, (svc, p, ct) => svc.BackfillIndustriesAsync(p, ct));
+        return Json(new { jobId = job.Id });
+    }
+
+    // Poll one backfill job: returns the progress lines the browser hasn't seen yet (sliced from `since`),
+    // the new cursor, and — once done — the final summary for the results popup.
+    [HttpGet, Route("backfill/{id}/status")]
+    public IActionResult BackfillStatus(string id, int since = 0)
+    {
+        var job = _backfillJobs.Get(id);
+        if (job is null) return NotFound();
+
+        string[] lines;
+        int total;
+        lock (job.Lock) { total = job.Lines.Count; lines = job.Lines.Skip(since).ToArray(); }
+
+        var result = job.Done && job.Error is null && job.Result is { } r
+            ? new
+            {
+                filled = r.Filled, failed = r.Failed, industriesFilled = r.IndustriesFilled,
+                rateLimited = r.RateLimited, remaining = r.Remaining, message = r.Message
+            }
+            : null;
+        return Json(new { lines, nextSince = total, done = job.Done, error = job.Error, result });
+    }
+
+    // Close button -> cancel the run: trips the job's token, which aborts the in-flight LLM request and
+    // stops the loop (the partial result so far is still returned on the next status poll).
+    [HttpPost, Route("backfill/{id}/cancel"), ValidateAntiForgeryToken]
+    public IActionResult BackfillCancel(string id)
+    {
+        var job = _backfillJobs.Get(id);
+        if (job is null) return NotFound();
+        job.Cts.Cancel();
+        return Ok();
+    }
+
+    // Detached runner shared by both backfills: own DI scope (the request's is gone once the action
+    // returns), the user's captured keys set on it so the FMP/LLM clients are authenticated, progress
+    // appended to the job for polling. `run` selects which backfill (financials or industries) to drive.
+    private void RunBackfillDetached(string jobId, UserApiKeys keys,
+        Func<ICompanyProvisioningService, IProgress<string>, CancellationToken, Task<BackfillResult>> run)
+    {
+        _ = Task.Run(async () =>
         {
-            filled = result.Filled,
-            failed = result.Failed,
-            industriesFilled = result.IndustriesFilled,
-            rateLimited = result.RateLimited,
-            remaining = result.Remaining,
-            message = result.Message
+            using var scope = _scopeFactory.CreateScope();
+            var sp = scope.ServiceProvider;
+            sp.GetRequiredService<IUserApiKeyProvider>().Set(keys);
+            var provisioning = sp.GetRequiredService<ICompanyProvisioningService>();
+            var jobs = sp.GetRequiredService<BackfillJobStore>();   // singleton — same instance the poll reads
+            var job = jobs.Get(jobId);
+            if (job is null) return;
+
+            var progress = new SyncProgress<string>(line => { lock (job.Lock) job.Lines.Add(line); });
+            try
+            {
+                job.Result = await run(provisioning, progress, job.Cts.Token);
+            }
+            catch (HttpRequestException) { job.Error = "SEC ticker map is unreachable. Try again."; }
+            catch (OperationCanceledException) { /* cancelled before any partial result — just mark done */ }
+            catch (Exception ex) { job.Error = ex.Message; }
+            finally { job.Done = true; }
         });
     }
 

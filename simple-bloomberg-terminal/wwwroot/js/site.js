@@ -672,9 +672,12 @@ document.addEventListener('submit', async e => {
     const chip = $('scanNotifyChip'), badge = $('scanNotifyBadge'), panel = $('scanNotifyPanel');
     const listEl = $('scanNotifyList'), chatEl = $('scanNotifyChat');
     const logEl = $('scanNotifyLog'), inputEl = $('scanNotifyInput'), sendBtn = $('scanNotifySend');
-    const headEl = $('scanNotifyChatHead'), openBtn = $('scanNotifyOpen'), savesEl = $('scanNotifySaves');
+    const headEl = $('scanNotifyChatHead'), savesEl = $('scanNotifySaves');
     const savesGrip = $('scanNotifySavesGrip');
+    const wGrip = $('scanNotifyWGrip');
+    const docEl = $('scanNotifyDoc'), docPaneEl = $('scanNotifyDocPane'), tocEl = $('scanNotifyToc');
     const SAVES_H_KEY = 'bbt.scanSavesH';   // user-dragged checklist height (px)
+    const PANEL_W_KEY = 'bbt.scanPanelW';   // user-dragged chat-panel width (px)
     const editModal = $('scanEditModal'), editBody = $('scanEditBody'), editTitle = $('scanEditTitle');
     // Classification options per node — mirror the extraction form's enum dropdowns.
     const CLASS_OPTS = {
@@ -693,9 +696,60 @@ document.addEventListener('submit', async e => {
         ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
     // Pretty hostname for a citation link (strip scheme + www.), falling back to the raw URL.
     const srcHost = u => { try { return new URL(u).hostname.replace(/^www\./, ''); } catch { return u; } };
-    // Hide ```save {json}``` blocks from the prose shown in bubbles (kept verbatim in history).
-    // Collapse the blank lines the removed blocks leave behind so stacked saves don't gap the text.
-    const stripSave = t => t.replace(/```save[\s\S]*?```/g, '').replace(/\n{3,}/g, '\n\n').trim();
+    // Hide ```save``` and ```handoff``` {json} blocks from the prose shown in bubbles (kept verbatim
+    // in history). Collapse the blank lines the removed blocks leave behind so they don't gap the text.
+    const stripSave = t => t
+        .replace(/```save[\s\S]*?```/g, '')
+        .replace(/```handoff[\s\S]*?```/g, '')
+        .replace(/\n{3,}/g, '\n\n').trim();
+    // Minimal Markdown → HTML for chat bubbles. Escapes first (LLM output is untrusted),
+    // then renders a safe subset: headings, bold/italic/code, lists, tables, rules, links.
+    const mdInline = s => escapeHtml(s)
+        .replace(/`([^`]+)`/g, '<code>$1</code>')
+        .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
+        .replace(/(^|[^*])\*([^*\n]+)\*/g, '$1<em>$2</em>')
+        .replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>');
+    function renderMarkdown(src) {
+        const lines = String(src ?? '').replace(/\r\n/g, '\n').split('\n');
+        const out = [];
+        let i = 0;
+        const isSep = l => /^\s*\|?\s*:?-{2,}:?\s*(\|\s*:?-{2,}:?\s*)+\|?\s*$/.test(l);
+        const cells = l => l.trim().replace(/^\||\|$/g, '').split('|').map(c => c.trim());
+        const isBlock = l => /^\s*[-*+]\s+/.test(l) || /^\s*\d+\.\s+/.test(l) || /^#{1,6}\s+/.test(l);
+        while (i < lines.length) {
+            const line = lines[i];
+            // Table: a header row immediately followed by a |---|---| separator
+            if (line.includes('|') && i + 1 < lines.length && isSep(lines[i + 1])) {
+                const head = cells(line); i += 2; const rows = [];
+                while (i < lines.length && lines[i].includes('|') && lines[i].trim() !== '') { rows.push(cells(lines[i])); i++; }
+                const th = head.map(c => `<th>${mdInline(c)}</th>`).join('');
+                const tb = rows.map(r => `<tr>${head.map((_, k) => `<td>${mdInline(r[k] ?? '')}</td>`).join('')}</tr>`).join('');
+                out.push(`<table class="md-table"><thead><tr>${th}</tr></thead><tbody>${tb}</tbody></table>`);
+                continue;
+            }
+            const h = line.match(/^(#{1,6})\s+(.*)$/);
+            if (h) { const n = h[1].length; out.push(`<div class="md-h md-h${n}">${mdInline(h[2])}</div>`); i++; continue; }
+            if (/^\s*([-*_])\1{2,}\s*$/.test(line)) { out.push('<hr class="md-hr">'); i++; continue; }
+            if (/^\s*[-*+]\s+/.test(line)) {
+                const it = [];
+                while (i < lines.length && /^\s*[-*+]\s+/.test(lines[i])) { it.push(`<li>${mdInline(lines[i].replace(/^\s*[-*+]\s+/, ''))}</li>`); i++; }
+                out.push(`<ul class="md-list">${it.join('')}</ul>`); continue;
+            }
+            if (/^\s*\d+\.\s+/.test(line)) {
+                const it = [];
+                while (i < lines.length && /^\s*\d+\.\s+/.test(lines[i])) { it.push(`<li>${mdInline(lines[i].replace(/^\s*\d+\.\s+/, ''))}</li>`); i++; }
+                out.push(`<ol class="md-list">${it.join('')}</ol>`); continue;
+            }
+            if (line.trim() === '') { i++; continue; }
+            const para = [];
+            while (i < lines.length && lines[i].trim() !== '' && !isBlock(lines[i])
+                   && !(lines[i].includes('|') && i + 1 < lines.length && isSep(lines[i + 1]))) {
+                para.push(mdInline(lines[i])); i++;
+            }
+            out.push(`<p class="md-p">${para.join('<br>')}</p>`);
+        }
+        return `<div class="md">${out.join('')}</div>`;
+    }
     const fmtElapsed = ms => {
         const s = Math.max(0, Math.floor(ms / 1000));
         return s < 60 ? `${s}s` : `${Math.floor(s / 60)}m ${s % 60}s`;
@@ -712,6 +766,7 @@ document.addEventListener('submit', async e => {
     let live = null;
     let thinkOpen = false;          // user's expand/collapse choice for the live "thinking" block;
                                     // persisted across paintStreaming() rebuilds (else each poll reopens it)
+    let openSections = new Set();   // expanded section keys `${jobId}:${item}` — persists across polls
     let saveSel = new Set();        // ticked save keys (original block name) for the open job
     let saveSelJob = null;          // which job saveSel belongs to (reset on switch)
     let saveEdits = {};             // key -> field overrides the user applied in the edit popup
@@ -737,6 +792,9 @@ document.addEventListener('submit', async e => {
             // ACCEPTs in the widget (acceptRediscover does the in-place refresh). Just surface the panel.
             if (prevStatus[j.id] === 'Running' && j.status !== 'Running') justDone = true;
             if (prevReplying[j.id] && !j.replying) { replyDone = true; refreshReply(j.id); } // pull the final answer into history
+            // A reply just STARTED (e.g. the auto-summary phase). If its chat is open, pull it now so
+            // the first answer streams live instead of only appearing once the whole job is Done.
+            if (!prevReplying[j.id] && j.replying && j.id === openJobId) refreshReply(j.id);
             prevStatus[j.id] = j.status;
             prevReplying[j.id] = j.replying;
         }
@@ -760,6 +818,88 @@ document.addEventListener('submit', async e => {
             el.textContent = fmtElapsed(Date.now() - Number(el.dataset.start)));
     }
 
+    // ── Filing document + TOC (ported from the extraction page's right pane) ──
+    // The scan job carries companyId/accession/doc, so the widget can refetch and render the very
+    // filing the scan ran on — beside the chat, on any page. Cached per job to skip refetch on
+    // job-switch and the 2.5s poll re-renders.
+    let docLoadedFor = null;            // jobId whose filing is currently in the doc pane
+    const filingCache = new Map();      // jobId -> { raw, isHtml }
+    const jobHasFiling = j => !!(j && j.companyId && j.accession && j.doc);
+
+    function clearDoc() { docPaneEl.innerHTML = ''; tocEl.innerHTML = ''; tocEl.hidden = true; docLoadedFor = null; }
+
+    // Sanitise the filing HTML, keep SEC inline formatting, and build a TOC from its in-page anchors
+    // (label from the whole table row, since SEC splits "Item 1." / "Business" into separate cells).
+    function renderFiling(raw, isHtml) {
+        if (!isHtml) { docPaneEl.textContent = raw; tocEl.innerHTML = ''; tocEl.hidden = true; return; }
+        const tmp = document.createElement('div');
+        tmp.innerHTML = raw;
+        tmp.querySelectorAll('script,style,link,meta,noscript,base,title').forEach(e => e.remove());
+        tmp.querySelectorAll('a[href]').forEach(el => {
+            const r = el.getAttribute('href') || '';
+            if (r.startsWith('#')) return;          // in-page TOC link: leave as fragment for tocScroll
+            try { el.href = new URL(r, 'https://www.sec.gov').href; } catch { }
+            el.target = '_blank'; el.rel = 'noopener';
+        });
+        const items = [], seen = new Set();
+        tmp.querySelectorAll('a[href^="#"]').forEach(a => {
+            const id = decodeURIComponent((a.getAttribute('href') || '').slice(1));
+            if (!id || seen.has(id)) return;
+            if (!tmp.querySelector(`#${CSS.escape(id)}, [name="${CSS.escape(id)}"]`)) return;
+            const row = a.closest('tr');
+            let label = ((row ? row.textContent : a.textContent) || '').replace(/\s+/g, ' ').trim().replace(/\s+\d+$/, '').trim();
+            if (!label) label = (a.textContent || '').replace(/\s+/g, ' ').trim();
+            if (!label) return;
+            seen.add(id); items.push({ id, label });
+        });
+        docPaneEl.innerHTML = tmp.innerHTML;
+        docPaneEl.scrollTop = 0;
+        if (items.length) {
+            tocEl.innerHTML = `<div class="scan-notify-toc-head">Contents</div>` +
+                items.map(t => `<a href="#${escapeHtml(t.id)}" class="scan-notify-toc-link">${escapeHtml(t.label)}</a>`).join('');
+            tocEl.hidden = false;
+        } else { tocEl.innerHTML = ''; tocEl.hidden = true; }
+    }
+
+    // In-page TOC links (body's own + the sidebar nav): scroll the target into the doc window.
+    function tocScroll(e) {
+        const a = e.target.closest('a[href^="#"]');
+        if (!a) return;
+        e.preventDefault();
+        const id = decodeURIComponent(a.getAttribute('href').slice(1));
+        if (!id) return;
+        const t = docPaneEl.querySelector(`#${CSS.escape(id)}, [name="${CSS.escape(id)}"]`);
+        if (t) t.scrollIntoView({ block: 'start' });
+    }
+    docPaneEl.addEventListener('click', tocScroll);
+    tocEl.addEventListener('click', tocScroll);
+
+    async function loadFilingDoc(job) {
+        if (!jobHasFiling(job)) { clearDoc(); return; }
+        if (docLoadedFor === job.id) return;        // already showing this filing
+        docLoadedFor = job.id;
+        const cached = filingCache.get(job.id);
+        docPaneEl.textContent = 'Loading filing…'; tocEl.hidden = true;
+        if (cached) {
+            // Decouple the heavy filing-DOM build from the widget open: paint the shell (list + chat +
+            // this placeholder) first, then build the doc on the frame AFTER the open paints (double
+            // rAF). The guard skips the build if the user collapsed/switched away in the meantime.
+            requestAnimationFrame(() => requestAnimationFrame(() => {
+                if (docLoadedFor === job.id) renderFiling(cached.raw, cached.isHtml);
+            }));
+            return;
+        }
+        const qs = `accession=${encodeURIComponent(job.accession)}&doc=${encodeURIComponent(job.doc)}`;
+        try {
+            const res = await fetch(`/api/stock/filing/${job.companyId}?${qs}`);
+            if (!res.ok) { if (docLoadedFor === job.id) docPaneEl.textContent = `Filing failed (${res.status}).`; return; }
+            const raw = await res.text();
+            const isHtml = /\.html?$/i.test(job.doc) || /<html|<body|<div/i.test(raw.slice(0, 2000));
+            filingCache.set(job.id, { raw, isHtml });
+            if (docLoadedFor === job.id) renderFiling(raw, isHtml);   // ignore if the user switched away mid-fetch
+        } catch { if (docLoadedFor === job.id) docPaneEl.textContent = 'Network error loading filing.'; }
+    }
+
     function render() {
         const tj = trackedJobs();
         root.hidden = tj.length === 0;
@@ -769,13 +909,31 @@ document.addEventListener('submit', async e => {
         root.classList.toggle('has-done', !running && tj.some(j => j.status === 'Done'));
         const replying = tj.some(j => j.replying) || (live && live.replying);
         root.classList.toggle('has-replying', !!replying);   // chip pulses while the AI replies
-        if (openJobId && jobById(openJobId)) renderChat(); else renderList(tj);
+        // The list is always rendered: full-width on its own, or as a left rail beside an open chat
+        // so the other parallel scans stay visible and switchable.
+        const chatting = openJobId && jobById(openJobId);
+        panel.classList.toggle('chat-open', !!chatting);
+        // Doc mode: the open chat's scan ran on a filing → show it + its TOC on the left (the panel
+        // flips to left-anchored via .doc-open so the doc stays put while the widget resizes).
+        const docOpen = !!(chatting && jobHasFiling(chatting));
+        panel.classList.toggle('doc-open', docOpen);
+        docEl.hidden = !docOpen;
+        // Only mount the (heavy) filing HTML while the panel is actually visible. Collapsed → unmount
+        // so re-opening the chip doesn't pay a full filing layout. Re-render is cheap from filingCache.
+        if (docOpen && !panel.hidden) loadFilingDoc(chatting); else clearDoc();
+        // Plain chat mode: restore the dragged total width (grip shown). Doc mode: width + 50/50 split
+        // are fixed by CSS, so clear the inline width and hide the grip. List-only: no width override.
+        if (chatting && !docOpen) { panel.style.width = read(PANEL_W_KEY, 680) + 'px'; if (wGrip) wGrip.hidden = false; }
+        else { panel.style.width = ''; if (wGrip) wGrip.hidden = true; }
+        renderList(tj);
+        if (chatting) renderChat(); else chatEl.hidden = true;
     }
 
     function renderList(tj) {
-        chatEl.hidden = true; listEl.hidden = false;
-        if (!tj.length) { listEl.innerHTML = `<div class="scan-notify-empty">No scans.</div>`; return; }
-        listEl.innerHTML = tj.map(j => {
+        listEl.hidden = false;
+        const html = !tj.length
+            ? `<div class="scan-notify-empty">No scans.</div>`
+            : tj.map(j => {
             const replying = j.replying || (live && live.replying && live.jobId === j.id);
             const st = replying ? 'replying' : j.status.toLowerCase();
             const statusLabel = replying ? 'REPLYING…' : j.status;
@@ -789,8 +947,12 @@ document.addEventListener('submit', async e => {
             const startMs = j.createdAt ? Date.parse(j.createdAt) : Date.now();
             const elapsed = running
                 ? `<span class="scan-notify-elapsed" data-start="${startMs}">${escapeHtml(fmtElapsed(Date.now() - startMs))}</span>` : '';
-            const progress = running
-                ? `<div class="scan-notify-progress">${escapeHtml(j.progress || 'starting…')}</div>` : '';
+            // The audited XBRL tagged facts (COST/REVENUE), shown above the Item tree as the answer key.
+            const xbrl = xbrlBox(j);
+            // Once the scan has planned its chunks, the section tree replaces the coarse phase text.
+            const tree = sectionTree(j);
+            const progress = tree ? '' : (running
+                ? `<div class="scan-notify-progress">${escapeHtml(j.progress || 'starting…')}</div>` : '');
             // Re-discovery shows what sonar returned + the saved row's before→after, so you can see if a
             // new value came back and whether it overwrote the old one.
             const result = (!running && j.kind === 'rediscover' && j.result)
@@ -811,7 +973,7 @@ document.addEventListener('submit', async e => {
                        <button class="btn-detail" data-accept="${j.id}">ACCEPT →</button>
                        <button class="btn-detail" data-reject="${j.id}" data-dismiss="${j.id}">REJECT</button>
                    </div>` : '';
-            return `<div class="scan-notify-job" data-id="${j.id}">
+            return `<div class="scan-notify-job${j.id === openJobId ? ' is-open' : ''}" data-id="${j.id}">
                 <div class="scan-notify-job-title">${escapeHtml(j.companyName || 'Company')} · ${escapeHtml(j.filingLabel)}
                     <span class="scan-notify-node">${escapeHtml(j.node || '')}</span></div>
                 <div class="scan-notify-job-meta">
@@ -820,28 +982,127 @@ document.addEventListener('submit', async e => {
                     ${elapsed}
                     <button class="scan-notify-job-x" data-dismiss="${j.id}" title="Dismiss">&times;</button>
                 </div>
-                ${progress}${result}${sources}${verdict}
+                ${progress}${xbrl}${tree}${result}${sources}${verdict}
             </div>`;
         }).join('');
+        // Skip the DOM teardown/rebuild (and the listener re-bind below) when the markup is
+        // identical — the 2.5s status poll and the 1s chat-reply poll both call render(), which
+        // otherwise rewrites the whole rail every tick even when no job changed.
+        if (html === listEl._lastHtml) return;
+        listEl._lastHtml = html;
+        listEl.innerHTML = html;
+        // Re-bind <details> open state into `openSections` so the user's expand/collapse survives polls.
+        listEl.querySelectorAll('details.scan-sec').forEach(d =>
+            d.addEventListener('toggle', () => {
+                const k = d.getAttribute('data-key');
+                if (d.open) openSections.add(k); else openSections.delete(k);
+            }));
     }
 
+    // The extracted XBRL tagged facts (the audited "answer key" the prose is reconciled against),
+    // rendered as an expandable box above the Item tree. Only numeric nodes carry one (j.xbrl is null
+    // for RISK / re-discovery / a filing that tagged nothing). Reuses the scan-sec collapsible shell.
+    function xbrlBox(j) {
+        const x = j.xbrl;
+        if (!x || (!x.totals.length && !x.segments.length)) return '';
+        const usd = n => n == null ? 'n/a' : '$' + Number(n).toLocaleString(undefined, { maximumFractionDigits: 0 });
+        const key = `${j.id}:xbrl`;
+
+        const totals = x.totals.map(t =>
+            `<div class="scan-xbrl-row"><span class="scan-xbrl-label">${escapeHtml(t.label)}</span>
+                <span class="scan-xbrl-val">${usd(t.value)}</span></div>`).join('');
+
+        const segs = x.segments.length
+            ? `<div class="scan-xbrl-seg-head">Per-segment</div>` + x.segments.map(s =>
+                `<div class="scan-xbrl-row${s.reconciles ? '' : ' is-bad'}" ${s.detail ? `title="${escapeHtml(s.detail)}"` : ''}>
+                    <span class="scan-xbrl-label">${escapeHtml(s.segment)}${s.reconciles ? '' : ' ⚠'}</span>
+                    <span class="scan-xbrl-val">${usd(s.value)}</span></div>`).join('')
+            : '';
+
+        const sum = x.sumCheck
+            ? `<div class="scan-xbrl-sum ${x.sumCheck.ties ? 'ties' : 'differs'}">
+                   Σ segments ${usd(x.sumCheck.segmentSum)} vs total ${usd(x.sumCheck.total)} — ${x.sumCheck.ties ? 'ties' : 'differs'}
+               </div>` : '';
+
+        const period = x.periodEnd ? `<span class="scan-xbrl-period">period ending ${escapeHtml(x.periodEnd)}</span>` : '';
+        return `<details class="scan-sec scan-xbrl" data-key="${escapeHtml(key)}"${openSections.has(key) ? ' open' : ''}>
+            <summary class="scan-sec-sum">
+                <span class="scan-sec-name">XBRL tagged facts</span>
+                <span class="scan-sec-prog">${escapeHtml(x.node)} · audited</span>
+            </summary>
+            <div class="scan-sec-body scan-xbrl-body">${period}${totals}${segs}${sum}</div>
+        </details>`;
+    }
+
+    // While a scan runs/finishes, render its Item sections as expandable boxes — open one to see the
+    // parallel agent calls (each bundling one or more headings) and their live status.
+    function sectionTree(j) {
+        if (j.kind === 'rediscover' || !j.sections || !j.sections.length) return '';
+        const scanning = j.status === 'Running';
+        return `<div class="scan-secs">` + j.sections.map(sec => {
+            const total = sec.chunks.length;
+            const done = sec.chunks.filter(c => c.status === 'Done' || c.status === 'Error').length;
+            const running = sec.chunks.some(c => c.status === 'Running');
+            const key = `${j.id}:${sec.item}`;
+            // No chunks yet + scan still running = this Item is prefilled, awaiting triage. Spin it.
+            const loading = total === 0 && scanning;
+            const rows = loading
+                ? `<div class="scan-chunk"><span class="scan-spin"></span>
+                       <span class="scan-chunk-label">finding sections…</span></div>`
+                : sec.chunks.map((c, i) => {
+                    const label = (c.titles && c.titles.length) ? c.titles.join(' · ') : `part ${i + 1}`;
+                    const st = (c.status || 'queued').toLowerCase();
+                    const meta = c.status === 'Done' ? `${c.found} found` : c.status;
+                    // Finished chunks carry a captured prompt/reply — make them clickable to inspect.
+                    const open = c.hasDetail
+                        ? ` has-detail" data-chunk="${j.id}:${c.idx}" title="Click to see the prompt and AI response`
+                        : '';
+                    return `<div class="scan-chunk${open}">
+                        <span class="scan-chunk-dot ${st}"></span>
+                        <span class="scan-chunk-label"${c.hasDetail ? '' : ` title="${escapeHtml(label)}"`}>${escapeHtml(label)}</span>
+                        <span class="scan-chunk-meta">${escapeHtml(meta)}</span>
+                    </div>`;
+                }).join('');
+            const cls = loading ? 'loading' : running ? 'running' : (total > 0 && done === total ? 'done' : '');
+            const prog = loading ? `<span class="scan-spin"></span>` : `${done}/${total}`;
+            return `<details class="scan-sec" data-key="${escapeHtml(key)}"${openSections.has(key) ? ' open' : ''}>
+                <summary class="scan-sec-sum">
+                    <span class="scan-sec-name">${escapeHtml(sec.item || 'Section')}</span>
+                    <span class="scan-sec-prog ${cls}">${prog}</span>
+                </summary>
+                <div class="scan-sec-body">${rows}</div>
+            </details>`;
+        }).join('') + `</div>`;
+    }
+
+    // The opening prompt the server sends to generate the auto-summary — shown as the user's first
+    // turn so the chat reads as a real conversation: the user sees their message the instant the
+    // answer starts streaming, not only once it lands (mirrors the old in-page chat).
+    const SUMMARY_SEED = 'Summarize the candidates you found in this filing.';
+
     function ensureChatHistory(job) {
-        let h = read(chatKey(job.id), null);
-        // Seed with the auto summary the server produced — but only once it exists (a still-running
-        // job has no summary yet), so we never persist a placeholder that outlives completion.
-        if (!h && job.status !== 'Running' && job.summary) {
-            h = [
-                { role: 'user', content: 'Summarize the candidates you found in this filing.' },
-                { role: 'assistant', content: job.summary }
-            ];
+        let h = read(chatKey(job.id), []);
+        const started = job.replying || (job.status !== 'Running' && job.summary);
+        // Seed the user's opening prompt the moment the summary phase begins, so it's visible while the
+        // answer is still streaming (the assistant turn renders live via `live`, then gets appended on
+        // completion by refreshReply — which keys off this user turn being the last stored role).
+        if (!h.length && started) {
+            h = [{ role: 'user', content: SUMMARY_SEED }];
             write(chatKey(job.id), h);
         }
-        return h || [];
+        // Reconstruct the assistant turn from the persisted summary when the live append never ran
+        // (page reloaded / wasn't open when the scan finished, or the buffer was reused by a follow-up).
+        // Guarded to [user]-only history so an already-stored answer is never duplicated.
+        if (job.status !== 'Running' && job.summary && h.length === 1 && h[0].role === 'user') {
+            h = [...h, { role: 'assistant', content: job.summary }];
+            write(chatKey(job.id), h);
+        }
+        return h;
     }
 
     function renderChat() {
         const job = jobById(openJobId);
-        listEl.hidden = true; chatEl.hidden = false;
+        chatEl.hidden = false;
         // Decide BEFORE rebuilding whether to keep pinning to the bottom (forced on open/send, else
         // only if the user was already there). Preserve scroll position otherwise.
         const stick = forceBottom || atBottom();
@@ -849,9 +1110,13 @@ document.addEventListener('submit', async e => {
         forceBottom = false;
         headEl.textContent = `${job.companyName || 'Company'} · ${job.filingLabel} · ${job.node}`;
         const h = ensureChatHistory(job);
-        logEl.innerHTML = h.map(m =>
-            `<div class="scan-notify-bubble ${m.role}"><span class="role">${m.role}</span>${escapeHtml(stripSave(m.content) || m.content)}</div>`
+        // The 1s reply poll re-renders chat every tick; re-running renderMarkdown over every stored
+        // message each time is the costly part. Skip the rebuild when the history markup is unchanged
+        // (the live, still-streaming bubble is a separate node re-attached by paintStreaming below).
+        const logHtml = h.map(m =>
+            `<div class="scan-notify-bubble ${m.role}"><span class="role">${m.role}</span>${renderMarkdown(stripSave(m.content) || m.content)}</div>`
         ).join('');
+        if (logHtml !== logEl._lastHtml) { logEl._lastHtml = logHtml; logEl.innerHTML = logHtml; }
         paintStreaming();   // re-attach any in-flight reply so re-renders never drop it
         const replying = live && live.replying && live.jobId === openJobId;
         sendBtn.disabled = !!replying;
@@ -870,6 +1135,7 @@ document.addEventListener('submit', async e => {
             note: j.note ?? null,
             relatedCompany: j.related_company || j.relatedCompany || null,
             relatedCompanyTicker: j.related_company_ticker || j.relatedCompanyTicker || null,
+            reference: j.reference ?? null,
             proof: {
                 name: j.proof?.name ?? null, value: j.proof?.value ?? null,
                 percentage: j.proof?.percentage ?? null, classification: j.proof?.classification ?? null,
@@ -895,6 +1161,91 @@ document.addEventListener('submit', async e => {
         return [...byName.values()];
     }
 
+    // ── Cross-segment hand-off ──
+    // The source agent emits ```handoff {node, seed}``` when info belongs to another segment. We route
+    // the seed to that segment's agent (reuse its job if one's tracked, else spawn a worker-less one),
+    // which proposes the save in ITS OWN checklist. See docs/extraction/cross-extraction.md.
+    const HANDOFFS_KEY = 'bbt.handoffsDone';        // dispatched hand-off keys, persisted across reloads
+    let handoffsDone = new Set(read(HANDOFFS_KEY, []));
+    const markHandoff = k => { handoffsDone.add(k); write(HANDOFFS_KEY, [...handoffsDone]); };
+    // Stable-ish hash of a string, so a re-render/reload can't re-dispatch the same hand-off.
+    const hashStr = s => { let h = 0; for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) | 0; return h; };
+
+    function parseHandoffBlocks(text) {
+        const out = [];
+        const re = /```handoff\s*([\s\S]*?)```/g;
+        let x;
+        while ((x = re.exec(text || '')) !== null) {
+            let j; try { j = JSON.parse(x[1].trim()); } catch { continue; }
+            const node = (j.node || '').toUpperCase();
+            if (CLASS_OPTS[node] && j.seed) out.push({ node, seed: String(j.seed) });
+        }
+        return out;
+    }
+
+    // Fire any not-yet-dispatched hand-off blocks in a finished source reply.
+    function dispatchHandoffs(sourceJob, replyText) {
+        for (const b of parseHandoffBlocks(replyText)) {
+            if (b.node === sourceJob.node) continue;   // same segment — just a normal save, not a hand-off
+            const key = `${sourceJob.id}|${b.node}|${hashStr(b.seed)}`;
+            if (handoffsDone.has(key)) continue;
+            markHandoff(key);
+            routeHandoff(sourceJob, b.node, b.seed);
+        }
+    }
+
+    // Deliver the seed to the target segment: reuse an existing tracked job for the same filing+node
+    // (no re-scan), else spawn a worker-less one. Either way the target proposes the save itself.
+    async function routeHandoff(sourceJob, node, seed) {
+        const existing = jobs.find(j => j.kind !== 'rediscover'
+            && j.companyId === sourceJob.companyId && j.accession === sourceJob.accession && j.node === node);
+        if (existing) { await sendSeedToJob(existing, seed); return; }
+        try {
+            const qs = new URLSearchParams({
+                accession: sourceJob.accession, doc: sourceJob.doc, node,
+                form: sourceJob.form || '', companyName: sourceJob.companyName || '',
+                filingLabel: sourceJob.filingLabel || ''
+            });
+            const res = await fetch(`/extraction/scan-handoff/${sourceJob.companyId}?${qs}`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'RequestVerificationToken': token() },
+                body: JSON.stringify({ seed })
+            });
+            if (!res.ok) return;
+            const { jobId } = await res.json();
+            // Pre-seed the new job's visible history with the hand-off request so refreshReply appends
+            // the assistant turn (it keys off the last stored role being 'user'), making the proposed
+            // save block parseable; then track + open it so the user watches the proposal appear.
+            write(chatKey(jobId), [{ role: 'user', content: seed }]);
+            window.startScanJob(jobId, {
+                companyId: sourceJob.companyId, companyName: sourceJob.companyName,
+                accession: sourceJob.accession, doc: sourceJob.doc, node,
+                form: sourceJob.form, filingLabel: sourceJob.filingLabel
+            });
+            openJobId = jobId; refreshReply(jobId); render();
+        } catch { /* leave it; the user can re-ask */ }
+    }
+
+    // Push the seed as a follow-up user turn to an existing job and kick its detached reply (mirrors
+    // sendChat, but for a job that may not be the open one).
+    async function sendSeedToJob(job, seed) {
+        const h = ensureChatHistory(job);
+        h.push({ role: 'user', content: seed });
+        write(chatKey(job.id), h);
+        openJobId = job.id; forceBottom = true;
+        live = { jobId: job.id, reply: '', think: '', replying: true, error: null };
+        panel.hidden = false; render();
+        try {
+            const res = await fetch(`/extraction/scan-jobs/${job.id}/reply`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'RequestVerificationToken': token() },
+                body: JSON.stringify({ messages: h, handoff: true })
+            });
+            if (!res.ok) { live = { jobId: job.id, reply: '', think: '', replying: false, error: `error ${res.status}` }; render(); return; }
+        } catch { live = { jobId: job.id, reply: '', think: '', replying: false, error: 'network error' }; render(); return; }
+        startChatPoll(); startTimer();
+    }
+
     function renderSaves(job) {
         if (saveSelJob !== job.id) { saveSel = new Set(); saveEdits = {}; saveSelJob = job.id; }
         // Merge any user edits onto the parsed blocks (key survives a rename).
@@ -916,13 +1267,15 @@ document.addEventListener('submit', async e => {
                     <span class="scan-notify-save-meta">${escapeHtml(s.classification || '—')}${bits.length ? ' · ' + escapeHtml(bits.join(' · ')) : ''} ${cp}</span>
                 </span></div>`;
         }).join('');
-        savesEl.innerHTML =
+        const savesHtml =
             `<div class="scan-notify-saves-head"><span>Proposed saves</span><span>${items.length}</span></div>` +
             rows +
             `<div class="scan-notify-save-bar">
                 <button class="scan-notify-save-btn" data-savebtn ${saveSel.size ? '' : 'disabled'}>Save selected (${saveSel.size})</button>
                 <span class="scan-notify-save-status"></span>
             </div>`;
+        // Same poll-churn guard as the chat log: only rebuild when the markup actually changed.
+        if (savesHtml !== savesEl._lastHtml) { savesEl._lastHtml = savesHtml; savesEl.innerHTML = savesHtml; }
         // keep `items` reachable by the click handlers
         savesEl._items = items;
     }
@@ -954,6 +1307,15 @@ document.addEventListener('submit', async e => {
         }
     }
 
+    // renderMarkdown is the heaviest call in the streaming path (full re-parse of the growing
+    // answer). The status poll (2.5s) and reply poll (1s) can both repaint the same unchanged text,
+    // so memoise on the raw reply string: only re-parse when the answer actually grew.
+    let liveMd = { src: null, html: '' };
+    function liveReplyHtml(reply) {
+        if (reply !== liveMd.src) liveMd = { src: reply, html: renderMarkdown(stripSave(reply)) };
+        return liveMd.html;
+    }
+
     // The live reply bubble is rebuilt from `live` (mirrored from the server buffer) on every
     // paint, so closing the panel, Back, navigation, or a poll re-render never lose the text.
     function paintStreaming() {
@@ -976,9 +1338,9 @@ document.addEventListener('submit', async e => {
             bubble.appendChild(d);
         }
         const span = document.createElement('span');
-        span.textContent = live.error ? `[${live.error}]`
-            : live.reply ? stripSave(live.reply)
-            : '⏳ replying…';
+        if (live.error) span.textContent = `[${live.error}]`;
+        else if (live.reply) span.innerHTML = liveReplyHtml(live.reply);
+        else span.textContent = '⏳ replying…';
         bubble.appendChild(span);
         logEl.appendChild(bubble);
         // No scroll here — renderChat() decides whether to pin to the bottom (respects user scroll).
@@ -1010,12 +1372,14 @@ document.addEventListener('submit', async e => {
                 h.push({ role: 'assistant', content: s.reply });
                 write(chatKey(id), h);
                 live = null;   // it's in history now; render from there
+                // Route any cross-segment hand-off blocks this just-finished reply emitted.
+                const src = jobById(id);
+                if (src) dispatchHandoffs(src, s.reply);
             } else if (!s.error) {
                 live = null;
             }
         }
-        if (openJobId === id) renderChat();
-        render();   // refresh chip/pill replying state
+        render();   // refresh chip/pill replying state — also re-renders the open chat (no separate renderChat call, which would double the streaming markdown re-render every poll)
     }
 
     async function sendChat() {
@@ -1043,8 +1407,8 @@ document.addEventListener('submit', async e => {
     }
 
     // ── events ──
-    chip.addEventListener('click', () => { panel.hidden = !panel.hidden; });
-    $('scanNotifyClose').addEventListener('click', () => { panel.hidden = true; });
+    chip.addEventListener('click', () => { panel.hidden = !panel.hidden; render(); });
+    $('scanNotifyClose').addEventListener('click', () => { panel.hidden = true; render(); });
     $('scanNotifyBack').addEventListener('click', () => { openJobId = null; stopChatPoll(); render(); });
 
     // ACCEPT a re-discovery proposal: apply it server-side, then refresh the Details page values in
@@ -1079,6 +1443,11 @@ document.addEventListener('submit', async e => {
             poll();
             return;
         }
+        // Inspect a finished agent call: show its prompt + the AI's raw reply.
+        const chunk = e.target.closest('[data-chunk]');
+        if (chunk) { e.stopPropagation(); openChunkInspector(chunk.getAttribute('data-chunk')); return; }
+        // Expanding/collapsing a section box must not open the chat.
+        if (e.target.closest('.scan-secs')) return;
         const card = e.target.closest('.scan-notify-job');
         if (card) {
             const j = jobById(card.getAttribute('data-id'));
@@ -1170,6 +1539,31 @@ document.addEventListener('submit', async e => {
     $('scanEditClose')?.addEventListener('click', closeEdit);
     editModal?.addEventListener('click', e => { if (e.target === editModal) closeEdit(); });
 
+    // ── under-the-hood inspector: one agent call's prompt + raw AI reply ──
+    const chunkModal = $('scanChunkModal');
+    function closeChunkInspector() { if (chunkModal) chunkModal.hidden = true; }
+    // `key` is "<jobId>:<chunkIndex>"; fetch the captured transcript lazily (kept off the status poll).
+    async function openChunkInspector(key) {
+        if (!chunkModal) return;
+        const sep = key.lastIndexOf(':');
+        const jobId = key.slice(0, sep), index = key.slice(sep + 1);
+        $('scanChunkTitle').textContent = 'Agent call';
+        $('scanChunkPrompt').textContent = 'Loading…';
+        $('scanChunkResponse').textContent = '';
+        chunkModal.hidden = false;
+        try {
+            const res = await fetch(`/extraction/scan-jobs/${encodeURIComponent(jobId)}/chunk/${encodeURIComponent(index)}`);
+            if (!res.ok) { $('scanChunkPrompt').textContent = `Failed to load (${res.status}).`; return; }
+            const d = await res.json();
+            const titles = (d.titles && d.titles.length) ? d.titles.join(' · ') : 'section';
+            $('scanChunkTitle').textContent = `${titles} — ${d.status}${d.status === 'Done' ? ` · ${d.found} found` : ''}`;
+            $('scanChunkPrompt').textContent = d.prompt || '(no prompt captured)';
+            $('scanChunkResponse').textContent = d.response || '(no response)';
+        } catch (e) { $('scanChunkPrompt').textContent = 'Network error: ' + e.message; }
+    }
+    $('scanChunkClose')?.addEventListener('click', closeChunkInspector);
+    chunkModal?.addEventListener('click', e => { if (e.target === chunkModal) closeChunkInspector(); });
+
     // Hold-and-drag the grip to resize the checklist; dragging up makes it taller. Height persists.
     savesGrip?.addEventListener('pointerdown', e => {
         e.preventDefault();
@@ -1191,17 +1585,29 @@ document.addEventListener('submit', async e => {
         savesGrip.addEventListener('pointermove', move);
         savesGrip.addEventListener('pointerup', up);
     });
-    openBtn.addEventListener('click', () => {
-        const job = jobById(openJobId);
-        if (!job) return;
-        const qs = new URLSearchParams({
-            companyId: job.companyId, accession: job.accession, doc: job.doc,
-            node: job.node, jobId: job.id
-        });
-        if (job.form) qs.set('form', job.form);
-        window.location.href = `/extraction?${qs}`;
-    });
 
+    // Drag the left edge to widen the chat panel. Panel is right-anchored, so a leftward drag
+    // (negative dx) grows it; width is clamped to the viewport and persisted. (Doc mode hides this
+    // grip — it uses a fixed full-width 50/50 layout.)
+    wGrip?.addEventListener('pointerdown', e => {
+        e.preventDefault();
+        const startX = e.clientX, startW = panel.offsetWidth;
+        wGrip.setPointerCapture(e.pointerId);
+        document.body.classList.add('scan-wresizing');
+        const move = ev => {
+            const maxW = Math.min(1200, window.innerWidth - 40);   // keep the left edge on-screen
+            panel.style.width = Math.max(480, Math.min(maxW, startW - (ev.clientX - startX))) + 'px';
+        };
+        const up = () => {
+            wGrip.releasePointerCapture(e.pointerId);
+            wGrip.removeEventListener('pointermove', move);
+            wGrip.removeEventListener('pointerup', up);
+            document.body.classList.remove('scan-wresizing');
+            write(PANEL_W_KEY, panel.offsetWidth);
+        };
+        wGrip.addEventListener('pointermove', move);
+        wGrip.addEventListener('pointerup', up);
+    });
     // Called by the extraction page when it hands a freshly-started scan to the widget. `meta`
     // (company/filing/node) lets the window render the task instantly, before the first poll lands.
     window.startScanJob = function (jobId, meta) {

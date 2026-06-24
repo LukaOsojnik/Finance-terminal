@@ -122,6 +122,9 @@ builder.Services.AddScoped<IScenarioRepository, ScenarioRepository>();
 builder.Services.AddScoped<IScenarioShockRepository, ScenarioShockRepository>();
 builder.Services.AddScoped<ISourceFieldReviewRepository, SourceFieldReviewRepository>();
 builder.Services.AddScoped<IFilingRepository, FilingRepository>();
+builder.Services.AddScoped<IStockIndexRepository, StockIndexRepository>();
+builder.Services.AddScoped<IIndexImportJobRepository, IndexImportJobRepository>();
+builder.Services.AddScoped<IFmpIndustryMappingRepository, FmpIndustryMappingRepository>();
 // Owns the contribution Approve/Reject state machine over the three reviewed repos (revenue/cost/risk).
 builder.Services.AddScoped<IContributionWriter, ContributionWriter>();
 
@@ -166,10 +169,10 @@ builder.Services.AddScoped<IChatProvider>(sp => new AnthropicChatProvider(
     sp.GetRequiredService<IHttpClientFactory>().CreateClient("Anthropic"),
     sp.GetRequiredService<IUserApiKeyProvider>()));
 builder.Services.AddScoped<IChatLlm, ChatLlmRouter>();
-builder.Services.AddScoped<IReviewService, ReviewService>();
 // sec2md sidecar (Python): converts a filing to clean markdown before the extractor's heading triage.
 builder.Services.AddHttpClient<ISec2MdClient, Sec2MdClient>(c => ConfigureHttp(c, "Sec2Md"));
 builder.Services.AddScoped<IFilingExtractionService, FilingExtractionService>();
+builder.Services.AddScoped<IXbrlInstanceReader, XbrlInstanceReader>();
 builder.Services.AddScoped<IExtractionChatService, ExtractionChatService>();
 // Perplexity sonar: typed HttpClient that web-searches a company's named suppliers/customers — the
 // counterparties SEC filings don't disclose. Feeds the "Discover related companies" action.
@@ -189,6 +192,8 @@ builder.Services.AddMemoryCache();
 // notification widget can poll their status from any page. Singleton: server-wide shared state.
 builder.Services.AddSingleton<ScanJobStore>();
 builder.Services.AddSingleton<RediscoverJobStore>();
+builder.Services.AddSingleton<IndexImportJobStore>();
+builder.Services.AddSingleton<BackfillJobStore>();
 
 // Input-output cascade model: load the matrix artifact once at startup and validate every
 // Section-6 invariant — a model that violates Hawkins–Simon fails the app loudly here rather than
@@ -200,6 +205,21 @@ builder.Services.AddScoped<EventImpactService>();
 
 // Financial Modeling Prep: typed HttpClient feeding the New Company form (global fundamentals).
 builder.Services.AddHttpClient<IFmpApiClient, FmpApiClient>(c => ConfigureHttp(c, "Fmp"));
+// Wikipedia: free index-membership source (scrapes the constituents table) — FMP's constituent
+// endpoint is premium (402). Imports a market index into a StockIndex, resolves members to existing
+// companies by CIK (ticker->CIK via the SEC map when the page omits it), and cap-weights from stored
+// MarketCap. Wikipedia blocks blank user-agents, so one is set from the "Wikipedia" config section.
+builder.Services.AddHttpClient<IWikipediaIndexClient, WikipediaIndexClient>(c => ConfigureHttp(c, "Wikipedia"));
+// SPDR (State Street): free, no-auth daily-holdings XLSX carrying REAL fund weights + a per-holding
+// GICS sector. Preferred over Wikipedia+cap-weight whenever an index has a SPDR ETF (SPY, DIA, XLK…),
+// since it gives accurate weights and a free sector classification. Blank user-agents are blocked,
+// so one is set from the "Spdr" config section.
+builder.Services.AddHttpClient<ISpdrHoldingsClient, SpdrHoldingsClient>(c => ConfigureHttp(c, "Spdr"));
+builder.Services.AddScoped<IIndexImportService, IndexImportService>();
+// Perplexity sonar: web-searches the indices matching a free-text query and returns each one's
+// Wikipedia constituents-page path, which the import pipeline above then fetches. Same Perplexity
+// transport as the company/counterparty discoveries.
+builder.Services.AddHttpClient<IIndexDiscovery, IndexDiscoveryService>(c => ConfigureHttp(c, "Perplexity"));
 // REST Countries: typed HttpClient to auto-create a Country row when FMP names one we lack.
 builder.Services.AddHttpClient<IRestCountriesClient, RestCountriesClient>(c => ConfigureHttp(c, "RestCountries"));
 // Yahoo Finance: non-US financials fallback when FMP's income endpoint is premium-gated. Needs

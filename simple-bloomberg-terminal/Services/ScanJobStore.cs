@@ -5,6 +5,28 @@ namespace simple_bloomberg_terminal.Services;
 
 public enum ScanJobStatus { Running, Done, Error }
 
+/// <summary>One parallel agent call's live state within a section. <see cref="Titles"/> are the
+/// sub-headings this single call bundled (packing); <see cref="Status"/> is Queued/Running/Done/Error.</summary>
+public class ScanChunkState
+{
+    public IReadOnlyList<string> Titles { get; init; } = [];
+    public string Status { get; set; } = "Queued";
+    public int Found { get; set; }
+    // The exact text the worker agent saw (system + user prompt) and the raw model reply, captured so
+    // the widget can drill into one agent call and show what it got and how it answered. Empty until
+    // the chunk finishes (Done/Error); on Error, Response holds the failure message.
+    public string Prompt { get; set; } = "";
+    public string Response { get; set; } = "";
+}
+
+/// <summary>An SEC Item group (e.g. "Item 7") and the agent calls scanning it — the widget shows
+/// one expandable box per section, drilling into its <see cref="Chunks"/>.</summary>
+public class ScanSection
+{
+    public string Item { get; init; } = "";
+    public List<ScanChunkState> Chunks { get; } = new();
+}
+
 /// <summary>
 /// One detached auto-scan: the filing context, its live status, the scan report, and the auto
 /// AI summary the worker produces when it finishes. Lives in <see cref="ScanJobStore"/> (a
@@ -24,7 +46,15 @@ public class ScanJob
 
     public ScanJobStatus Status { get; set; } = ScanJobStatus.Running;
     public string Progress { get; set; } = "Queued…"; // live phase text shown while running
+
+    // The live parallel-scan tree: one section per SEC Item, each holding its agent-call states.
+    // Mutated from the scan's progress callback (concurrent workers) and read by the poll DTO, so both
+    // sides take `SectionsLock` — these are plain mutable objects, not thread-safe on their own.
+    public List<ScanSection> Sections { get; } = new();
+    public List<ScanChunkState> ChunkList { get; } = new();  // flat, index-aligned with the scan plan
+    public object SectionsLock { get; } = new();
     public AutoScanResult? Report { get; set; }      // counts + picked headings
+    public XbrlView? Xbrl { get; set; }              // the audited tagged facts (COST/REVENUE), shown above the Item tree
     public string Summary { get; set; } = "";        // auto AI prose shown first in the widget
     public string? Error { get; set; }
     public DateTimeOffset CreatedAt { get; init; } = DateTimeOffset.UtcNow;

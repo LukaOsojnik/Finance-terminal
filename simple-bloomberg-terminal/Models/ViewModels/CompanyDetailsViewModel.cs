@@ -24,4 +24,7 @@ public class CompanyDetailsViewModel
 
     // Industry enum formatted, or "—" if null
     public required string IndustryLabel { get; set; }
+
+    // GICS sub-industry (finest tier) formatted, or "—" if unresolved
+    public required string SubIndustryLabel { get; set; }
 }

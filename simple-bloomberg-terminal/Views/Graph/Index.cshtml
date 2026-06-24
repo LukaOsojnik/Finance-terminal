@@ -41,7 +41,6 @@
         <span class="legend-chip legend-cost">COST SRC</span>
         <span class="legend-chip legend-event">EVENT</span>
         <span class="legend-chip legend-related">RELATED CO</span>
-        <span class="legend-chip legend-filing">FILING</span>
     </div>
 
     <div id="graph-canvas" class="graph-canvas"></div>
@@ -53,6 +52,7 @@
         </div>
         <div id="graph-detail-label" class="graph-detail-label">—</div>
         <div id="graph-detail-meta" class="graph-detail-meta">—</div>
+        <div id="graph-detail-filings" class="graph-detail-filings"></div>
     </aside>
 </section>
 
@@ -78,7 +78,6 @@
     .legend-cost    { color: var(--red); border-color: #f8514955; background: #f8514915; }
     .legend-event   { color: #c084fc; border-color: #c084fc55; background: #c084fc15; }
     .legend-related { color: var(--accent); border-color: var(--accent-dim); background: #00d4ff15; }
-    .legend-filing  { color: #e0a458; border-color: #e0a45855; background: #e0a45815; }
 
     .graph-canvas { width: 100%; height: 72vh; min-height: 540px; background: var(--bg-surface); border: 1px solid var(--border-subtle); border-radius: var(--radius-md); }
 
@@ -89,6 +88,11 @@
     .graph-detail-close:hover { color: var(--red); }
     .graph-detail-label { font-family: var(--font-display); font-weight: 600; font-size: 1.1rem; color: var(--text-primary); margin-bottom: 0.3rem; }
     .graph-detail-meta { font-family: var(--font-mono); font-size: 0.8rem; color: var(--text-secondary); }
+    .graph-detail-filings { margin-top: 0.75rem; }
+    .graph-detail-filings-head { font-family: var(--font-display); font-size: 0.68rem; letter-spacing: 1.5px; color: #e0a458; border-top: 1px solid var(--border-subtle); padding-top: 0.5rem; margin-bottom: 0.4rem; }
+    .graph-detail-filing { display: flex; justify-content: space-between; gap: 0.5rem; font-family: var(--font-mono); font-size: 0.72rem; padding: 0.15rem 0; }
+    .graph-detail-filing-form { color: #e8c89a; font-weight: 600; }
+    .graph-detail-filing-det { color: var(--text-secondary); text-align: right; }
 </style>
 
 @section Scripts {
@@ -113,6 +117,7 @@
             const detailGroup = document.getElementById('graph-detail-group');
             const detailLabel = document.getElementById('graph-detail-label');
             const detailMeta = document.getElementById('graph-detail-meta');
+            const detailFilings = document.getElementById('graph-detail-filings');
 
             const GROUP_STYLES = {
                 center:       { color: { background: '#ffd16622', border: '#ffd166', highlight: { background: '#ffd16644', border: '#ffeaa0' } }, font: { color: '#ffd166', size: 18, face: 'Rajdhani' }, shape: 'box', borderWidth: 2 },
@@ -123,18 +128,14 @@
                 revenue: { color: { background: '#39d35322', border: '#39d353' }, font: { color: '#9ce8a8', face: 'JetBrains Mono', size: 12 }, shape: 'dot', size: 14 },
                 cost:    { color: { background: '#f8514922', border: '#f85149' }, font: { color: '#f5a8a3', face: 'JetBrains Mono', size: 12 }, shape: 'dot', size: 14 },
                 event:   { color: { background: '#c084fc22', border: '#c084fc' }, font: { color: '#d8b4fe', face: 'JetBrains Mono', size: 12 }, shape: 'diamond', size: 14 },
-                related: { color: { background: '#00d4ff22', border: '#00d4ff' }, font: { color: '#7ddff7', face: 'Rajdhani', size: 14 }, shape: 'ellipse', borderWidth: 2 },
-                filing:  { color: { background: '#e0a45822', border: '#e0a458' }, font: { color: '#e8c89a', face: 'JetBrains Mono', size: 11 }, shape: 'square', size: 12 }
+                related: { color: { background: '#00d4ff22', border: '#00d4ff' }, font: { color: '#7ddff7', face: 'Rajdhani', size: 14 }, shape: 'ellipse', borderWidth: 2 }
             };
 
             const EDGE_STYLES = {
                 revenue: { color: { color: '#39d35366', highlight: '#39d353' }, dashes: false, length: 150 },
                 cost:    { color: { color: '#f8514966', highlight: '#f85149' }, dashes: false, length: 150 },
                 event:   { color: { color: '#c084fc66', highlight: '#c084fc' }, dashes: [4, 4], length: 150 },
-                related: { color: { color: '#00d4ff88', highlight: '#00d4ff' }, dashes: false, width: 2, length: 150 },
-                // filing edges are the outermost tier — give them a long rest length so a degree-1
-                // filing is pushed past its source rather than drifting into the center↔source gap.
-                filing:  { color: { color: '#e0a45866', highlight: '#e0a458' }, dashes: [2, 3], length: 260 }
+                related: { color: { color: '#00d4ff88', highlight: '#00d4ff' }, dashes: false, width: 2, length: 150 }
             };
 
             let network = null;
@@ -147,9 +148,9 @@
                 return fullPayload.nodes.filter(n => n.group === group && n.valueUsd != null).length;
             }
 
-            // Set of leaf ids that cite a filing — filing edges run leaf -> filing.
+            // Set of leaf ids that cite a filing — filings are carried on the node itself now.
             function leavesWithFiling() {
-                return new Set(fullPayload.edges.filter(e => e.group === 'filing').map(e => e.from));
+                return new Set(fullPayload.nodes.filter(n => n.filings && n.filings.length).map(n => n.id));
             }
 
             function updateFilterAvailability() {
@@ -171,8 +172,7 @@
 
             // Per side the kept leaves are the UNION of: top-5 by value (if its tick is on) and
             // every leaf citing a filing (if its tick is on). With neither tick on, the side is
-            // untouched. Afterwards drop filing proof nodes left orphaned by removed leaves.
-            // fullPayload stays intact so unticking restores everything without a refetch.
+            // untouched. fullPayload stays intact so unticking restores everything without a refetch.
             function buildFiltered() {
                 const removed = new Set();
                 const filingLeaves = leavesWithFiling();
@@ -199,15 +199,6 @@
                 trim('revenue', custChk.checked, custFilingChk.checked);
                 trim('cost', supChk.checked, supFilingChk.checked);
 
-                // a filing survives only if some kept leaf still cites it
-                const keptFilings = new Set(
-                    fullPayload.edges
-                        .filter(e => e.group === 'filing' && !removed.has(e.from))
-                        .map(e => e.to));
-                fullPayload.nodes
-                    .filter(n => n.group === 'filing' && !keptFilings.has(n.id))
-                    .forEach(n => removed.add(n.id));
-
                 return {
                     centerId: fullPayload.centerId,
                     centerLabel: fullPayload.centerLabel,
@@ -221,8 +212,25 @@
                 render(buildFiltered());
             }
 
+            // Counterparty leaves (revenue/cost rows that link a real company) get sized by the
+            // counterparty's market cap: bigger cap = bigger circle. Sqrt keeps the spread sane
+            // (caps span billions→trillions); area then tracks cap. Private co (no cap) = smallest.
+            const CP_MIN_SIZE = 12, CP_MAX_SIZE = 46;
+            function counterpartySizer(nodes) {
+                const maxCap = Math.max(0, ...nodes
+                    .filter(n => n.relatedCompanyId && n.marketCapUsd > 0)
+                    .map(n => n.marketCapUsd));
+                return n => {
+                    if (!n.relatedCompanyId) return null;            // not a counterparty leaf
+                    if (!(n.marketCapUsd > 0) || maxCap === 0) return CP_MIN_SIZE;  // private / unknown
+                    const ratio = Math.sqrt(n.marketCapUsd) / Math.sqrt(maxCap);
+                    return CP_MIN_SIZE + ratio * (CP_MAX_SIZE - CP_MIN_SIZE);
+                };
+            }
+
             function render(payload) {
                 lastData = payload;
+                const sizeOf = counterpartySizer(payload.nodes);
                 const visNodes = payload.nodes.map(n => {
                     const node = Object.assign({
                         id: n.id,
@@ -231,6 +239,19 @@
                         group: n.group,
                         _meta: n
                     }, GROUP_STYLES[n.group] || {});
+                    // Counterparty company leaves: scale circle by market cap and bold the label
+                    // so linked companies read at a glance against plain source leaves. vis bolds
+                    // a whole label only via html multi-font + a <b> wrap, not a plain flag.
+                    const cpSize = sizeOf(n);
+                    if (cpSize !== null) {
+                        node.size = cpSize;
+                        node.label = '<b>' + n.label + '</b>';
+                        const f = node.font || {};
+                        node.font = Object.assign({}, f, {
+                            multi: 'html',
+                            bold: { color: f.color, size: f.size, face: f.face }
+                        });
+                    }
                     // Pin the center company at the origin so physics orbits it instead of
                     // translating the whole cluster off-canvas to one side.
                     if (n.id === ('company:' + payload.centerId)) {
@@ -291,6 +312,30 @@
                 detailGroup.textContent = node.group.toUpperCase();
                 detailLabel.textContent = node.label;
                 detailMeta.textContent = node.title || (node.valueUsd ? `$${(node.valueUsd / 1e9).toFixed(2)}B` : '—');
+
+                // Proof filings are carried on the node (not drawn on the canvas) — list them here.
+                detailFilings.innerHTML = '';
+                if (node.filings && node.filings.length) {
+                    const head = document.createElement('div');
+                    head.className = 'graph-detail-filings-head';
+                    head.textContent = `FILINGS (${node.filings.length})`;
+                    detailFilings.appendChild(head);
+                    node.filings.forEach(f => {
+                        const row = document.createElement('div');
+                        row.className = 'graph-detail-filing';
+                        const form = document.createElement('span');
+                        form.className = 'graph-detail-filing-form';
+                        form.textContent = f.label;
+                        row.appendChild(form);
+                        if (f.detail) {
+                            const det = document.createElement('span');
+                            det.className = 'graph-detail-filing-det';
+                            det.textContent = f.detail;
+                            row.appendChild(det);
+                        }
+                        detailFilings.appendChild(row);
+                    });
+                }
                 detail.hidden = false;
             }
 

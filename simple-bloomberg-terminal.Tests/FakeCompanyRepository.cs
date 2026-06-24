@@ -25,6 +25,13 @@ public sealed class FakeCompanyRepository : ICompanyRepository
             : _companies.FirstOrDefault(c => c.DeletedAt == null &&
                 string.Equals(c.Name, name.Trim(), StringComparison.OrdinalIgnoreCase));
 
+    public Company? MatchByCik(string? cik)
+    {
+        var norm = simple_bloomberg_terminal.Services.Cik.Normalize(cik);
+        return norm is null ? null : _companies.FirstOrDefault(c => c.DeletedAt == null &&
+            simple_bloomberg_terminal.Services.Cik.Normalize(c.Cik) == norm);
+    }
+
     // Unused by the discovery path under test.
     public IEnumerable<Company> GetAll() => throw new NotSupportedException();
     public Company? GetWithGraphRelations(long id) => throw new NotSupportedException();
@@ -36,4 +43,7 @@ public sealed class FakeCompanyRepository : ICompanyRepository
     public void SoftDelete(long id) => throw new NotSupportedException();
     public void ReplaceFinancials(long companyId, IReadOnlyList<CompanyFinancial> rows) => throw new NotSupportedException();
     public HashSet<long> CompanyIdsWithFmpFinancials() => throw new NotSupportedException();
+    public IReadOnlyDictionary<string, long> CikToIdMap() => throw new NotSupportedException();
+    public IReadOnlyDictionary<long, double?> MarketCapsByIds(IEnumerable<long> ids) => throw new NotSupportedException();
+    public IReadOnlyDictionary<long, simple_bloomberg_terminal.Models.Enums.Sector> SectorsByIds(IEnumerable<long> ids) => throw new NotSupportedException();
 }

@@ -7,6 +7,21 @@ using simple_bloomberg_terminal.Repositories;
 
 namespace simple_bloomberg_terminal.Services;
 
+public enum ScanChunkPhase { Planned, Running, Done, Error }
+
+/// <summary>One sub-task in the parallel scan: its index in the flat chunk list, the Item it groups
+/// under, and the heading titles the single worker call covers.</summary>
+public record ScanChunkInfo(int Index, string Item, IReadOnlyList<string> Titles);
+
+/// <summary>A live scan progress event. <see cref="ScanChunkPhase.Planned"/> carries the full
+/// <paramref name="Plan"/> once (so the UI can lay out the section tree); the later phases carry just
+/// the chunk <paramref name="Index"/> (+ <paramref name="Found"/> on Done) to flip one row's status.</summary>
+public record ScanProgress(
+    ScanChunkPhase Phase, int Index, int Found, IReadOnlyList<ScanChunkInfo>? Plan,
+    // Set on Done/Error: the verbatim prompt the worker saw and its raw reply, so the widget can show
+    // "under the hood" what one agent call received and answered.
+    string? Prompt = null, string? Response = null);
+
 public class FilingExtractionService : IFilingExtractionService
 {
     private readonly ICompanyRepository _companies;
@@ -44,7 +59,10 @@ public class FilingExtractionService : IFilingExtractionService
         ExtractionNode.COST =>
             "You extract COST sources for a single US public company from one excerpt of its SEC " +
             "filing. Return ONLY the costs clearly evidenced in THIS excerpt — do not guess or carry " +
-            "over outside knowledge. For each cost provide: name (the cost line / segment / supplier " +
+            "over outside knowledge. Focus on the cost LABEL, its segment, and any NAMED SUPPLIER or " +
+            "raw-material dependence; the exact company-total dollar figures are sourced separately " +
+            "from tagged XBRL, so prioritise getting the name/segment/supplier and proof right over " +
+            "transcribing big totals. For each cost provide: name (the cost line / segment / supplier " +
             "label), classification (exactly one of COGS, OPEX, TOTAL_COSTS), value (cost in absolute " +
             "US dollars — scale any 'in thousands/millions' to the full number; null if not stated), " +
             "percentage (share of total cost or revenue 0-100, null if not stated), related_company (a " +
@@ -72,7 +90,10 @@ public class FilingExtractionService : IFilingExtractionService
         _ =>
             "You extract revenue sources for a single US public company from one excerpt of its SEC " +
             "filing. Return ONLY the sources clearly evidenced in THIS excerpt — do not guess or carry " +
-            "over outside knowledge. For each source provide: name (the segment / product / region / " +
+            "over outside knowledge. Focus on the revenue LABEL and its breakdown — segment, product, " +
+            "region or major customer; the exact company-total dollar figures are sourced separately " +
+            "from tagged XBRL, so prioritise getting the name/segment/customer and proof right over " +
+            "transcribing big totals. For each source provide: name (the segment / product / region / " +
             "major-customer label), classification (exactly one of CUSTOMER, SEGMENT, REGION, PRODUCT), " +
             "value (revenue in absolute US dollars — scale any 'in thousands/millions' to the full " +
             "number; null if not stated), percentage (share of total revenue 0-100, null if not stated), " +
@@ -91,7 +112,7 @@ public class FilingExtractionService : IFilingExtractionService
     {
         var raw = await FetchRawAsync(companyId, accession, doc, filingType, ct);
         if (raw is null) return [];
-        return await ScanChunksAsync(FilingSections.Build(raw, FilingSections.ItemsFor(node)), node, ct);
+        return await ScanChunksAsync(FilingSections.Build(raw, FilingSections.ItemsFor(node)), node, null, ct);
     }
 
     // The chat's grounding digest: cached per filing; built by the auto-scan on a miss (heading triage
@@ -104,7 +125,7 @@ public class FilingExtractionService : IFilingExtractionService
     {
         if (_cache.TryGetValue(FindingsKey(accession, doc, node), out string? cached)) return cached ?? "";
 
-        var auto = await ScanAutoAsync(companyId, accession, doc, node, filingType, ct);
+        var auto = await ScanAutoAsync(companyId, accession, doc, node, filingType, ct: ct);
         if (auto.Found > 0 && _cache.TryGetValue(FindingsKey(accession, doc, node), out string? scanned))
             return scanned ?? "";
 
@@ -119,7 +140,7 @@ public class FilingExtractionService : IFilingExtractionService
     // scan only those in parallel and stash the digest as the chat's grounding. No user picking.
     public async Task<AutoScanResult> ScanAutoAsync(
         long companyId, string accession, string doc, ExtractionNode node, string? filingType = null,
-        CancellationToken ct = default)
+        Action<ScanProgress>? onProgress = null, CancellationToken ct = default)
     {
         var headings = await GetOrParseHeadingsAsync(companyId, accession, doc, node, filingType, ct);
         var items = FilingSections.ItemsFor(node);
@@ -136,11 +157,14 @@ public class FilingExtractionService : IFilingExtractionService
         // Heading-based chunks for the picked headings — but NOT Item 8. In the financial statements the
         // tables are detached from their bold headings, so "nearest heading" mislabels them (a segment
         // revenue table lands under a tax note) and the per-heading cap truncates them.
-        var chunks = pickedSet
+        // Pack consecutive same-Item headings into one worker call up to the chunk budget: a tiny heading
+        // body no longer wastes a whole LLM call — several small titles ride together, fewer calls.
+        var pickedHeadings = pickedSet
             .OrderBy(i => i)
             .Where(i => headings[i].Section != "Item 8")
-            .Select(i => new FilingChunk($"{headings[i].Section} › {headings[i].Title}", headings[i].Body))
+            .Select(i => headings[i])
             .ToList();
+        var chunks = PackHeadings(pickedHeadings);
 
         // Item 8: sequential, document-order chunks of the whole section, so every table reaches a
         // worker intact and in place (no mis-attribution, no per-heading truncation). Markdown is cached
@@ -154,7 +178,12 @@ public class FilingExtractionService : IFilingExtractionService
             .Select((h, i) => new ScannedHeading(h.Section, h.Title, h.Section == "Item 8" || pickedSet.Contains(i)))
             .ToList();
 
-        var findings = chunks.Count > 0 ? await ScanChunksAsync(chunks, node, ct) : [];
+        // Announce the plan once (before any worker runs) so the widget can lay out the section tree;
+        // the per-chunk Running/Done events below flip each row's status as the 6-wide pool drains.
+        onProgress?.Invoke(new ScanProgress(ScanChunkPhase.Planned, -1, 0,
+            chunks.Select((c, i) => new ScanChunkInfo(i, c.Item, c.Titles ?? [])).ToList()));
+
+        var findings = chunks.Count > 0 ? await ScanChunksAsync(chunks, node, onProgress, ct) : [];
         var digest = findings.Count > 0 ? FormatDigest(findings, node) : "";
         _cache.Set(FindingsKey(accession, doc, node), digest, CacheFor);
         return new AutoScanResult(chunks.Count, findings.Count, report);
@@ -173,7 +202,7 @@ public class FilingExtractionService : IFilingExtractionService
         try
         {
             var answer = await _llm.CompleteAsync(
-                TriageSystemFor(node), $"Headings:\n{list}", maxTokens: 800, jsonObject: true, ct: ct);
+                TriageSystemFor(node), $"Headings:\n{list}", maxTokens: 800, jsonObject: true, fast: true, ct: ct);
             var ids = ParseIds(answer, headings.Count);
             if (ids.Count > 0) return ids;
         }
@@ -248,12 +277,43 @@ public class FilingExtractionService : IFilingExtractionService
         return result;
     }
 
+    // Pack consecutive picked headings that share an Item into one worker call, up to the chunk budget.
+    // Each packed chunk keeps the titles it bundled (for the widget) and prefixes every title as a
+    // markdown header inside the text so the worker still sees the sub-section boundaries.
+    private static List<FilingChunk> PackHeadings(IReadOnlyList<FilingHeading> picked)
+    {
+        var chunks = new List<FilingChunk>();
+        string? item = null;
+        var titles = new List<string>();
+        var sb = new StringBuilder();
+        void Flush()
+        {
+            if (sb.Length == 0) return;
+            chunks.Add(new FilingChunk(item!, sb.ToString(), item!, titles));
+            sb = new StringBuilder();
+            titles = new List<string>();
+        }
+        foreach (var h in picked)
+        {
+            var piece = $"## {h.Title}\n{h.Body}";
+            // Start a new chunk when the Item changes (keep section grouping clean) or the budget is hit.
+            if (sb.Length > 0 && (h.Section != item || sb.Length + piece.Length > FilingSections.MaxChunkChars))
+                Flush();
+            item = h.Section;
+            if (sb.Length > 0) sb.Append("\n\n");
+            sb.Append(piece);
+            titles.Add(h.Title);
+        }
+        Flush();
+        return chunks;
+    }
+
     // Map/reduce over a given set of chunks: parallel Flash workers, then dedupe by name (first wins).
     private async Task<List<ExtractionSuggestion>> ScanChunksAsync(
-        IReadOnlyList<FilingChunk> chunks, ExtractionNode node, CancellationToken ct)
+        IReadOnlyList<FilingChunk> chunks, ExtractionNode node, Action<ScanProgress>? onProgress, CancellationToken ct)
     {
         using var gate = new SemaphoreSlim(MaxParallel);
-        var perChunk = await Task.WhenAll(chunks.Select(c => ScanChunkAsync(c, node, gate, ct)));
+        var perChunk = await Task.WhenAll(chunks.Select((c, i) => ScanChunkAsync(c, i, node, gate, onProgress, ct)));
 
         var byName = new Dictionary<string, ExtractionSuggestion>(StringComparer.OrdinalIgnoreCase);
         foreach (var list in perChunk)
@@ -300,28 +360,45 @@ public class FilingExtractionService : IFilingExtractionService
             sb.Append("    proof.").Append(field).Append(": \"").Append(proof).Append("\"\n");
     }
 
-    // One worker: read a single chunk under the concurrency gate and return its candidates.
+    // One worker: read a single chunk under the concurrency gate and return its candidates. Reports
+    // Running once it acquires a slot (so the widget shows queued→running as the pool drains) and
+    // Done/Error with the candidate count when it finishes.
     private async Task<List<ExtractionSuggestion>> ScanChunkAsync(
-        FilingChunk chunk, ExtractionNode node, SemaphoreSlim gate, CancellationToken ct)
+        FilingChunk chunk, int index, ExtractionNode node, SemaphoreSlim gate,
+        Action<ScanProgress>? onProgress, CancellationToken ct)
     {
         await gate.WaitAsync(ct);
+        onProgress?.Invoke(new ScanProgress(ScanChunkPhase.Running, index, 0, null));
+        var system = SystemFor(node);
+        var prompt = $"Section: {chunk.Section}\n\nExcerpt:\n\"\"\"\n{chunk.Text}\n\"\"\"";
+        // The full transcript the worker saw — both halves, so the widget's inspector shows exactly
+        // what was sent, not just the excerpt.
+        var transcript = $"━━ SYSTEM PROMPT ━━\n{system}\n\n━━ USER PROMPT ━━\n{prompt}";
         try
         {
-            var prompt = $"Section: {chunk.Section}\n\nExcerpt:\n\"\"\"\n{chunk.Text}\n\"\"\"";
-            var answer = await _llm.CompleteAsync(SystemFor(node), prompt, maxTokens: 1500, jsonObject: true, ct: ct);
-            return Parse(answer, chunk.Section).ToList();
+            // A packed chunk can carry many sources, and each echoes its backing text verbatim in
+            // 'proof', so 1500 truncated dense sections mid-array. 4000 fits the typical chunk; the
+            // salvage in Parse still recovers complete sources if a worst-case chunk overruns even this.
+            var answer = await _llm.CompleteAsync(system, prompt, maxTokens: 4000, jsonObject: true, fast: true, ct: ct);
+            var found = Parse(answer, chunk.Section).ToList();
+            onProgress?.Invoke(new ScanProgress(ScanChunkPhase.Done, index, found.Count, null, transcript, answer));
+            return found;
         }
         catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
         {
+            onProgress?.Invoke(new ScanProgress(ScanChunkPhase.Error, index, 0, null, transcript, ex.Message));
             return [];   // a dropped worker shouldn't sink the whole scan
         }
         finally { gate.Release(); }
     }
 
     // Pull suggestions out of the model's JSON, tolerant of code fences and string-or-number values.
+    // Salvage a truncated reply (finish_reason=length): the sources array was cut mid-stream so the
+    // outer structure never closed — `]}` recovers every complete source up to the last closing brace,
+    // dropping only the half-written trailing object (instead of voiding the whole chunk → "0 matches").
     private static IEnumerable<ExtractionSuggestion> Parse(string answer, string section)
     {
-        using var doc = LlmJson.ParseObject(answer);
+        using var doc = LlmJson.ParseObject(answer, "]}");
         if (doc is null ||
             !doc.RootElement.TryGetProperty("sources", out var sources) ||
             sources.ValueKind != JsonValueKind.Array) yield break;

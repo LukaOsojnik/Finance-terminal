@@ -20,9 +20,9 @@ gets notified on completion, chats with the grounded model, edits objects, and b
    on every page from the server (full page reloads wipe JS state; the server is the source of truth).
 3. **Notification on completion** — the chip pulses/surfaces when the scan finishes (and again when a
    chat reply finishes), even if the user navigated away.
-4. **Chat** — opening a finished job shows an auto-generated AI summary, then a chat box. Replies are
-   generated **detached on the server** and **polled**, so they survive minimize *and* navigation.
-   Thinking trace + "scanning…" status are shown.
+4. **Chat** — opening a job shows the auto-generated AI summary (which **streams in live**, with its
+   thinking trace, as it's written — you can open the job mid-generation), then a chat box. Replies
+   are generated **detached on the server** and **polled**, so they survive minimize *and* navigation.
 5. **Tick-and-save** — every ```save``` block the model emits becomes a checkbox row. Tick any, click
    **Save selected (N)** to persist them in one call.
 6. **Edit before saving** — clicking a row opens a popup with the node's fields (like the Extraction
@@ -63,8 +63,8 @@ SignalR/SSE — deliberately, to match the codebase's fetch-only style.
   - identity: `Id`, `CompanyId`, `CompanyName`, `Accession`, `Doc`, `Node`, `Form`, `FilingLabel`
   - scan: `Status` (`Running`/`Done`/`Error`), `Progress` (live phase text), `Report`
     (`AutoScanResult`), `Summary` (auto AI prose), `Error`, `CreatedAt`, `CompletedAt`
-  - chat reply buffer: `Replying`, `ReplyBuffer` (incremental answer), `ReplyThink` (reasoning),
-    `ReplyError`
+  - reply buffer (used for BOTH the initial auto-summary and follow-up chat replies): `Replying`,
+    `ReplyBuffer` (incremental answer), `ReplyThink` (reasoning), `ReplyError`
 - `ScanJobStore` — `ConcurrentDictionary<string, ScanJob>` with `Add`/`Get`/`Remove`.
 - Registered in `Program.cs`: `builder.Services.AddSingleton<ScanJobStore>();`
 
@@ -117,7 +117,7 @@ Markup just before the scripts (renders on every page):
   `#scanNotifyPanel`.
 - Panel: `#scanNotifyList` (job rows) and `#scanNotifyChat` (back button, head, `#scanNotifyLog`,
   `#scanNotifySavesGrip` drag handle, `#scanNotifySaves` checklist, compose box with
-  `#scanNotifyInput`/`#scanNotifySend`, `#scanNotifyOpen`).
+  `#scanNotifyInput`/`#scanNotifySend`).
 - `#scanEditModal` — the edit-one-object popup (`#scanEditBody` filled per node, Apply/Cancel/Close).
 
 > These elements are **precompiled into the assembly** (no Razor runtime compilation here), so layout
@@ -142,7 +142,8 @@ The widget is a single IIFE near the bottom of the file (after the ticker IIFE).
 
 Key functions:
 - `poll()` — GET `/scan-jobs`, detects `Running→Done` (`prevStatus`) and `replying true→false`
-  (`prevReplying`) to **surface the panel / notify**; stops the timer when nothing is running/replying.
+  (`prevReplying`) to **surface the panel / notify** — and `replying false→true` to start streaming the
+  first answer into an already-open chat; stops the timer when nothing is running/replying.
 - `render()` / `renderList()` / `renderChat()` — pure functions of `(jobs, history, live, saveSel,
   saveEdits)`. `renderChat` rebuilds the log, then `paintStreaming()` re-attaches the live reply and
   `renderSaves()` rebuilds the checklist — so nothing visual is lost on a poll-driven re-render.
@@ -167,11 +168,8 @@ Key functions:
 | `bbt.scanSavesH` | dragged checklist height (px) |
 
 ### `Views/Extraction/Index.cshtml`
-- The *Auto-Scan* handler now calls `/scan-auto-async` and `window.startScanJob(...)` (non-blocking).
-- `bootstrapFromScan()` — when the page is opened from the widget's *Open in Extraction* link
-  (`?companyId&accession&doc&node&jobId&form`), it reopens the filing and replays the stored chat /
-  save-cards so the existing per-row save flow still works. (Company + node are restored server-side
-  by `ExtractionController.Index`.)
+- The *Auto-Scan* handler calls `/scan-auto-async` and `window.startScanJob(...)` (non-blocking) — the
+  **only** scan/chat entry point. There is no in-page chat panel: all chat lives in the widget.
 
 ---
 
@@ -179,11 +177,13 @@ Key functions:
 
 1. Extraction page → `POST /scan-auto-async` → `{jobId}` → `window.startScanJob` adds id to
    `localStorage`, opens the panel, starts polling.
-2. Background task runs `ScanAutoAsync` (caches digest) then one `StreamReplyAsync` turn → `Summary`;
-   sets `Status=Done`.
+2. Background task runs `ScanAutoAsync` (caches digest) then one `StreamReplyAsync` turn streamed into
+   `ReplyBuffer`/`ReplyThink` with `Replying=true` (so the widget renders the first answer generating
+   live); on finish it copies the text to `Summary`, clears `Replying`, sets `Status=Done`.
 3. List poll sees `Running→Done` → surfaces the panel (notification).
-4. User opens the job → chat shows `Summary` (seeded into `bbt.scanChat.{id}`) + the ```save```
-   checklist.
+4. User opens the job — any time after step 2 begins — and sees the seed prompt immediately, then the
+   summary streaming in live (with its thinking trace); once done it's persisted to `bbt.scanChat.{id}`
+   alongside the ```save``` checklist.
 5. User chats → `POST /scan-jobs/{id}/reply` (detached) → `GET .../reply` poll mirrors text into
    `live`; on finish it's appended to history; reply completion surfaces the panel again.
 6. User ticks objects (optionally edits them) → `POST /extraction/save-batch` → rows + proofs +
@@ -191,13 +191,31 @@ Key functions:
 
 ---
 
+## Live section tree (per-chunk progress)
+
+The running job's box expands into one box **per SEC Item** (Item 1 / 7 / 8 …); opening a section
+shows its **parallel agent calls** with live status (queued → running → done · N found / error).
+
+- `FilingExtractionService.ScanAutoAsync` now takes an `Action<ScanProgress>? onProgress`. It packs
+  consecutive same-Item headings into one worker call up to `FilingSections.MaxChunkChars` (fewer
+  LLM calls — a tiny heading no longer burns its own call), emits one `Planned` event with the full
+  chunk plan, then `Running`/`Done`/`Error` per chunk as the 6-wide pool (`MaxParallel`) drains.
+  A **synchronous callback** (not `IProgress<T>`) guarantees `Planned` precedes any `Running`.
+- `ScanJob` gains `Sections` (Item → `ScanChunkState` rows) + `ChunkList` (flat, index-aligned) +
+  `SectionsLock`. `ExtractionController.ApplyScanProgress` folds events into the tree under the lock;
+  `ScanDto` snapshots it under the same lock into the `sections` field of the poll response.
+- `site.js` `sectionTree(j)` renders the `<details>` boxes; expanded state persists across the 2.5s
+  poll via the `openSections` set. CSS: `scan-secs` / `scan-sec*` / `scan-chunk*`.
+- A packed chunk's row lists the **titles it bundled**; the status maps 1:1 to a real worker call.
+
 ## Gotchas / future-edit notes
 
 - **Restart required** for any change to `ExtractionController`, `ScanJobStore`, the view models, the
   chat prompts, or `_Layout`/`Index.cshtml` markup (precompiled assembly). `site.js`/`site.css` are
   static — they refresh on hard reload (cache-busted via `asp-append-version`).
-- **No per-chunk scan progress** — `Progress` is coarse (set around the one awaited call); finer
-  progress would need a callback threaded through `ScanAutoAsync`.
+- **Packed chunks coarsen provenance** — a packed worker call's suggestions are tagged with the Item
+  (e.g. `Item 7`), not `Item 7 › <title>`, since several titles share the call. The verbatim proof
+  per candidate is unchanged, and each title is kept as a `## <title>` header inside the chunk text.
 - **Reply is polled, not streamed** — text arrives in ~1s chunks (the cost of detaching generation
   from the page). Token-by-token would require holding a page-bound stream, which can't survive
   navigation.
@@ -219,5 +237,5 @@ Key functions:
 | `Views/Shared/_Layout.cshtml` | widget + edit-modal markup |
 | `wwwroot/css/site.css` | `scan-notify-*` / `scan-edit-*` styles |
 | `wwwroot/js/site.js` | the widget IIFE (poll, chat, checklist, edit, drag) |
-| `Views/Extraction/Index.cshtml` | hand-off (`startScanJob`) + `bootstrapFromScan` rehydration |
+| `Views/Extraction/Index.cshtml` | scan hand-off (`startScanJob`) — sole scan/chat entry point |
 | `docs/sitemap.md` | route reference (kept in sync) |

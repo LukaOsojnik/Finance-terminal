@@ -1,0 +1,102 @@
+@using simple_bloomberg_terminal.Models.ViewModels
+@model IndexDetailViewModel
+@{
+    ViewData["Title"] = Model.Index.Name + " — Breakdown";
+    var topWeight = Model.BySector.FirstOrDefault();
+}
+
+@* ── Hero ── *@
+<section class="detail-hero">
+    <div class="detail-hero-back">
+        <a asp-action="Index" class="detail-back-link">← INDICES</a>
+    </div>
+    <div class="detail-hero-top">
+        <div class="detail-hero-name-row">
+            <h1 class="detail-hero-name">@Model.Index.Name</h1>
+            <span class="detail-code-badge">@Model.Index.Code</span>
+        </div>
+    </div>
+    <div class="detail-metrics-row">
+        <div class="detail-metric-card">
+            <div class="detail-metric-label">MEMBERS MODELED</div>
+            <div class="detail-metric-value">@Model.MemberCount</div>
+        </div>
+        <div class="detail-metric-card">
+            <div class="detail-metric-label">WEIGHT COVERED</div>
+            <div class="detail-metric-value">@Model.WeightCovered.ToString("0.##")%</div>
+        </div>
+        <div class="detail-metric-card">
+            <div class="detail-metric-label">TOP SECTOR</div>
+            <div class="detail-metric-value">@(topWeight?.Label ?? "—")</div>
+        </div>
+        <div class="detail-metric-card">
+            <div class="detail-metric-label">WEIGHTING</div>
+            <div class="detail-metric-value">Market cap</div>
+        </div>
+        <div class="detail-metric-card">
+            <div class="detail-metric-label">AS OF</div>
+            <div class="detail-metric-value">@(Model.Index.AsOf?.ToShortDateString() ?? "—")</div>
+        </div>
+    </div>
+</section>
+
+@* ── Sector + Industry breakdown ── *@
+<div class="row g-2 mb-2 align-items-center">
+    <div class="col-12 col-md-6"><div class="detail-section-label mb-0">// BY SECTOR</div></div>
+    <div class="col-12 col-md-6"><div class="detail-section-label mb-0">// BY INDUSTRY</div></div>
+</div>
+<div class="row g-3 mb-5 align-items-start">
+    <div class="col-12 col-md-6">
+        <div class="detail-card">
+            <table class="terminal-table">
+                <thead><tr><th>Sector</th><th style="text-align:right;">Members</th><th style="text-align:right;">Weight</th></tr></thead>
+                <tbody>
+                    @foreach (var s in Model.BySector)
+                    {
+                        <tr>
+                            <td class="name-cell">@s.Label</td>
+                            <td class="num-cell">@s.CompanyCount</td>
+                            <td class="num-cell">@s.WeightPct.ToString("0.##")%</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    </div>
+    <div class="col-12 col-md-6">
+        <div class="detail-card">
+            <table class="terminal-table">
+                <thead><tr><th>Industry</th><th style="text-align:right;">Members</th><th style="text-align:right;">Weight</th></tr></thead>
+                <tbody>
+                    @foreach (var s in Model.ByIndustry)
+                    {
+                        <tr>
+                            <td class="name-cell">@s.Label</td>
+                            <td class="num-cell">@s.CompanyCount</td>
+                            <td class="num-cell">@s.WeightPct.ToString("0.##")%</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+@* ── Constituents ── *@
+<div class="detail-section-label">// CONSTITUENTS</div>
+<div class="detail-card">
+    <table class="terminal-table">
+        <thead><tr><th>Company</th><th>Sector</th><th style="text-align:right;">Weight</th><th></th></tr></thead>
+        <tbody>
+            @foreach (var c in Model.Index.Constituents.Where(x => x.Company != null))
+            {
+                <tr>
+                    <td class="name-cell">@c.Company!.Name</td>
+                    <td class="tag-cell">@c.Company.Sector.ToString().Replace("_", " ")</td>
+                    <td class="num-cell">@(c.WeightPct.HasValue ? c.WeightPct.Value.ToString("0.##") + "%" : "—")</td>
+                    <td><a asp-controller="Companies" asp-action="Details" asp-route-id="@c.CompanyId" class="btn-detail">VIEW →</a></td>
+                </tr>
+            }
+        </tbody>
+    </table>
+</div>

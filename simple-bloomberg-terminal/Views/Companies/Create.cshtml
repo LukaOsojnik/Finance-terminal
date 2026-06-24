@@ -42,6 +42,10 @@
         @Html.AntiForgeryToken()
         <input asp-for="Symbol" type="hidden"/>
         <input asp-for="Type" type="hidden"/>
+        @* Resolved server-side from the FMP label on Fetch; carried through so the save keeps the raw
+           vendor label and the fine-tier GICS sub-industry (Industry below is its rollup). *@
+        <input asp-for="FmpIndustry" type="hidden"/>
+        <input asp-for="GicsSubIndustry" type="hidden"/>
         <div asp-validation-summary="ModelOnly" class="text-danger"></div>
 
         <div class="form-cards">

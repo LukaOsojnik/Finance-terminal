@@ -17,7 +17,8 @@
 <div class="d-flex" style="margin-bottom:1rem; gap:0.75rem; align-items:center;">
     <input type="text" class="form-control search-input" placeholder="Search name / cik / country..." data-search-url="@Url.Action("Search")" style="max-width:420px;"/>
     <a asp-route="CompaniesCreate" class="btn btn-primary">+ NEW</a>
-    <button type="button" id="backfill-btn" class="btn btn-secondary" title="Fetch real profile + financials from FMP/Yahoo for companies that don't have it yet">⟳ BACKFILL FROM APIs</button>
+    <button type="button" id="backfill-financials-btn" class="btn btn-secondary" data-backfill-url="@Url.Action("BackfillFinancials")" title="Fetch real profile + financial history from FMP/Yahoo for companies that don't have it yet">⟳ BACKFILL FINANCIALS</button>
+    <button type="button" id="backfill-industries-btn" class="btn btn-secondary" data-backfill-url="@Url.Action("BackfillIndustries")" title="Resolve the GICS sub-industry (cheap LLM) for companies still missing one">⟳ RESOLVE INDUSTRIES</button>
     <div class="type-filter" style="margin-left:auto; display:flex; gap:0.4rem;">
         <button type="button" class="btn btn-sm btn-primary" data-type-filter="all">ALL</button>
         <button type="button" class="btn btn-sm btn-secondary" data-type-filter="PUBLIC">PUBLIC</button>
@@ -99,17 +100,25 @@
     new MutationObserver(apply).observe(tbody, { childList: true });
 })();
 (function () {
-    const btn = document.getElementById('backfill-btn');
+    const buttons = document.querySelectorAll('[data-backfill-url]');
     const overlay = document.getElementById('backfill-modal');
-    if (!btn || !overlay) return;
+    if (!buttons.length || !overlay) return;
     const body = document.getElementById('backfill-modal-body');
+    const title = document.getElementById('backfill-modal-title');
     const token = () => document.querySelector('input[name="__RequestVerificationToken"]')?.value;
     const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;' }[c]));
-    let changed = false;
+    let changed = false, jobId = null, since = 0, poll = null, done = false, activeBtn = null;
+
+    const stopPoll = () => { if (poll) { clearInterval(poll); poll = null; } };
 
     const close = () => {
+        // Closing a still-running job cancels it server-side (aborts the in-flight LLM call + stops the loop).
+        if (jobId && !done)
+            fetch(`/companies/backfill/${jobId}/cancel`, { method: 'POST', headers: { 'RequestVerificationToken': token() } }).catch(() => {});
+        stopPoll();
+        if (activeBtn) activeBtn.disabled = false;
         overlay.setAttribute('hidden', '');
-        // Profile fields were overwritten, so reload to show the refreshed table.
+        // Profile/industry fields were overwritten, so reload to show the refreshed table.
         if (changed) location.reload();
     };
     overlay.addEventListener('click', e => {
@@ -117,33 +126,58 @@
     });
     document.addEventListener('keydown', e => { if (e.key === 'Escape' && !overlay.hidden) close(); });
 
-    btn.addEventListener('click', async () => {
+    const renderSummary = (d, summaryEl) => {
+        changed = d.filled.length > 0 || (d.industriesFilled && d.industriesFilled.length > 0);
+        // Financials backfill returns `filled` rows; the industries backfill returns none (its results
+        // are the live log lines + the summary message), so the table simply collapses for it.
+        const rows = d.filled.map(f =>
+            `<tr><td class="name-cell">${esc(f.name)}</td><td class="tag-cell">${esc(f.ticker)}</td><td class="num-cell">${f.rows}</td><td class="tag-cell">${esc(f.source)}</td></tr>`).join('');
+        const table = rows
+            ? `<table class="terminal-table"><thead><tr><th>Company</th><th>Ticker</th><th class="num-cell">Rows</th><th>Source</th></tr></thead><tbody>${rows}</tbody></table>`
+            : '';
+        const failed = d.failed.length
+            ? `<div class="muted-cell" style="margin-top:.7rem;">Skipped/failed: ${d.failed.map(f => esc(f.name) + ' (' + esc(f.reason) + ')').join(', ')}</div>`
+            : '';
+        summaryEl.innerHTML = `<div>${esc(d.message)}</div>${table}${failed}`;
+    };
+
+    const run = async (btn) => {
         overlay.removeAttribute('hidden');
-        body.innerHTML = '<div class="muted-cell">Fetching profile + financials from FMP / Yahoo — this can take a minute…</div>';
-        btn.disabled = true;
+        jobId = null; since = 0; done = false; changed = false; activeBtn = btn;
+        if (title) title.textContent = btn.textContent.replace(/^[⟳\s]+/, '').trim();
+        body.innerHTML = '<div id="bf-summary">Starting…</div>' +
+            '<pre id="bf-log" style="max-height:320px;overflow:auto;font-size:.72rem;line-height:1.35;white-space:pre-wrap;margin:.6rem 0 0;"></pre>';
+        const log = document.getElementById('bf-log');
+        const summaryEl = document.getElementById('bf-summary');
+        buttons.forEach(b => b.disabled = true);
         try {
-            const res = await fetch('@Url.Action("Backfill")', { method: 'POST', headers: { 'RequestVerificationToken': token() } });
-            if (!res.ok) { body.innerHTML = `<div class="text-danger">${esc(await res.text()) || ('Error ' + res.status)}</div>`; return; }
-            const d = await res.json();
-            changed = d.filled.length > 0 || (d.industriesFilled && d.industriesFilled.length > 0);
-            const rows = d.filled.map(f =>
-                `<tr><td class="name-cell">${esc(f.name)}</td><td class="tag-cell">${esc(f.ticker)}</td><td class="num-cell">${f.rows}</td><td class="tag-cell">${esc(f.source)}</td></tr>`).join('');
-            const table = rows
-                ? `<table class="terminal-table"><thead><tr><th>Company</th><th>Ticker</th><th class="num-cell">Rows</th><th>Source</th></tr></thead><tbody>${rows}</tbody></table>`
-                : '<div class="muted-cell">No companies were refilled.</div>';
-            const failed = d.failed.length
-                ? `<div class="muted-cell" style="margin-top:.7rem;">Skipped/failed: ${d.failed.map(f => esc(f.name) + ' (' + esc(f.reason) + ')').join(', ')}</div>`
-                : '';
-            const industries = (d.industriesFilled && d.industriesFilled.length)
-                ? `<div class="muted-cell" style="margin-top:.7rem;">Industries resolved: ${d.industriesFilled.map(f => esc(f.name) + ' → ' + esc(f.industry)).join(', ')}</div>`
-                : '';
-            body.innerHTML = `<div style="margin-bottom:.6rem;">${esc(d.message)}</div>${table}${industries}${failed}`;
+            const res = await fetch(btn.dataset.backfillUrl, { method: 'POST', headers: { 'RequestVerificationToken': token() } });
+            if (!res.ok) { summaryEl.innerHTML = `<div class="text-danger">${esc(await res.text()) || ('Error ' + res.status)}</div>`; buttons.forEach(b => b.disabled = false); return; }
+            jobId = (await res.json()).jobId;
+            summaryEl.textContent = 'Running… click Close to stop.';
+            poll = setInterval(async () => {
+                let s;
+                try { s = await (await fetch(`/companies/backfill/${jobId}/status?since=${since}`)).json(); }
+                catch { return; }   // transient poll error -> try again next tick
+                if (s.lines && s.lines.length) {
+                    since = s.nextSince;
+                    log.textContent += s.lines.join('\n') + '\n';
+                    log.scrollTop = log.scrollHeight;
+                }
+                if (s.done) {
+                    done = true; stopPoll(); buttons.forEach(b => b.disabled = false);
+                    if (s.error) summaryEl.innerHTML = `<div class="text-danger">${esc(s.error)}</div>`;
+                    else if (s.result) renderSummary(s.result, summaryEl);
+                    else summaryEl.textContent = 'Done.';
+                }
+            }, 700);
         } catch (e) {
-            body.innerHTML = `<div class="text-danger">Request failed: ${esc(e)}</div>`;
-        } finally {
-            btn.disabled = false;
+            summaryEl.innerHTML = `<div class="text-danger">Request failed: ${esc(e)}</div>`;
+            buttons.forEach(b => b.disabled = false);
         }
-    });
+    };
+
+    buttons.forEach(b => b.addEventListener('click', () => run(b)));
 })();
 </script>
 }

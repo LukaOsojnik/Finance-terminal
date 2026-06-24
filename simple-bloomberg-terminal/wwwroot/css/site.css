@@ -627,7 +627,7 @@ a:hover { color: #fff; }
   z-index: 1030;
   background: var(--bg-surface);
   border-top: 1px solid var(--border-subtle);
-  padding: 0.15rem 0;
+  padding: 0.05rem 0;
   font-family: var(--font-mono);
   font-size: 0.55rem;
   color: var(--muted);
@@ -1907,8 +1907,82 @@ main { animation: pageFadeIn 0.18s ease; }
   background: var(--bg-card);
   border: 1px solid var(--border-accent);
   border-radius: var(--radius-md);
-  box-shadow: 0 8px 40px rgba(0,0,0,0.55), var(--accent-glow);
+  box-shadow: 0 6px 20px rgba(0,0,0,0.5);
   animation: pageFadeIn 0.15s ease;
+  will-change: transform, opacity;   /* promote to its own layer so the fade composites instead of repainting the shadow */
+}
+
+/* Chat open: widen the panel and lay the jobs list out as a left rail beside the chat,
+   so the other parallel scans stay visible (and switchable) while reading one. */
+.scan-notify-panel.chat-open {
+  width: 680px;
+  height: 85vh;            /* fixed so the content row is bounded — both columns scroll, not the panel */
+  display: grid;
+  grid-template-columns: 230px 1fr;
+  grid-template-rows: auto minmax(0, 1fr);
+  grid-template-areas:
+    "head head"
+    "list chat";
+}
+.scan-notify-panel.chat-open .scan-notify-head { grid-area: head; }
+.scan-notify-panel.chat-open .scan-notify-list {
+  grid-area: list;
+  border-right: 1px solid var(--border-subtle);
+  min-height: 0;
+  overflow-y: auto;        /* a long expanded section scrolls in the rail, not off-screen */
+}
+
+/* Doc open: the filing the scan ran on + its TOC are pinned static on the LEFT (full height),
+   with the existing list+chat widget on the right. The panel flips to LEFT-anchored here so the
+   document never moves; dragging the grip (now between the TOC and the widget) grows the widget
+   rightward — "doc static, only the right part moves". */
+.scan-notify-panel.chat-open.doc-open {
+  /* stays right-anchored to the chip (base right:0) but spans nearly the full viewport. Fixed 50/50
+     split down the middle: left half = doc + toc, right half = list + chat (no drag grip here). */
+  width: calc(100vw - 2rem);
+  grid-template-columns: calc(50% - 200px) 200px 230px 1fr;
+  grid-template-areas:
+    "doc toc head head"
+    "doc toc list chat";
+}
+.scan-notify-panel.chat-open.doc-open .scan-notify-doc { grid-area: doc; }
+.scan-notify-panel.chat-open.doc-open .scan-notify-toc { grid-area: toc; }
+.scan-notify-panel.chat-open.doc-open .scan-notify-wgrip { display: none; }
+
+/* The filing render — white "page" inside the dark terminal, mirroring the extraction page's doc. */
+.scan-notify-doc { min-width: 0; min-height: 0; overflow: hidden; display: flex;
+  border-right: 1px solid var(--border-subtle); }
+.scan-notify-doc-pane {
+  flex: 1; min-width: 0; overflow: auto; margin: 0.5rem;
+  background: #fff; color: #111; padding: 0.75rem;
+  font-size: 0.8rem; border: 1px solid var(--border-subtle); border-radius: var(--radius-sm);
+}
+.scan-notify-doc-pane ::selection, .scan-notify-doc-pane::selection { background: var(--accent); color: var(--bg-base); }
+.scan-notify-doc-pane img { max-width: 100%; height: auto; }
+.scan-notify-doc-pane table { border-collapse: collapse; }
+
+.scan-notify-toc {
+  min-height: 0; overflow: auto; padding: 0.5rem;
+  border-right: 1px solid var(--border-subtle);
+}
+.scan-notify-toc-head {
+  font-family: var(--font-display); font-size: 0.62rem; font-weight: 600; letter-spacing: 0.12em;
+  text-transform: uppercase; color: var(--text-secondary);
+  padding-bottom: 0.4rem; margin-bottom: 0.4rem; border-bottom: 1px solid var(--border-subtle);
+}
+.scan-notify-toc-link {
+  display: block; font-family: var(--font-mono); font-size: 0.7rem; line-height: 1.3;
+  color: var(--text-secondary); text-decoration: none; padding: 0.25rem 0.3rem;
+  border-radius: var(--radius-sm);
+}
+.scan-notify-toc-link:hover { color: var(--accent); background: #00d4ff14; }
+/* In the grid the chat fills its cell (height:auto) instead of forcing its own 80vh, which would
+   blow past the bounded row; min-height:0 lets the inner log be the scroll region. */
+.scan-notify-panel.chat-open .scan-notify-chat { grid-area: chat; min-width: 0; min-height: 0; height: auto; }
+/* The job whose chat is open is highlighted in the rail. */
+.scan-notify-job.is-open {
+  border-color: var(--accent-dim);
+  background: var(--bg-row-hover);
 }
 
 .scan-notify-head {
@@ -1934,7 +2008,11 @@ main { animation: pageFadeIn 0.18s ease; }
 }
 .scan-notify-x:hover { color: var(--red); }
 
-.scan-notify-list { overflow-y: auto; padding: 0.5rem; }
+/* flex:1 + min-height:0 makes the list the scroll region within the panel's max-height, so a long
+   expanded section scrolls inside the widget instead of overflowing off-screen. */
+/* scrollbar-gutter:stable reserves the scrollbar's space always, so the rail/list width doesn't
+   shrink the moment a scrollbar appears (expanding a section). */
+.scan-notify-list { flex: 1 1 auto; min-height: 0; overflow-y: auto; scrollbar-gutter: stable; padding: 0.5rem; }
 
 .scan-notify-job {
   padding: 0.6rem 0.7rem;
@@ -2000,6 +2078,148 @@ main { animation: pageFadeIn 0.18s ease; }
   text-transform: uppercase;
   color: var(--muted);
 }
+
+/* ── live parallel-scan section tree ── */
+.scan-secs { margin-top: 0.4rem; display: flex; flex-direction: column; gap: 0.25rem; }
+.scan-sec {
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  background: var(--bg-surface);
+}
+.scan-sec-sum {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.3rem 0.5rem;
+  cursor: pointer;
+  list-style: none;
+  font-size: 0.72rem;
+}
+.scan-sec-sum::-webkit-details-marker { display: none; }
+.scan-sec-sum::before {
+  content: "▸";
+  color: var(--muted);
+  font-size: 0.65rem;
+  transition: transform var(--transition);
+}
+.scan-sec[open] .scan-sec-sum::before { transform: rotate(90deg); }
+.scan-sec-name {
+  flex: 1;
+  font-family: var(--font-display);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-primary);
+}
+.scan-sec-prog { font-family: var(--font-mono); color: var(--text-secondary); }
+.scan-sec-prog.running { color: var(--accent); }
+.scan-sec-prog.done { color: var(--green); }
+.scan-sec-body {
+  border-top: 1px solid var(--border-subtle);
+  padding: 0.3rem 0.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+.scan-chunk { display: flex; align-items: center; gap: 0.45rem; font-size: 0.7rem; }
+.scan-chunk-dot {
+  flex: 0 0 auto;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--muted);   /* queued */
+}
+.scan-chunk-dot.running { background: var(--accent); animation: scanDotPulse 1.1s ease-in-out infinite; }
+.scan-chunk-dot.done { background: var(--green); }
+.scan-chunk-dot.error { background: var(--red); }
+@keyframes scanDotPulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
+.scan-chunk-label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-secondary);
+}
+.scan-chunk-meta { flex: 0 0 auto; font-family: var(--font-mono); color: var(--muted); }
+/* A finished chunk is clickable — open its prompt/response inspector. */
+.scan-chunk.has-detail { cursor: pointer; border-radius: var(--radius-sm); padding: 0.1rem 0.2rem; margin: -0.1rem -0.2rem; }
+.scan-chunk.has-detail:hover { background: var(--bg-card); }
+.scan-chunk.has-detail .scan-chunk-label { color: var(--text-primary); }
+
+/* ── under-the-hood inspector modal (prompt + raw AI reply) ── */
+.scan-chunk-box { width: min(900px, 92vw); max-height: 86vh; display: flex; flex-direction: column; }
+.scan-chunk-inspect { display: flex; flex-direction: column; gap: 0.75rem; overflow: auto; padding: 0.5rem 0; }
+.scan-chunk-pane { display: flex; flex-direction: column; min-height: 0; }
+.scan-chunk-pane-head {
+  font-family: var(--font-display); font-size: 0.7rem; letter-spacing: 0.08em; text-transform: uppercase;
+  color: var(--text-secondary); margin-bottom: 0.3rem;
+}
+.scan-chunk-pre {
+  margin: 0; max-height: 34vh; overflow: auto; white-space: pre-wrap; word-break: break-word;
+  background: var(--bg-base); color: var(--text-code); padding: 0.6rem 0.7rem;
+  font-family: var(--font-mono); font-size: 0.74rem; line-height: 1.5;
+  border: 1px solid var(--border-subtle); border-radius: var(--radius-sm);
+}
+/* Spinner shown on a prefilled Item box while its chunks are still being triaged. */
+.scan-spin {
+  display: inline-block;
+  width: 11px;
+  height: 11px;
+  border: 2px solid var(--border-accent);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: scanSpin 0.7s linear infinite;
+  vertical-align: middle;
+}
+@keyframes scanSpin { to { transform: rotate(360deg); } }
+
+/* ── XBRL tagged-facts box (above the Item tree): the audited "answer key" ── */
+.scan-xbrl { border-color: var(--border-accent); }
+.scan-xbrl-body { font-size: 0.72rem; }
+.scan-xbrl-period {
+  font-family: var(--font-mono);
+  color: var(--muted);
+  font-size: 0.68rem;
+  margin-bottom: 0.1rem;
+}
+.scan-xbrl-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+.scan-xbrl-row.is-bad .scan-xbrl-label,
+.scan-xbrl-row.is-bad .scan-xbrl-val { color: var(--red); }
+.scan-xbrl-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-secondary);
+}
+.scan-xbrl-val {
+  flex: 0 0 auto;
+  font-family: var(--font-mono);
+  color: var(--text-code);
+}
+.scan-xbrl-seg-head {
+  margin-top: 0.25rem;
+  font-family: var(--font-display);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  font-size: 0.64rem;
+  color: var(--muted);
+}
+.scan-xbrl-sum {
+  margin-top: 0.3rem;
+  padding-top: 0.25rem;
+  border-top: 1px solid var(--border-subtle);
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+}
+.scan-xbrl-sum.ties { color: var(--green); }
+.scan-xbrl-sum.differs { color: var(--red); }
 
 /* ── expanded chat for one job ── */
 /* Fixed height so the chat is one bounded budget: growing the saves block
@@ -2079,6 +2299,45 @@ main { animation: pageFadeIn 0.18s ease; }
   color: var(--muted);
   margin-bottom: 0.15rem;
 }
+/* ── rendered Markdown inside chat bubbles ── */
+.scan-notify-bubble .md { white-space: normal; }
+.md > :first-child { margin-top: 0; }
+.md > :last-child { margin-bottom: 0; }
+.md-p { margin: 0 0 0.5rem; }
+.md-h { font-family: var(--font-display); font-weight: 600; line-height: 1.3; margin: 0.6rem 0 0.35rem; color: var(--text-primary); }
+.md-h1 { font-size: 0.95rem; }
+.md-h2 { font-size: 0.88rem; }
+.md-h3, .md-h4, .md-h5, .md-h6 { font-size: 0.8rem; color: var(--accent); }
+.md-list { margin: 0 0 0.5rem; padding-left: 1.1rem; }
+.md-list li { margin: 0.1rem 0; }
+.md-hr { border: 0; border-top: 1px solid var(--border-subtle); margin: 0.6rem 0; }
+.md code { font-family: var(--font-mono, monospace); font-size: 0.92em; background: var(--bg-base); padding: 0.05rem 0.3rem; border-radius: 3px; }
+.md strong { font-weight: 600; color: var(--text-primary); }
+.md a { color: var(--accent); }
+.md-table {
+  border-collapse: collapse;
+  width: 100%;
+  margin: 0.4rem 0 0.6rem;
+  font-size: 0.74rem;
+  display: block;
+  overflow-x: auto;
+}
+.md-table th, .md-table td {
+  border: 1px solid var(--border-subtle);
+  padding: 0.3rem 0.5rem;
+  text-align: left;
+  vertical-align: top;
+}
+.md-table th {
+  background: var(--bg-surface);
+  font-family: var(--font-display);
+  font-size: 0.62rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+  white-space: nowrap;
+}
+.md-table tbody tr:nth-child(even) { background: color-mix(in srgb, var(--bg-surface) 45%, transparent); }
 /* ── ticked-to-save checklist (proposed AI save blocks) ── */
 /* Drag handle to resize the checklist taller/shorter (height driven from JS). */
 .scan-notify-grip {
@@ -2100,6 +2359,32 @@ main { animation: pageFadeIn 0.18s ease; }
   background: var(--muted);
 }
 .scan-notify-grip:hover::after { background: var(--accent); }
+
+/* Left-edge handle to drag the whole chat panel wider (panel is right-anchored, so it grows
+   leftward). Absolutely positioned so it overlays the edge without taking a grid cell. */
+.scan-notify-wgrip {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 7px;
+  height: 100%;
+  cursor: ew-resize;
+  z-index: 2;
+  touch-action: none;
+}
+.scan-notify-wgrip::after {
+  content: "";
+  position: absolute;
+  left: 2px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 3px;
+  height: 46px;
+  border-radius: 2px;
+  background: var(--muted);
+}
+.scan-notify-wgrip:hover::after { background: var(--accent); }
+body.scan-wresizing { cursor: ew-resize; user-select: none; }
 
 .scan-notify-saves {
   padding: 0.5rem 0.85rem;

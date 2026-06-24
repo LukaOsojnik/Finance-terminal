@@ -317,6 +317,12 @@ namespace simple_bloomberg_terminal.Migrations
                     b.Property<DateTime?>("DeletedAt")
                         .HasColumnType("datetime(6)");
 
+                    b.Property<string>("FmpIndustry")
+                        .HasColumnType("longtext");
+
+                    b.Property<int?>("GicsSubIndustry")
+                        .HasColumnType("int");
+
                     b.Property<double?>("GrossMargin")
                         .HasColumnType("double");
 
@@ -464,6 +470,9 @@ namespace simple_bloomberg_terminal.Migrations
                     b.Property<string>("Note")
                         .HasColumnType("longtext");
 
+                    b.Property<string>("Reference")
+                        .HasColumnType("longtext");
+
                     b.Property<int>("Scope")
                         .HasColumnType("int");
 
@@ -511,6 +520,9 @@ namespace simple_bloomberg_terminal.Migrations
 
                     b.Property<double?>("Percentage")
                         .HasColumnType("double");
+
+                    b.Property<string>("Reference")
+                        .HasColumnType("longtext");
 
                     b.Property<long?>("RelatedCompanyId")
                         .HasColumnType("bigint");
@@ -728,6 +740,30 @@ namespace simple_bloomberg_terminal.Migrations
                     b.ToTable("Filings");
                 });
 
+            modelBuilder.Entity("simple_bloomberg_terminal.Models.Entities.FmpIndustryMapping", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b.Property<long>("Id"));
+
+                    b.Property<string>("Label")
+                        .IsRequired()
+                        .HasMaxLength(160)
+                        .HasColumnType("varchar(160)");
+
+                    b.Property<int>("SubIndustry")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Label")
+                        .IsUnique();
+
+                    b.ToTable("FmpIndustryMappings");
+                });
+
             modelBuilder.Entity("simple_bloomberg_terminal.Models.Entities.GdpSnapshot", b =>
                 {
                     b.Property<long>("Id")
@@ -760,6 +796,94 @@ namespace simple_bloomberg_terminal.Migrations
                     b.ToTable("GdpSnapshots");
                 });
 
+            modelBuilder.Entity("simple_bloomberg_terminal.Models.Entities.IndexConstituent", b =>
+                {
+                    b.Property<long>("StockIndexId")
+                        .HasColumnType("bigint");
+
+                    b.Property<long>("CompanyId")
+                        .HasColumnType("bigint");
+
+                    b.Property<double?>("WeightPct")
+                        .HasColumnType("double");
+
+                    b.HasKey("StockIndexId", "CompanyId");
+
+                    b.HasIndex("CompanyId");
+
+                    b.ToTable("IndexConstituents");
+                });
+
+            modelBuilder.Entity("simple_bloomberg_terminal.Models.Entities.IndexImportJob", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b.Property<long>("Id"));
+
+                    b.Property<string>("Code")
+                        .IsRequired()
+                        .HasColumnType("longtext");
+
+                    b.Property<DateTime?>("CompletedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<string>("ContinuedBy")
+                        .HasColumnType("longtext");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<string>("Error")
+                        .HasColumnType("longtext");
+
+                    b.Property<string>("EtfTicker")
+                        .HasColumnType("longtext");
+
+                    b.Property<long?>("IndexId")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("Label")
+                        .IsRequired()
+                        .HasColumnType("longtext");
+
+                    b.Property<int>("Matched")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Message")
+                        .HasColumnType("longtext");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasColumnType("longtext");
+
+                    b.Property<int>("Provisioned")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Region")
+                        .HasColumnType("longtext");
+
+                    b.Property<int?>("Sector")
+                        .HasColumnType("int");
+
+                    b.Property<string>("StartedBy")
+                        .HasColumnType("longtext");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("int");
+
+                    b.Property<int>("TotalConstituents")
+                        .HasColumnType("int");
+
+                    b.Property<string>("WikiPage")
+                        .HasColumnType("longtext");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("IndexImportJobs");
+                });
+
             modelBuilder.Entity("simple_bloomberg_terminal.Models.Entities.RevenueSource", b =>
                 {
                     b.Property<long>("Id")
@@ -786,6 +910,9 @@ namespace simple_bloomberg_terminal.Migrations
 
                     b.Property<double?>("Percentage")
                         .HasColumnType("double");
+
+                    b.Property<string>("Reference")
+                        .HasColumnType("longtext");
 
                     b.Property<long?>("RelatedCompanyId")
                         .HasColumnType("bigint");
@@ -950,6 +1077,51 @@ namespace simple_bloomberg_terminal.Migrations
                         {
                             t.HasCheckConstraint("CK_SourceFieldReview_OneSource", "((RevenueSourceId IS NOT NULL) + (CostSourceId IS NOT NULL) + (CompanyRiskId IS NOT NULL)) = 1");
                         });
+                });
+
+            modelBuilder.Entity("simple_bloomberg_terminal.Models.Entities.StockIndex", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b.Property<long>("Id"));
+
+                    b.Property<DateOnly?>("AsOf")
+                        .HasColumnType("date");
+
+                    b.Property<string>("Code")
+                        .IsRequired()
+                        .HasColumnType("longtext");
+
+                    b.Property<DateTime?>("DeletedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<string>("Description")
+                        .HasColumnType("longtext");
+
+                    b.Property<string>("EtfProxy")
+                        .HasColumnType("longtext");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasColumnType("longtext");
+
+                    b.Property<string>("Provider")
+                        .HasColumnType("longtext");
+
+                    b.Property<string>("Region")
+                        .HasColumnType("longtext");
+
+                    b.Property<int?>("Sector")
+                        .HasColumnType("int");
+
+                    b.Property<double?>("TotalMarketCap")
+                        .HasColumnType("double");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("StockIndices");
                 });
 
             modelBuilder.Entity("simple_bloomberg_terminal.Models.Entities.TradeBloc", b =>
@@ -1261,6 +1433,25 @@ namespace simple_bloomberg_terminal.Migrations
                     b.Navigation("Country");
                 });
 
+            modelBuilder.Entity("simple_bloomberg_terminal.Models.Entities.IndexConstituent", b =>
+                {
+                    b.HasOne("simple_bloomberg_terminal.Models.Entities.Company", "Company")
+                        .WithMany()
+                        .HasForeignKey("CompanyId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("simple_bloomberg_terminal.Models.Entities.StockIndex", "StockIndex")
+                        .WithMany("Constituents")
+                        .HasForeignKey("StockIndexId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Company");
+
+                    b.Navigation("StockIndex");
+                });
+
             modelBuilder.Entity("simple_bloomberg_terminal.Models.Entities.RevenueSource", b =>
                 {
                     b.HasOne("simple_bloomberg_terminal.Models.Entities.Company", "Company")
@@ -1399,6 +1590,11 @@ namespace simple_bloomberg_terminal.Migrations
             modelBuilder.Entity("simple_bloomberg_terminal.Models.Entities.Scenario", b =>
                 {
                     b.Navigation("Shocks");
+                });
+
+            modelBuilder.Entity("simple_bloomberg_terminal.Models.Entities.StockIndex", b =>
+                {
+                    b.Navigation("Constituents");
                 });
 #pragma warning restore 612, 618
         }

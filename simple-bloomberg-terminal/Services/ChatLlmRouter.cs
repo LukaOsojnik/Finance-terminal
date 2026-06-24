@@ -10,9 +10,11 @@ namespace simple_bloomberg_terminal.Services;
 /// </summary>
 public interface IChatLlm
 {
+    /// <param name="fast">Route to the provider's fast/cheap model instead of the user's chosen default
+    /// tier — for high-volume parallel work (the filing scan's triage + per-chunk workers).</param>
     Task<string> CompleteAsync(
         string system, string userPrompt,
-        int maxTokens = 4096, bool jsonObject = false, CancellationToken ct = default);
+        int maxTokens = 4096, bool jsonObject = false, bool fast = false, CancellationToken ct = default);
 
     IAsyncEnumerable<ChatDelta> StreamAsync(
         IReadOnlyList<DeepSeekMessage> messages, int? maxTokens = null, CancellationToken ct = default);
@@ -42,10 +44,14 @@ public sealed class ChatLlmRouter : IChatLlm
 
     public async Task<string> CompleteAsync(
         string system, string userPrompt,
-        int maxTokens = 4096, bool jsonObject = false, CancellationToken ct = default)
+        int maxTokens = 4096, bool jsonObject = false, bool fast = false, CancellationToken ct = default)
     {
-        var (id, model) = await ResolveParsingAsync(ct);
-        return await Provider(id).CompleteAsync(model, system, userPrompt, maxTokens, jsonObject, ct);
+        var keys = await _keys.GetAsync(ct);
+        // Same provider (so one API key serves both), but the fast tier for parallel scan work.
+        var model = fast
+            ? ChatProviders.FastModel(keys.ParsingProvider)
+            : ChatProviders.ResolveModel(keys.ParsingProvider, keys.ParsingModel);
+        return await Provider(keys.ParsingProvider).CompleteAsync(model, system, userPrompt, maxTokens, jsonObject, ct);
     }
 
     public async IAsyncEnumerable<ChatDelta> StreamAsync(

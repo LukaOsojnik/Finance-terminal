@@ -22,6 +22,10 @@
 | Filings | Filing | A SEC EDGAR filing used as proof for a cost/revenue source; identity is the EDGAR accession number |
 | AspNetUsers | AppUser | Application user (ASP.NET Core Identity), extended with profile-picture metadata |
 | UserApiKeys | UserApiKey | 1:1 store of a user's bring-your-own third-party API keys (encrypted) |
+| StockIndices | StockIndex | A named market index (e.g. NASDAQ-100) as a membership set over Companies; the per-member sector breakdown is derived from members' `Company.Sector`, while index-level `Sector`/`Region`/`TotalMarketCap` are catalog grouping/sorting facets |
+| IndexConstituents | IndexConstituent | Payload-carrying N:M junction between StockIndex and Company; carries the per-member `WeightPct` |
+| IndexImportJobs | IndexImportJob | Persisted, globally-visible index-import job; stores the original import request verbatim so any user can *continue* a `Partial` run under their own FMP key. No FK relationships |
+| FmpIndustryMappings | FmpIndustryMapping | Learned cache mapping each distinct (normalized) FMP vendor industry label → a GICS sub-industry; populated once by the LLM and reused so the same label never costs a second model call |
 
 > **Identity layer:** `AppDbContext` derives from `IdentityDbContext<AppUser>` (was plain `DbContext`). This adds the standard ASP.NET Core Identity tables: **AspNetUsers** (mapped to `AppUser`), **AspNetRoles**, **AspNetUserRoles**, **AspNetUserClaims**, **AspNetRoleClaims**, **AspNetUserLogins**, **AspNetUserTokens**. Roles **Admin**, **Manager**, **User** are seeded at startup.
 
@@ -50,7 +54,9 @@
 | Name | string | |
 | CountryId | long | FK → Countries |
 | Sector | Sector | GICS sector enum |
-| Industry | GicsIndustry? | GICS industry enum |
+| FmpIndustry | string? | Raw vendor (FMP/sonar) industry label, stored verbatim (nullable `longtext`) — the finest, source-of-truth tier; kept so industry can be re-resolved without re-fetching FMP and as the LLM's strongest signal |
+| GicsSubIndustry | GicsSubIndustry? | GICS 163-tier sub-industry, LLM-reasoned from `FmpIndustry`; stored as nullable int |
+| Industry | GicsIndustry? | GICS 74-tier industry enum; now a **denormalized rollup** of `GicsSubIndustry` (via `GicsSubIndustry.GetIndustry()`), cached for cheap querying |
 | RevenueTotal | double? | |
 | GrossMargin | double? | |
 | MarketCap | double? | USD market capitalization, sourced from FMP profile |
@@ -148,6 +154,7 @@ Dated per-fiscal-period financial time series for a Company (Company holds only 
 | Name | string | |
 | Value | double? | |
 | Percentage | double? | |
+| Reference | string? | Per-record source passage: the verbatim filing excerpt (SEC Item or note + source text) the whole revenue row was drawn from, set by the extraction agent. Distinct from the per-field SourceFieldReview proof rows — those back one field each; this cites the record overall. Nullable `longtext` (migration `20260616113409_AddRevenueAndRiskReference`) |
 | DataSource | DataSource? | EDGAR, MANUAL, CLAUDE_ESTIMATED… |
 | DeletedAt | DateTime? | Soft-delete timestamp |
 | Status | ContributionStatus | Review state; defaults to Approved (live). User contributions are Pending until a Manager rules on them |
@@ -164,6 +171,7 @@ Dated per-fiscal-period financial time series for a Company (Company holds only 
 | Name | string | |
 | Value | double? | |
 | Percentage | double? | |
+| Reference | string? | Per-record source passage: the verbatim filing excerpt (SEC Item or note + source text) the whole cost row was drawn from, set by the extraction agent. Distinct from the per-field SourceFieldReview proof rows — those back one field each; this cites the record overall. Nullable `longtext` (migration `20260616080209_AddCostSourceReference`) |
 | DataSource | DataSource? | |
 | DeletedAt | DateTime? | Soft-delete timestamp |
 | Status | ContributionStatus | Review state; defaults to Approved (live). User contributions are Pending until a Manager rules on them |
@@ -178,6 +186,7 @@ Dated per-fiscal-period financial time series for a Company (Company holds only 
 | Scope | RiskScope | MACROECONOMIC, INDUSTRY, BUSINESS, LEGAL_REGULATORY, FINANCIAL, GENERAL |
 | Name | string | |
 | Note | string? | Free-text detail |
+| Reference | string? | Per-record source passage: the verbatim filing excerpt (SEC Item 1A/7A + source text) the whole risk row was drawn from, set by the extraction agent. Distinct from the per-field SourceFieldReview proof rows — those back one field each; this cites the record overall. Nullable `longtext` (migration `20260616113409_AddRevenueAndRiskReference`) |
 | DataSource | DataSource? | |
 | DeletedAt | DateTime? | Soft-delete timestamp |
 | Status | ContributionStatus | Review state; defaults to Approved (live). User contributions are Pending until a Manager rules on them |
@@ -251,6 +260,66 @@ Stores a single profile-picture file's metadata + path; the image bytes live on 
 
 A user's own (bring-your-own) third-party API keys for the keyed external services — one row per user, shared primary key with AppUser. Each *key* column holds the value as **ciphertext** encrypted by the ASP.NET Data Protection API (`UserApiKeyProvider`), never the raw key, so a DB dump leaks nothing usable. Null = the user hasn't provided that key. The `ParsingProvider` / `ParsingModel` / `WebSearchModel` columns are per-user model-routing settings, not secrets, and are stored **plaintext**; null = use the app default. Cascade-delete: keys vanish when the account is removed. No soft-delete `DeletedAt`. Migration: `20260614131546_AddUserApiKeys`.
 
+### StockIndex
+| Property | Type | Notes |
+|---|---|---|
+| Id | long | PK |
+| Name | string | Display name, e.g. NASDAQ-100 |
+| Code | string | Index key / Wikipedia-catalog key, e.g. `"nasdaq"`, `"sp500"`, `"dowjones"` |
+| EtfProxy | string? | SPDR ETF ticker (e.g. `SPY`, `XLK`) when membership was imported from the State Street SPDR daily-holdings file; null for Wikipedia-sourced indices |
+| Provider | string? | Where membership came from: `"Wikipedia"` (constituents scrape, cap-weighted from stored `Company.MarketCap`) or `"SPDR"` (State Street daily-holdings file, real published weights) |
+| Description | string? | |
+| Sector | Sector? | GICS sector used to GROUP indices on the catalog page. Null = a broad-market index (S&P 500, FTSE 100) spanning every sector; a value = a sector-specific index (XLK → INFORMATION_TECHNOLOGY). Inferred at import from the matched members' own `Company.Sector` (≥80% of weight in one sector → that sector, else null), with an optional Perplexity hint as fallback |
+| Region | string? | Short display/grouping label, e.g. `"US"`, `"UK"`, `"Global"` |
+| TotalMarketCap | double? | Snapshot of Σ(constituent `MarketCap`) stamped at import time — the "size" the catalog sorts by. Point-in-time like the cap-weights, so it lives next to `AsOf` rather than being recomputed live |
+| AsOf | DateOnly? | When membership + weights were last imported |
+| DeletedAt | DateTime? | Soft-delete timestamp |
+
+Nav: `Constituents` (ICollection<IndexConstituent>). A named market index as a membership set over existing Company rows; it stores no per-member sector data — a sector/industry breakdown is derived at query time from each member's `Company.Sector`, weighted by the per-member `IndexConstituent.WeightPct`. The index-level `Sector` / `Region` / `TotalMarketCap` are catalog-page grouping/sorting facets stamped at import. Migration: `20260620185302_AddStockIndex`.
+
+### IndexConstituent
+| Property | Type | Notes |
+|---|---|---|
+| StockIndexId | long | Part of composite PK + FK → StockIndices (Cascade) |
+| CompanyId | long | Part of composite PK + FK → Companies (Restrict) |
+| WeightPct | double? | Index weight in percent (e.g. 8.91 = 8.91%), **cap-weighted** from `Company.MarketCap` at import (weight_i = cap_i / Σcap × 100); null = member has no stored MarketCap (excluded from the denominator) |
+
+Composite PK `(StockIndexId, CompanyId)` doubles as the importer's upsert key (clears-and-reinserts on it). A payload-carrying junction (explicit association entity, not a pure skip navigation) realizing the N:M between StockIndex and Company. No `DeletedAt` — pure derived junction; the importer clears-and-reinserts rather than soft-deleting. Migration: `20260620185302_AddStockIndex`.
+
+### IndexImportJob
+| Property | Type | Notes |
+|---|---|---|
+| Id | long | PK |
+| Label | string | What's being imported, shown in the jobs list |
+| Code | string | Stored import-request field, replayed verbatim on continue |
+| Name | string | Stored import-request field, replayed verbatim on continue |
+| WikiPage | string? | Stored import-request field, replayed verbatim on continue |
+| EtfTicker | string? | Stored import-request field, replayed verbatim on continue |
+| Sector | Sector? | Stored import-request field, replayed verbatim on continue |
+| Region | string? | Stored import-request field, replayed verbatim on continue |
+| Status | ImportJobStatus | Running / Done / Partial / Error; defaults to Running |
+| IndexId | long? | Soft reference to the StockIndex this import produced/updated (**not** a configured FK); set once the import has produced an index |
+| TotalConstituents | int | Last run's coverage — total constituents seen |
+| Matched | int | Last run's coverage — members matched to existing Company rows |
+| Provisioned | int | Last run's coverage — members auto-provisioned |
+| Message | string? | Success/coverage summary |
+| Error | string? | Failure detail |
+| StartedBy | string? | Display name of the user who began the job (plain string, **not** a FK) |
+| ContinuedBy | string? | Display name of the user who last continued the job (plain string, **not** a FK) |
+| CreatedAt | DateTime | Defaults to `DateTime.UtcNow` |
+| CompletedAt | DateTime? | When the run finished |
+
+A persisted, globally-visible index-import job. Unlike the old in-memory job (which died with the process and was visible only to the starting browser), this row survives restarts and is shared across users: when one user's FMP key runs out mid-import the job lands in `Partial`, and another user can *continue* it under their own key — the re-run is idempotent (upserts the index by code, only provisions members not yet in the DB). The stored `Code`…`Region` fields hold the original request so a continue can replay it without re-supplying it. Live phase text is **not** stored here (it ticks too often); it lives in the in-memory `IndexImportJobStore` overlay while a run is active. **No FK relationships:** `StartedBy` / `ContinuedBy` are plain display strings (not FKs to AspNetUsers) and `IndexId` is a soft reference to StockIndex, not a configured FK. No soft-delete `DeletedAt`.
+
+### FmpIndustryMapping
+| Property | Type | Notes |
+|---|---|---|
+| Id | long | PK (identity) |
+| Label | string | Normalized raw FMP vendor industry label (letters/digits, lowercased); max length 160; **unique** index `IX_FmpIndustryMappings_Label` — the upsert/lookup key |
+| SubIndustry | GicsSubIndustry | GICS 163-tier sub-industry the label maps to; stored as int |
+
+A learned vendor-label → GICS sub-industry cache. Each distinct FMP industry label is mapped once (by the LLM, on first sighting) and reused thereafter, so the same label never costs a second model call. `Label` is unique; the parent `GicsIndustry` / `Sector` are derived from `SubIndustry` (via `GicsSubIndustry.GetIndustry()` / `.GetSector()`), not stored. No FK relationships and no soft-delete `DeletedAt`. The unique index is configured in `OnModelCreating`. Migration: `20260624081845_AddGicsSubIndustryAndFmpLabelCache`.
+
 ---
 
 ## Relationships
@@ -288,6 +357,10 @@ Event   ◄──────────────► TradeBloc          (N:M
 
 AppUser ──────────────── UserApiKey         (1:1, shared PK UserId, Cascade)
 
+StockIndex ───────────── IndexConstituent   (1:N, FK StockIndexId, Cascade — nav: Constituents)
+Company ──────────────── IndexConstituent   (1:N, FK CompanyId, Restrict)
+StockIndex ◄──N:M──────► Company             (via IndexConstituent payload-carrying junction; composite PK (StockIndexId, CompanyId))
+
 AppUser ──────────────── RevenueSource      (1:N, FK ContributedByUserId nullable, SetNull — nav: ContributedBy; the contributing user)
 AppUser ──────────────── CostSource         (1:N, FK ContributedByUserId nullable, SetNull — nav: ContributedBy; the contributing user)
 AppUser ──────────────── CompanyRisk        (1:N, FK ContributedByUserId nullable, SetNull — nav: ContributedBy; the contributing user)
@@ -303,7 +376,8 @@ AppUser ──────────────── CompanyRisk        (1:N
 |---|---|
 | Sector | ENERGY, MATERIALS, FINANCIALS, INFORMATION_TECHNOLOGY, … (11 total) |
 | CompanyType | PUBLIC, PRIVATE |
-| GicsIndustry | SOFTWARE, AUTOMOBILES, SEMICONDUCTORS…, … (99 total) |
+| GicsIndustry | SOFTWARE, AUTOMOBILES, SEMICONDUCTORS…, … (74 total); each value rolls up to one Sector |
+| GicsSubIndustry | GICS 2023 sub-industry (163 total); each value rolls up to exactly one GicsIndustry via `GicsSubIndustryExtensions.GetIndustry()` (and one Sector via `.GetSector()`) |
 | EventType | EARNINGS, CENTRAL_BANK, MACRO_DATA, TRADE_DEAL, SANCTIONS, … |
 | SourceType | CUSTOMER, SEGMENT, REGION, PRODUCT |
 | CostBase | COGS, OPEX, TOTAL_COSTS |
@@ -314,3 +388,4 @@ AppUser ──────────────── CompanyRisk        (1:N
 | RiskScope | MACROECONOMIC, INDUSTRY, BUSINESS, LEGAL_REGULATORY, FINANCIAL, GENERAL |
 | ContributionStatus | Approved (=0, default/live), Pending, Rejected |
 | ChatProviderId | DeepSeek, Kimi, OpenAi, Anthropic (parsing-role chat provider; stored as the enum *name* in UserApiKey.ParsingProvider) |
+| ImportJobStatus | Running, Done, Partial (resumable — provisioning cut short, any user can continue under their own key), Error (failed before producing an index) |
