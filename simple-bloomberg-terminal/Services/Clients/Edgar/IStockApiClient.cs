@@ -1,7 +1,7 @@
-﻿namespace simple_bloomberg_terminal.Services.Clients.Edgar;
+namespace simple_bloomberg_terminal.Services.Clients.Edgar;
 
 /// <summary>
-/// HTTP-only boundary to SEC EDGAR. No business logic, no persistence â€” just fetch and
+/// HTTP-only boundary to SEC EDGAR. No business logic, no persistence — just fetch and
 /// deserialize. A 404 from SEC surfaces as <c>null</c>; any other transport failure throws
 /// (the service maps that to 503). Registered as a typed <c>HttpClient</c>.
 /// </summary>

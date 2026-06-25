@@ -1,22 +1,22 @@
-﻿using System.Text.Json;
+using System.Text.Json;
 using System.Text.RegularExpressions;
 
 namespace simple_bloomberg_terminal.Services.Clients.Edgar;
 
 /// <summary>
-/// One business segment's implied cost for a filing period: <c>Cost = Revenue â’ OperatingIncome</c>.
-/// <see cref="Reconciles"/> is the subtraction-sanity check (0 â‰¤ Cost â‰¤ Revenue) â€” false means the
+/// One business segment's implied cost for a filing period: <c>Cost = Revenue − OperatingIncome</c>.
+/// <see cref="Reconciles"/> is the subtraction-sanity check (0 ≤ Cost ≤ Revenue) — false means the
 /// matched profit measure is wrong (e.g. a non-GAAP segment figure), so the figure is unreliable.
 /// </summary>
 public record SegmentCost(string Segment, double Revenue, double OperatingIncome, double Cost, bool Reconciles);
 
-/// <summary>One business segment's tagged revenue for a filing period â€” the per-segment figure the
+/// <summary>One business segment's tagged revenue for a filing period — the per-segment figure the
 /// dimensionless <c>companyfacts</c> endpoint can't carry, read straight from the instance document
 /// (no subtraction, unlike <see cref="SegmentCost"/>).</summary>
 public record SegmentRevenue(string Segment, double Revenue);
 
 /// <summary>
-/// Reads PER-SEGMENT cost out of a filing's XBRL <em>instance document</em> â€” the dimensional data the
+/// Reads PER-SEGMENT cost out of a filing's XBRL <em>instance document</em> — the dimensional data the
 /// dimensionless <c>companyfacts</c> endpoint (see <see cref="XbrlFacts"/>) can't carry. Discovers the
 /// instance file in the filing folder, then pairs each business-segment's tagged revenue and operating
 /// income (joined by XBRL <c>contextRef</c>) to imply the segment's cost. Phase 2 of docs/cost-extraction.md.
@@ -29,7 +29,7 @@ public interface IXbrlInstanceReader
     Task<IReadOnlyList<SegmentCost>> SegmentCostsAsync(
         string cikTrimmed, string accessionNoDashes, string? periodEnd, CancellationToken ct = default);
 
-    // Per-segment revenue for the filing's reporting period â€” the same dimensional figure used as the
+    // Per-segment revenue for the filing's reporting period — the same dimensional figure used as the
     // minuend in <see cref="SegmentCostsAsync"/>, surfaced directly (no operating-income subtraction)
     // for the REVENUE node's XBRL grounding. Same best-effort contract as above.
     Task<IReadOnlyList<SegmentRevenue>> SegmentRevenuesAsync(
@@ -41,7 +41,7 @@ public class XbrlInstanceReader(IStockApiClient client) : IXbrlInstanceReader
     // us-gaap concepts a filer tags segment revenue under, in preference order (first present wins).
     private static readonly string[] RevenueConcepts =
         ["RevenueFromContractWithCustomerExcludingAssessedTax", "Revenues", "RevenueFromContractWithCustomerIncludingAssessedTax"];
-    // The clean GAAP segment profit measure; Cost = Revenue â’ this.
+    // The clean GAAP segment profit measure; Cost = Revenue − this.
     private const string ProfitConcept = "OperatingIncomeLoss";
 
     public async Task<IReadOnlyList<SegmentCost>> SegmentCostsAsync(
@@ -138,7 +138,7 @@ public class XbrlInstanceReader(IStockApiClient client) : IXbrlInstanceReader
             .ToList();
     }
 
-    // Pure parse: the tagged revenue for each business segment at the target period â€” the same facts
+    // Pure parse: the tagged revenue for each business segment at the target period — the same facts
     // ParseSegmentCosts reads, without the operating-income subtraction.
     public static IReadOnlyList<SegmentRevenue> ParseSegmentRevenues(string xml, string? periodEnd)
     {
@@ -162,7 +162,7 @@ public class XbrlInstanceReader(IStockApiClient client) : IXbrlInstanceReader
     }
 
     // contextId -> (segment member, period end), for contexts carrying EXACTLY the segments axis
-    // (a context that also has a product axis is a sub-breakdown, not the segment total â€” skip it).
+    // (a context that also has a product axis is a sub-breakdown, not the segment total — skip it).
     private static Dictionary<string, (string Member, string End)> SegmentContexts(string xml)
     {
         var contexts = new Dictionary<string, (string Member, string End)>();
@@ -189,7 +189,7 @@ public class XbrlInstanceReader(IStockApiClient client) : IXbrlInstanceReader
         foreach (var concept in concepts)
         {
             var map = new Dictionary<string, double>();
-            // The namespace prefix carries a hyphen (us-gaap:), so allow '-' â€” \w alone would miss it.
+            // The namespace prefix carries a hyphen (us-gaap:), so allow '-' — \w alone would miss it.
             foreach (Match m in Regex.Matches(xml,
                 $"<(?:[\\w-]+:)?{concept} [^>]*contextRef=\"([^\"]+)\"[^>]*>(-?[0-9]+(?:\\.[0-9]+)?)</(?:[\\w-]+:)?{concept}>"))
             {

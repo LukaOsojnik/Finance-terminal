@@ -1,4 +1,4 @@
-﻿using System.Net;
+using System.Net;
 using simple_bloomberg_terminal.Models.Entities;
 using simple_bloomberg_terminal.Models.Enums;
 
@@ -27,14 +27,14 @@ public class CompanyFinancialsService : ICompanyFinancialsService
         // Each granularity is independently best-effort: a premium-gated or unreachable call for one
         // period (e.g. 402) must not discard rows already fetched for the other. Only when FMP yields
         // nothing at all (non-US, fully gated) do we fall back to Yahoo's annual income.
-        // A 429 (daily quota) is NOT swallowed anywhere â€” it must bubble so callers (e.g. the bulk
+        // A 429 (daily quota) is NOT swallowed anywhere — it must bubble so callers (e.g. the bulk
         // backfill) stop instead of silently degrading to inferior Yahoo data right at the quota edge.
         var rows = new List<CompanyFinancial>();
         foreach (var period in new[] { "annual", "quarter" })
         {
             try { rows.AddRange(await FetchFmpPeriodAsync(companyId, symbol, period, PeriodLimit, captured)); }
             catch (HttpRequestException ex) when (ex.StatusCode != HttpStatusCode.TooManyRequests)
-            { /* this period gated/unreachable (e.g. 402) â€” keep whatever else we have */ }
+            { /* this period gated/unreachable (e.g. 402) — keep whatever else we have */ }
         }
         if (rows.Count > 0) return rows;
 
@@ -54,7 +54,7 @@ public class CompanyFinancialsService : ICompanyFinancialsService
 
         // Ratios/balance/cash-flow are secondary enrichment and can be independently plan-gated (e.g.
         // FMP's free tier gates QUARTERLY ratios with a 402). Treat each as best-effort: a failure
-        // leaves those fields null â€” gross/op/net margins then derive from the income line items.
+        // leaves those fields null — gross/op/net margins then derive from the income line items.
         var ratios = Index(await TryList(() => _fmp.GetRatiosAsync(symbol, period, limit)), r => (r.FiscalYear, r.Period));
         var balance = Index(await TryList(() => _fmp.GetBalanceSheetsAsync(symbol, period, limit)), b => (b.FiscalYear, b.Period));
         var cash = Index(await TryList(() => _fmp.GetCashFlowsAsync(symbol, period, limit)), c => (c.FiscalYear, c.Period));

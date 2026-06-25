@@ -1,4 +1,4 @@
-﻿using System.Net;
+using System.Net;
 using Microsoft.Extensions.Logging;
 using simple_bloomberg_terminal.Models.Entities;
 using simple_bloomberg_terminal.Models.Enums;
@@ -9,11 +9,11 @@ namespace simple_bloomberg_terminal.Services.Provisioning;
 
 /// <summary>A create-form draft built from a real or web-searched profile: the mapped model plus the
 /// resolved country name and an optional note for the caller to surface (the controller decides what
-/// becomes ViewBag â€” the service never touches MVC).</summary>
+/// becomes ViewBag — the service never touches MVC).</summary>
 public record CompanyDraft(CompanyCreateModel Model, string? CountryLabel, string? Note);
 
 /// <summary>Outcome of a single-company weekly-volume ingest, so the controller can map it to the right
-/// HTTP status / message: Ok (RowCount stored), CompanyNotFound (404), NoTicker (no SEC ticker â€” non-US),
+/// HTTP status / message: Ok (RowCount stored), CompanyNotFound (404), NoTicker (no SEC ticker — non-US),
 /// NoData (Yahoo returned nothing).</summary>
 public record VolumeIngestResult(VolumeIngestStatus Status, int RowCount);
 public enum VolumeIngestStatus { Ok, CompanyNotFound, NoTicker, NoData }
@@ -31,7 +31,7 @@ public record BackfillResult(
 
 /// <summary>
 /// Owns turning a ticker (FMP) or a web-searched name (Perplexity) into a company: the shared
-/// FMPâ†’enrichâ†’financialsâ†’industry/country pipeline that both the New Company form
+/// FMP→enrich→financials→industry/country pipeline that both the New Company form
 /// (<c>CompaniesController</c>) and the counterparty-link flow (<c>ExtractionController</c>) drive.
 /// Lives here so that pipeline has one home rather than a copy per controller.
 /// </summary>
@@ -41,31 +41,31 @@ public interface ICompanyProvisioningService
     // profile is missing/empty; an FMP transport error (incl. 402/429) bubbles for the caller.
     Task<CompanyDraft?> BuildFromTickerAsync(string ticker);
 
-    // FAST provision (phase 1): create + persist a company from its FMP PROFILE ONLY â€” just the fields
+    // FAST provision (phase 1): create + persist a company from its FMP PROFILE ONLY — just the fields
     // an index needs (Name/CIK/Sector/Country/MarketCap), ~1 FMP call, no income/financials/industry-LLM/
     // Yahoo. Returns the new company, or null when FMP has no profile or the country can't be resolved.
     // Throws MissingApiKeyException / HttpRequestException (incl. 429) so a bulk caller can stop.
     Task<Company?> CreateFromProfileAsync(string ticker);
 
-    // FULL enrichment (phase 2): fill the deferred data â€” dated financial history (FMP, Yahoo fallback)
-    // and the GICS industry (LLM) â€” for already-created companies. Best-effort per company; stops on an
+    // FULL enrichment (phase 2): fill the deferred data — dated financial history (FMP, Yahoo fallback)
+    // and the GICS industry (LLM) — for already-created companies. Best-effort per company; stops on an
     // FMP 429 / missing key. Run in the background after a fast index import has connected the members.
     Task EnrichAsync(IEnumerable<long> companyIds, IProgress<string>? progress = null);
 
     // Private-company prefill / re-discovery: a web-searched profile -> create model.
     Task<CompanyDraft> BuildPrivateAsync(CompanyProfileResult result, string fallbackName);
 
-    // Backfill #1 â€” real financial HISTORY from FMP (Yahoo fallback) for companies that don't have FMP
+    // Backfill #1 — real financial HISTORY from FMP (Yahoo fallback) for companies that don't have FMP
     // financials yet, refreshing their profile fields along the way. FMP-bound: stops cleanly on the daily
     // 429 so a re-run tomorrow resumes. Throws HttpRequestException only if the SEC ticker map is unreachable.
     Task<BackfillResult> BackfillFinancialsAsync(IProgress<string>? progress = null, CancellationToken ct = default);
 
-    // Backfill #2 â€” resolve the GICS sub-industry (+ Industry rollup) for every company still missing one.
+    // Backfill #2 — resolve the GICS sub-industry (+ Industry rollup) for every company still missing one.
     // LLM-bound (cheap tier, cache-deduped); re-fetches the FMP label when absent (skipped on a 429). Both
     // report a line per company for the live view and honor cancellation (aborts the in-flight LLM call).
     Task<BackfillResult> BackfillIndustriesAsync(IProgress<string>? progress = null, CancellationToken ct = default);
 
-    // Backfill #3 â€” assign a CIK to US companies missing one (FMP returns null for some US filers, e.g.
+    // Backfill #3 — assign a CIK to US companies missing one (FMP returns null for some US filers, e.g.
     // WEN). Pure SEC name match (no FMP/LLM, no quota), so it's instant and never rate-limited. Reports a
     // line per company filled; the IndustriesFilled list carries the (name, cik) pairs for the popup.
     Task<BackfillResult> BackfillCiksAsync(IProgress<string>? progress = null, CancellationToken ct = default);
@@ -84,7 +84,7 @@ public interface ICompanyProvisioningService
     void ApplyFetchedData(Company entity, CompanyCreateModel model);
 
     // On-demand re-resolve of one company's GICS sub-industry (fetches a missing FMP label first, then
-    // the full constrained -> unconstrained classify). Always reattempts â€” even a prior NoFit â€” and
+    // the full constrained -> unconstrained classify). Always reattempts — even a prior NoFit — and
     // self-heals Sector/Industry from the pick. Drives the "Resolve with AI" action on the Unclassified
     // page. Returns the resolved sub-industry, or null if it still can't be placed.
     Task<GicsSubIndustry?> ReclassifyAsync(long companyId, CancellationToken ct = default);
@@ -108,7 +108,7 @@ public class CompanyProvisioningService(
         if (profile is null || string.IsNullOrWhiteSpace(profile.CompanyName)) return null;
 
         // Financials are a premium endpoint for some symbols (e.g. non-US return HTTP 402), so
-        // treat income as optional â€” keep the profile-driven fields and leave financials blank.
+        // treat income as optional — keep the profile-driven fields and leave financials blank.
         FmpIncome? income = null;
         try { income = await fmp.GetLatestIncomeAsync(ticker); }
         catch (HttpRequestException) { /* income unavailable on this plan/symbol */ }
@@ -159,10 +159,10 @@ public class CompanyProvisioningService(
             done++;
             var company = companies.GetById(id);
             if (company is null) continue;
-            progress?.Report($"Enriching {done}/{ids.Count} ({company.Name})â€¦");
+            progress?.Report($"Enriching {done}/{ids.Count} ({company.Name})…");
 
             // SHALLOW (priority, no FMP): resolve the GICS sub-industry from the label already captured at
-            // provision time â€” cache, else one cheap LLM call â€” and roll it up to Industry. Independent of
+            // provision time — cache, else one cheap LLM call — and roll it up to Industry. Independent of
             // financials, so the FMP quota can never block classification; the classifier swallows its own
             // LLM/key errors and returns null.
             if (company.GicsSubIndustry is null)
@@ -200,7 +200,7 @@ public class CompanyProvisioningService(
             // falling back to today when sonar couldn't pin a year.
             AsOf = r.RevenueYear is { } yr ? new DateOnly(yr, 12, 31) : DateOnly.FromDateTime(DateTime.Today),
             // sonar returns the exact GICS sector enum name; fall back to FMP's label map, else null
-            // (unclassified â€” the classifier's unconstrained fallback resolves it from the sub-industry).
+            // (unclassified — the classifier's unconstrained fallback resolves it from the sub-industry).
             Sector = (Enum.TryParse<Sector>(r.Sector, ignoreCase: true, out var sec) ? sec : (Sector?)null)
                      ?? FmpMapper.MapSector(r.Sector),
             // sonar's free-text industry string is the vendor label here; resolve it like an FMP label.
@@ -213,7 +213,7 @@ public class CompanyProvisioningService(
         model.GicsSubIndustry = await industryClassifier.ResolveSubIndustryAsync(
             model.Sector, model.FmpIndustry, model.Name, model.Notes);
         model.Industry = model.GicsSubIndustry?.GetIndustry();
-        // A fallback pick may belong to a different sector than the source guess â€” let the sub-industry
+        // A fallback pick may belong to a different sector than the source guess — let the sub-industry
         // be authoritative so the saved row is self-consistent (sub -> industry -> sector all agree).
         if (model.GicsSubIndustry is { } picked) model.Sector = picked.GetSector();
 
@@ -237,12 +237,12 @@ public class CompanyProvisioningService(
         var filled = new List<object>();
         var failed = new List<object>();
         var rateLimited = false;
-        progress?.Report($"Backfilling financials for up to {eligible.Count} companiesâ€¦");
+        progress?.Report($"Backfilling financials for up to {eligible.Count} companies…");
         var done = 0;
 
         foreach (var (company, ticker) in eligible)
         {
-            if (ct.IsCancellationRequested) { progress?.Report($"Cancelled â€” stopped after {done} of {eligible.Count}."); break; }
+            if (ct.IsCancellationRequested) { progress?.Report($"Cancelled — stopped after {done} of {eligible.Count}."); break; }
             done++;
             try
             {
@@ -250,7 +250,7 @@ public class CompanyProvisioningService(
                 if (draft is null)
                 {
                     failed.Add(new { company.Name, ticker, reason = "no FMP profile" });
-                    progress?.Report($"{done}/{eligible.Count}  {company.Name}  â†’ no FMP profile");
+                    progress?.Report($"{done}/{eligible.Count}  {company.Name}  → no FMP profile");
                     continue;
                 }
 
@@ -259,27 +259,27 @@ public class CompanyProvisioningService(
 
                 var fin = await financials.BuildAsync(company.Id, ticker!);
                 companies.ReplaceFinancials(company.Id, fin);
-                var source = fin.FirstOrDefault()?.Source.ToString() ?? "â€”";
+                var source = fin.FirstOrDefault()?.Source.ToString() ?? "—";
                 filled.Add(new { company.Name, ticker, rows = fin.Count, source });
-                progress?.Report($"{done}/{eligible.Count}  {company.Name} ({ticker})  â†’ {fin.Count} rows ({source})");
+                progress?.Report($"{done}/{eligible.Count}  {company.Name} ({ticker})  → {fin.Count} rows ({source})");
             }
             // FMP daily cap -> stop so a second run tomorrow resumes with the rest.
             catch (HttpRequestException ex) when (ex.StatusCode == HttpStatusCode.TooManyRequests)
             {
                 rateLimited = true;
-                progress?.Report("FMP daily limit reached â€” stopping. Re-run tomorrow to continue.");
+                progress?.Report("FMP daily limit reached — stopping. Re-run tomorrow to continue.");
                 break;
             }
             catch (HttpRequestException ex)
             {
                 failed.Add(new { company.Name, ticker, reason = $"FMP {(int?)ex.StatusCode}" });
-                progress?.Report($"{done}/{eligible.Count}  {company.Name}  â†’ FMP {(int?)ex.StatusCode}");
+                progress?.Report($"{done}/{eligible.Count}  {company.Name}  → FMP {(int?)ex.StatusCode}");
             }
         }
 
         var remaining = eligible.Count - filled.Count - failed.Count;
         var message = rateLimited
-            ? $"Filled {filled.Count}. FMP daily limit reached â€” {remaining} eligible companies remain; click again tomorrow."
+            ? $"Filled {filled.Count}. FMP daily limit reached — {remaining} eligible companies remain; click again tomorrow."
             : $"Filled {filled.Count}, {failed.Count} failed, {remaining} eligible remaining.";
 
         return new BackfillResult(filled, failed, [], rateLimited, remaining, message);
@@ -296,7 +296,7 @@ public class CompanyProvisioningService(
         // A company we can't get a label for (no SEC ticker, or the FMP daily quota is spent) is skipped
         // rather than weak-guessed from name + sector. On the 429 we stop fetching new labels but keep
         // resolving rows that already carry one (cached/stored labels need no FMP call).
-        // Only Pending rows: a row already ruled NoFit isn't weak-guessed again here â€” it waits for an
+        // Only Pending rows: a row already ruled NoFit isn't weak-guessed again here — it waits for an
         // explicit AI re-resolve from the Unclassified page (ReclassifyAsync), so the automatic sweep
         // doesn't burn an LLM call per junk row every run.
         var pending = companies.GetAll()
@@ -304,14 +304,14 @@ public class CompanyProvisioningService(
                         && !c.ClassificationLocked).ToList();
         if (pending.Count == 0)
         {
-            const string none = "All companies already have a GICS sub-industry â€” nothing to resolve.";
+            const string none = "All companies already have a GICS sub-industry — nothing to resolve.";
             progress?.Report(none);
             return new BackfillResult([], [], [], false, 0, none);
         }
 
         var tickerMap = await stock.GetCikTickerMap();   // for the per-company FMP-label fetch
         logger.LogInformation("Backfill: resolving GICS sub-industry for {Count} companies missing one.", pending.Count);
-        progress?.Report($"Resolving GICS sub-industry for {pending.Count} companiesâ€¦");
+        progress?.Report($"Resolving GICS sub-industry for {pending.Count} companies…");
 
         var industriesFilled = new List<object>();
         var rateLimited = false;
@@ -320,11 +320,11 @@ public class CompanyProvisioningService(
         foreach (var c in pending)
         {
             // Close button -> CTS cancelled: stop cleanly and return what's resolved so far.
-            if (ct.IsCancellationRequested) { progress?.Report($"Cancelled â€” stopped after {done} of {pending.Count}."); break; }
+            if (ct.IsCancellationRequested) { progress?.Report($"Cancelled — stopped after {done} of {pending.Count}."); break; }
             done++;
 
-            // Step 1 â€” fetch the FMP label when missing (one profile call): the strongest classifier
-            // signal and the dedup-cache key. Skipped once the daily FMP quota is hit, or with no ticker â€”
+            // Step 1 — fetch the FMP label when missing (one profile call): the strongest classifier
+            // signal and the dedup-cache key. Skipped once the daily FMP quota is hit, or with no ticker —
             // a label-less company is no longer skipped, it falls through to a name+description classify.
             if (string.IsNullOrWhiteSpace(c.FmpIndustry) && !rateLimited
                 && ResolveTickerForCik(c.Cik, tickerMap) is { } t)
@@ -341,12 +341,12 @@ public class CompanyProvisioningService(
                 catch (Exception ex) when (ex is HttpRequestException or MissingApiKeyException) { /* classify by name below */ }
             }
 
-            // Step 2 â€” resolve: constrained to the source sector when known, else (or on a no-fit) an
+            // Step 2 — resolve: constrained to the source sector when known, else (or on a no-fit) an
             // unconstrained LLM pass over name + description + label. A hit rolls Industry AND Sector up
             // from the sub (self-healing a wrong/missing sector); a miss is flagged NoFit.
             GicsSubIndustry? sub;
             try { sub = await industryClassifier.ResolveSubIndustryAsync(c.Sector, c.FmpIndustry, c.Name, c.Notes, ct: ct); }
-            catch (OperationCanceledException) { progress?.Report($"Cancelled â€” stopped after {done - 1} of {pending.Count}."); break; }
+            catch (OperationCanceledException) { progress?.Report($"Cancelled — stopped after {done - 1} of {pending.Count}."); break; }
 
             ApplyClassification(c, sub);
             companies.Update(c);
@@ -356,38 +356,38 @@ public class CompanyProvisioningService(
                 industriesFilled.Add(new { c.Name, industry = resolved.GetIndustry().ToString().Replace('_', ' ') });
                 logger.LogInformation("Backfill {Done}/{Total}: {Name} [{Sector}] label='{Label}' -> {Sub} ({Industry})",
                     done, pending.Count, c.Name, c.Sector, c.FmpIndustry ?? "(none)", resolved, resolved.GetIndustry());
-                progress?.Report($"{done}/{pending.Count}  {c.Name}  [{c.Sector?.ToString().Replace('_', ' ') ?? "â€”"}]  " +
-                    $"â†’ {resolved.ToString().Replace("_SUB", "").Replace('_', ' ')}");
+                progress?.Report($"{done}/{pending.Count}  {c.Name}  [{c.Sector?.ToString().Replace('_', ' ') ?? "—"}]  " +
+                    $"→ {resolved.ToString().Replace("_SUB", "").Replace('_', ' ')}");
             }
             else
             {
                 noFit++;
                 logger.LogInformation("Backfill {Done}/{Total}: {Name} label='{Label}' -> no fit (flagged Unclassified)",
                     done, pending.Count, c.Name, c.FmpIndustry ?? "(none)");
-                progress?.Report($"{done}/{pending.Count}  {c.Name}  â†’ no fit (flagged Unclassified)");
+                progress?.Report($"{done}/{pending.Count}  {c.Name}  → no fit (flagged Unclassified)");
             }
         }
 
         var message = rateLimited
-            ? $"Resolved {industriesFilled.Count} of {pending.Count}. FMP daily quota reached â€” re-run tomorrow to fetch the remaining labels."
+            ? $"Resolved {industriesFilled.Count} of {pending.Count}. FMP daily quota reached — re-run tomorrow to fetch the remaining labels."
             : $"Resolved {industriesFilled.Count} of {pending.Count}."
-              + (noFit > 0 ? $" {noFit} couldn't be placed â€” see the Unclassified list." : "");
+              + (noFit > 0 ? $" {noFit} couldn't be placed — see the Unclassified list." : "");
         return new BackfillResult([], [], industriesFilled, rateLimited, noFit, message);
     }
 
     public async Task<BackfillResult> BackfillCiksAsync(IProgress<string>? progress = null, CancellationToken ct = default)
     {
-        progress?.Report("Loading SEC ticker mapâ€¦");
+        progress?.Report("Loading SEC ticker map…");
         var entries = await stock.GetTickerEntries();   // HttpRequestException bubbles -> controller "SEC unreachable"
 
         var filled = companies.BackfillUsCiksByName(
             entries.Select(e => (e.Title, Cik.Pad(e.CikStr.ToString()))));
 
         foreach (var (name, cik) in filled)
-            progress?.Report($"{name}  â†’ CIK {cik}");
+            progress?.Report($"{name}  → CIK {cik}");
 
         var message = filled.Count == 0
-            ? "No CIKs resolved â€” every US company already has one, or no SEC title matched its name."
+            ? "No CIKs resolved — every US company already has one, or no SEC title matched its name."
             : $"Resolved {filled.Count} CIK{(filled.Count == 1 ? "" : "s")} from the SEC ticker map.";
         progress?.Report(message);
         return new BackfillResult([], [], filled.Cast<object>().ToList(), false, 0, message);
@@ -400,18 +400,18 @@ public class CompanyProvisioningService(
         if (!string.IsNullOrWhiteSpace(req.Ticker))
         {
             FmpProfile? profile = null;
-            // FMP here is a best-effort enrichment of a linked counterparty â€” a missing user key (or
+            // FMP here is a best-effort enrichment of a linked counterparty — a missing user key (or
             // FMP being down) just falls through to the minimal stub below, never blocks the link.
             try { profile = await fmp.GetProfileAsync(req.Ticker.Trim()); }
             catch (Exception ex) when (ex is HttpRequestException or MissingApiKeyException) { /* -> stub below */ }
 
             if (profile is { CompanyName.Length: > 0 })
             {
-                // The CIK is the canonical join: a name match can't bridge an acronymâ†”legal-name gap
+                // The CIK is the canonical join: a name match can't bridge an acronym↔legal-name gap
                 // (the agent's "TSMC" never normalises to an existing "Taiwan Semiconductor Manufacturing
                 // Company"), but their CIKs are identical. Check it before the name re-check / insert.
                 if (companies.MatchByCik(profile.Cik) is { } byCik) return byCik.Id;
-                // sonar's name may differ from FMP's canonical one â€” re-check before inserting.
+                // sonar's name may differ from FMP's canonical one — re-check before inserting.
                 if (companies.MatchByName(profile.CompanyName) is { } byFmp) return byFmp.Id;
 
                 FmpIncome? income = null;
@@ -429,7 +429,7 @@ public class CompanyProvisioningService(
                 // Same dated financial history the New Company form pulls. Best-effort: a failure
                 // (premium-gated, unreachable) must not block linking the counterparty.
                 try { companies.ReplaceFinancials(entity.Id, await financials.BuildAsync(entity.Id, req.Ticker.Trim())); }
-                catch (Exception ex) when (ex is HttpRequestException or MissingApiKeyException) { /* financials unavailable â€” company still created */ }
+                catch (Exception ex) when (ex is HttpRequestException or MissingApiKeyException) { /* financials unavailable — company still created */ }
                 return entity.Id;
             }
         }
@@ -541,11 +541,11 @@ public class CompanyProvisioningService(
     }
 
     // Apply a classifier result to a company. A hit sets the sub-industry and rolls Industry + Sector up
-    // from it â€” the sub-industry is authoritative, so this self-heals a wrong/missing source sector (e.g.
+    // from it — the sub-industry is authoritative, so this self-heals a wrong/missing source sector (e.g.
     // FMP's "Energy/Solar" -> the real IT/Utilities home). A miss marks the row NoFit so the automatic
     // sweep stops retrying it and it surfaces in the Unclassified report for manual / AI re-resolution.
     // Returns true on a hit. `markNoFitOnMiss` is false for a name-only attempt (no label yet) where a
-    // miss just means "couldn't tell from the name" â€” leave it Pending so a later backfill can fetch a
+    // miss just means "couldn't tell from the name" — leave it Pending so a later backfill can fetch a
     // label and retry, rather than freezing it out of the automatic sweep.
     private static bool ApplyClassification(Company c, GicsSubIndustry? sub, bool markNoFitOnMiss = true)
     {
@@ -567,13 +567,13 @@ public class CompanyProvisioningService(
         var c = companies.GetById(companyId);
         if (c is null) return null;
 
-        // A human-pinned classification is never re-resolved â€” that's the whole point of the lock. Return
+        // A human-pinned classification is never re-resolved — that's the whole point of the lock. Return
         // the current value so the caller reflects "still set" rather than treating it as a miss.
         if (c.ClassificationLocked) return c.GicsSubIndustry;
 
         // On-demand re-resolve: fetch the FMP label if we don't have one yet (so a later run isn't
         // name-only), then run the full constrained -> unconstrained classify. Always reattempts, even a
-        // prior NoFit â€” this is exactly the "refill the wrong ones" path the Unclassified page triggers.
+        // prior NoFit — this is exactly the "refill the wrong ones" path the Unclassified page triggers.
         if (string.IsNullOrWhiteSpace(c.FmpIndustry) && ResolveTickerForCik(c.Cik, await stock.GetCikTickerMap()) is { } t)
         {
             try

@@ -1,4 +1,4 @@
-﻿using simple_bloomberg_terminal.Models.Entities;
+using simple_bloomberg_terminal.Models.Entities;
 using simple_bloomberg_terminal.Repositories;
 
 namespace simple_bloomberg_terminal.Tests;
@@ -7,7 +7,7 @@ namespace simple_bloomberg_terminal.Tests;
 /// Tiny in-memory <see cref="ICompanyRepository"/> for the Perplexity discovery tests. The discovery
 /// service only calls <see cref="GetById"/> (the inspected company) and <see cref="MatchByName"/>
 /// (mapping a found counterparty to an existing company), so only those are implemented. Backed by a
-/// plain list â€” no EF DbContext â€” so the service's parallel sub-query searches can call MatchByName
+/// plain list — no EF DbContext — so the service's parallel sub-query searches can call MatchByName
 /// concurrently without tripping "a second operation was started on this context".
 /// </summary>
 public sealed class FakeCompanyRepository : ICompanyRepository

@@ -1,4 +1,4 @@
-﻿using Microsoft.AspNetCore.Authentication;
+using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
@@ -85,7 +85,7 @@ public class CustomWebApplicationFactory : WebApplicationFactory<Program>
     {
         // Build the schema on the shared connection BEFORE base.CreateHost starts the app,
         // because the app's startup role-seeding (Program.cs) queries AspNetRoles during
-        // host start â€” which is earlier than this override resumes. Includes Identity tables
+        // host start — which is earlier than this override resumes. Includes Identity tables
         // since AppDbContext : IdentityDbContext.
         var options = new DbContextOptionsBuilder<AppDbContext>().UseSqlite(_connection).Options;
         using (var schema = new AppDbContext(options))

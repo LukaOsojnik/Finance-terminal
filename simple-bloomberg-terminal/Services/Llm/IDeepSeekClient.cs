@@ -1,4 +1,4 @@
-﻿namespace simple_bloomberg_terminal.Services.Llm;
+namespace simple_bloomberg_terminal.Services.Llm;
 
 /// <summary>
 /// HTTP-only boundary to the DeepSeek chat-completions API (OpenAI-compatible). Send a system
@@ -13,8 +13,8 @@ public interface IDeepSeekClient
         int maxTokens = 4096, bool jsonObject = false, CancellationToken ct = default);
 
     /// <summary>
-    /// Streaming multi-turn completion. Yields <see cref="ChatDelta"/> fragments as they arrive â€”
-    /// "reasoning" (v4 thinking trace) and "text" (answer) â€” so the UI can render them live.
+    /// Streaming multi-turn completion. Yields <see cref="ChatDelta"/> fragments as they arrive —
+    /// "reasoning" (v4 thinking trace) and "text" (answer) — so the UI can render them live.
     /// <paramref name="maxTokens"/> null (the default) sends no cap, letting the model run to its own limit.
     /// </summary>
     IAsyncEnumerable<ChatDelta> StreamAsync(

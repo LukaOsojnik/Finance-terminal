@@ -1,4 +1,4 @@
-﻿using System.Security.Claims;
+using System.Security.Claims;
 using System.Security.Cryptography;
 using Microsoft.AspNetCore.DataProtection;
 using simple_bloomberg_terminal.Models.Entities;
@@ -9,7 +9,7 @@ namespace simple_bloomberg_terminal.Services.ApiKeys;
 /// <inheritdoc cref="IUserApiKeyProvider"/>
 public class UserApiKeyProvider : IUserApiKeyProvider
 {
-    // Purpose string scopes the protector â€” ciphertext from one purpose can't be unprotected by
+    // Purpose string scopes the protector — ciphertext from one purpose can't be unprotected by
     // another. Bump the suffix only if the format ever changes.
     public const string Purpose = "UserApiKeys.v1";
 
@@ -84,7 +84,7 @@ public class UserApiKeyProvider : IUserApiKeyProvider
     }
 
     // Ciphertext -> plaintext. A protector/key-ring change (or tampered value) throws
-    // CryptographicException â€” treat that as "no usable key" rather than crashing the request.
+    // CryptographicException — treat that as "no usable key" rather than crashing the request.
     private string? Decrypt(string? cipher)
     {
         if (string.IsNullOrEmpty(cipher)) return null;

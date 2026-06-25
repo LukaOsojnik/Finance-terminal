@@ -1,4 +1,4 @@
-﻿using AutoMapper;
+using AutoMapper;
 using simple_bloomberg_terminal.Dtos;
 using simple_bloomberg_terminal.Models.Entities;
 using simple_bloomberg_terminal.Models.Enums;
@@ -10,7 +10,7 @@ namespace simple_bloomberg_terminal.Services.Financials;
 /// The one place with real logic: pull SEC EDGAR JSON, map it onto the graph child rows
 /// (RevenueSource / CostSource) tagged <see cref="DataSource.EDGAR"/>, persist via the shared
 /// repos, and decide failure codes. Hand-entered (MANUAL) rows are never touched. Filings are
-/// not ingested here â€” they become <see cref="Filing"/> rows only when a user references one in
+/// not ingested here — they become <see cref="Filing"/> rows only when a user references one in
 /// the extraction UI (see ExtractionController), so a plain refresh never creates filing rows.
 /// </summary>
 public class StockService(

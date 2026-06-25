@@ -1,4 +1,4 @@
-﻿using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using simple_bloomberg_terminal.Models.Entities;
@@ -81,7 +81,7 @@ public class ContributionsController : Controller
         var risk = _risks.GetPendingByCompany(id).ToList();
 
         // Contributor emails for every distinct user across the three sections, in one query (was a
-        // blocking FindByIdAsync per distinct user â€” an N+1).
+        // blocking FindByIdAsync per distinct user — an N+1).
         var userIds = revenue.Select(r => r.ContributedByUserId)
             .Concat(cost.Select(c => c.ContributedByUserId))
             .Concat(risk.Select(r => r.ContributedByUserId))

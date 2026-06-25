@@ -1,4 +1,4 @@
-﻿using simple_bloomberg_terminal.IoCore;
+using simple_bloomberg_terminal.IoCore;
 using simple_bloomberg_terminal.Models.Enums;
 using simple_bloomberg_terminal.Repositories;
 
@@ -34,7 +34,7 @@ public sealed record ImpactResult(
 /// <summary>
 /// Adapter between the domain (a UI request, later a real <c>Event</c>) and the pure I-O core. It
 /// is the only component that knows both worlds: it turns "sector X is first hit, kind K, size M"
-/// into a raw Î”d / Î”v / Î”w, runs the matching solver, then maps the result vector back to sectors
+/// into a raw Δd / Δv / Δw, runs the matching solver, then maps the result vector back to sectors
 /// and allocates each sector's impact to the companies that live in it. The core stays domain-blind.
 /// </summary>
 public sealed class EventImpactService(LoadedIoModel loaded, ICompanyRepository companies)
@@ -92,7 +92,7 @@ public sealed class EventImpactService(LoadedIoModel loaded, ICompanyRepository 
     /// much of its output goes to end-users vs to other businesses. Near-zero share = an upstream
     /// supplier (extracted/intermediate) for which a SUPPLY outage is the natural lever; a high
     /// share = a final-demand-facing sector for which a DEMAND shock is natural. Used to suggest a
-    /// shock type in the UI â€” guidance, not a restriction. Cost shocks apply to any sector.
+    /// shock type in the UI — guidance, not a restriction. Cost shocks apply to any sector.
     /// </summary>
     public IReadOnlyDictionary<Sector, SectorProfile> Profiles()
     {
@@ -134,8 +134,8 @@ public sealed class EventImpactService(LoadedIoModel loaded, ICompanyRepository 
                 else
                     weight = 1.0 / members.Count;
 
-                // Quantity shock: split the sector's Î” output by exposure weight.
-                // Price shock: Î”p is a fractional cost change, so the $ hit is revenue Ă— Î”p.
+                // Quantity shock: split the sector's Δ output by exposure weight.
+                // Price shock: Δp is a fractional cost change, so the $ hit is revenue × Δp.
                 var value = isPrice
                     ? (c.RevenueTotal ?? 0) * ranked.Value
                     : ranked.Value * weight;
@@ -150,7 +150,7 @@ public sealed class EventImpactService(LoadedIoModel loaded, ICompanyRepository 
             .ToList();
 
         // Sub-group the sector's companies by GICS industry (the finer "who's hit" view). Each
-        // group's Î” is just the sum of its members' Î” â€” the matrix math is untouched. Companies
+        // group's Δ is just the sum of its members' Δ — the matrix math is untouched. Companies
         // with no Industry fall under "Unclassified".
         var industries = withIndustry
             .GroupBy(x => x.Industry)

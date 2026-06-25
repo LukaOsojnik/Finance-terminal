@@ -1,4 +1,4 @@
-﻿using System.Collections.Concurrent;
+using System.Collections.Concurrent;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Runtime.CompilerServices;
@@ -28,7 +28,7 @@ public record PerplexityWebSearchOptions(
 /// named suppliers/customers behind a company's revenue/cost segments. Reuses the DeepSeek
 /// request/response records (same wire shape); the only difference is the base URL, key and model
 /// from the "Perplexity" config section. sonar searches the web itself, so no separate search API is
-/// wired â€” it returns an already-grounded answer. Light shaping (prompt, parse, match-existing) lives
+/// wired — it returns an already-grounded answer. Light shaping (prompt, parse, match-existing) lives
 /// here; no extra layer.
 /// </summary>
 public class CounterpartyDiscoveryService : ICounterpartyDiscovery
@@ -54,15 +54,15 @@ public class CounterpartyDiscoveryService : ICounterpartyDiscovery
     private const int MaxConcurrent = 3;  // cap parallel Perplexity calls so a burst doesn't trip its rate limit
 
     // Tail of the search prompt: the per-company fields sonar must return and the exact JSON shape.
-    // Built (not a const) so the classification rule is injected directly â€” no string.Format/{0}, whose
-    // placeholder would clash with the literal { } braces in the embedded JSON template â€” and so the
+    // Built (not a const) so the classification rule is injected directly — no string.Format/{0}, whose
+    // placeholder would clash with the literal { } braces in the embedded JSON template — and so the
     // valued mode can add a contract_value field + key without a second copy of the whole spec.
     private static string FieldsSpec(string classRule, bool valued)
     {
         // Only valued mode asks for (and emits) a dollar figure; plain mode keeps the original shape.
         var valueField = valued
             ? "contract_value (estimated USD value of the relationship/contract as a PLAIN NUMBER in " +
-              "dollars â€” no currency symbol, units or commas, e.g. 2500000000 for $2.5 billion; null if " +
+              "dollars — no currency symbol, units or commas, e.g. 2500000000 for $2.5 billion; null if " +
               "unknown), "
             : "";
         var valueKey = valued ? ",\"contract_value\":null" : "";
@@ -94,12 +94,12 @@ public class CounterpartyDiscoveryService : ICounterpartyDiscovery
         var thisYear = DateTime.UtcNow.Year;
         var firstYear = thisYear - (RecencyYears - 1);
 
-        // Phase 1 â€” planner decomposes the company + its segments into several focused search queries.
+        // Phase 1 — planner decomposes the company + its segments into several focused search queries.
         var queries = await PlanQueriesAsync(company.Name, where, supplier, valued, segments, firstYear, thisYear, ct);
         if (queries.Count == 0) yield break;
         yield return new DiscoveryEvent("plan", Queries: queries);
 
-        // Phase 2 â€” run every sub-query in PARALLEL, each its own grounded search. Events drain through a
+        // Phase 2 — run every sub-query in PARALLEL, each its own grounded search. Events drain through a
         // channel so results surface as soon as each query lands (order is whoever finishes first), and a
         // failed query yields an empty result instead of killing the run (catch-all per task). Dedupe by
         // company name across queries with a concurrent set, since tasks add concurrently.
@@ -112,8 +112,8 @@ public class CounterpartyDiscoveryService : ICounterpartyDiscovery
         var tasks = queries.Select(async q =>
         {
             await channel.Writer.WriteAsync(new DiscoveryEvent("searching", Query: q), ct);
-            // Catch-ALL: any failure (transport, timeout, parse, cancellation) still REPORTS back â€” empty
-            // items plus the reason â€” so the row resolves (no eternal spin) AND shows why it found nothing
+            // Catch-ALL: any failure (transport, timeout, parse, cancellation) still REPORTS back — empty
+            // items plus the reason — so the row resolves (no eternal spin) AND shows why it found nothing
             // instead of a misleading "0 found". One bad query must never strand the others.
             IReadOnlyList<CounterpartySuggestion> items = [];
             IReadOnlyList<string> sources = [];
@@ -138,7 +138,7 @@ public class CounterpartyDiscoveryService : ICounterpartyDiscovery
     }
 
     // Phase 1 call: ask sonar for a short list of focused, distinct web-search queries. Each query should
-    // target a different segment / product line / supplier tier so together they pull diverse sources â€”
+    // target a different segment / product line / supplier tier so together they pull diverse sources —
     // that diversity is the whole point of decomposing instead of one broad call. Light web context is
     // enough here (it only needs to know the company's real segments), so this is the cheap call.
     private async Task<List<string>> PlanQueriesAsync(
@@ -159,11 +159,11 @@ public class CounterpartyDiscoveryService : ICounterpartyDiscovery
         var system =
             $"You plan web research to {goal}. Produce a " +
             $"list of focused, DISTINCT research questions that, each run separately, will surface those " +
-            $"companies from different angles â€” {angle} â€” so together they cover diverse, primary sources " +
+            $"companies from different angles — {angle} — so together they cover diverse, primary sources " +
             $"(filings, IR pages, industry press). Scope every question to {firstYear}-{thisYear}. " +
             // The downstream searcher is an LLM, not a search box: plain questions work, search-engine
             // operators (the over-constrained Google-dork style) make it find nothing.
-            "Write each as a PLAIN-LANGUAGE question a researcher would ask â€” NEVER use search operators " +
+            "Write each as a PLAIN-LANGUAGE question a researcher would ask — NEVER use search operators " +
             "(no quotation marks, no site:, no OR/AND, no minus-exclusions, no date ranges like 2022..2026). " +
             $"Return between 2 and {MaxQueries} questions, most specific first. " +
             "Reply with JSON only, no prose, no code fences: {\"queries\":[\"\",\"\"]}.";
@@ -196,11 +196,11 @@ public class CounterpartyDiscoveryService : ICounterpartyDiscovery
         var system =
             $"You research a single public company's {(supplier ? "suppliers" : "customers")} from current " +
             $"web sources, answering ONE focused research query. Return every real, NAMED {who} the query " +
-            "surfaces â€” never generic labels like 'consumers' or 'various suppliers'. " + valuedRule +
+            "surfaces — never generic labels like 'consumers' or 'various suppliers'. " + valuedRule +
             "Prefer recent, primary sources. " + FieldsSpec(classRule, valued);
 
         // Company-wide queries can list many companies; the cap must clear the whole JSON or it gets cut
-        // mid-array (finish_reason=length) â€” Parse's salvage recovers a partial cut.
+        // mid-array (finish_reason=length) — Parse's salvage recovers a partial cut.
         var (answer, citations) = await CallAsync(system, query, "high", maxTokens: 4000, ct);
         return (Parse(answer, supplier, citations), citations);
     }
@@ -263,7 +263,7 @@ public class CounterpartyDiscoveryService : ICounterpartyDiscovery
     private IReadOnlyList<CounterpartySuggestion> Parse(string answer, bool supplier, IReadOnlyList<string> citations)
     {
         // Salvage a truncated response (finish_reason=length): the array was cut mid-stream so the
-        // outer structure never closed â€” closing it with `]}` recovers every complete object.
+        // outer structure never closed — closing it with `]}` recovers every complete object.
         using var doc = LlmJson.ParseObject(answer, "]}");
         if (doc is null) return [];
 
@@ -300,9 +300,9 @@ public class CounterpartyDiscoveryService : ICounterpartyDiscovery
     }
 
     // Resolve a counterparty's citation to a real URL. Models cite differently: base sonar puts an
-    // "https://â€¦" string in source_url; sonar-pro puts a [n] marker there; sonar-reasoning-pro leaves
+    // "https://…" string in source_url; sonar-pro puts a [n] marker there; sonar-reasoning-pro leaves
     // source_url null and embeds the [n] marker in the note prose. Try the field first, then fall back
-    // to the first [n] marker in the note â€” both resolve against the response's citations list.
+    // to the first [n] marker in the note — both resolve against the response's citations list.
     private static string? ResolveSource(JsonElement el, IReadOnlyList<string> citations)
     {
         if (el.ValueKind != JsonValueKind.Object) return null;
@@ -319,7 +319,7 @@ public class CounterpartyDiscoveryService : ICounterpartyDiscovery
         return null;
     }
 
-    // source_url shapes: a real "https://â€¦" string; a 1-based citation marker as a number (10),
+    // source_url shapes: a real "https://…" string; a 1-based citation marker as a number (10),
     // a string ("[10]") or a single-element array ([10]); or null/"null".
     private static string? FromField(JsonElement v, IReadOnlyList<string> citations)
     {

@@ -1,4 +1,4 @@
-﻿using System.Collections.Concurrent;
+using System.Collections.Concurrent;
 
 namespace simple_bloomberg_terminal.Services.Provisioning;
 
@@ -14,7 +14,7 @@ public class BackfillJob
     public string Id { get; init; } = Guid.NewGuid().ToString("n");
 
     // Progress lines, appended as each company resolves. Read by the poll endpoint (which slices from the
-    // browser's last-seen offset), so both sides take the lock â€” List is not thread-safe on its own.
+    // browser's last-seen offset), so both sides take the lock — List is not thread-safe on its own.
     public List<string> Lines { get; } = new();
     public object Lock { get; } = new();
 
@@ -30,7 +30,7 @@ public class BackfillJob
 
 /// <summary>
 /// Tracks detached Backfill jobs across requests. Singleton, like <see cref="ScanJobStore"/> /
-/// <see cref="IndexImportJobStore"/> â€” single-user terminal, so no per-user partitioning.
+/// <see cref="IndexImportJobStore"/> — single-user terminal, so no per-user partitioning.
 /// </summary>
 public class BackfillJobStore
 {

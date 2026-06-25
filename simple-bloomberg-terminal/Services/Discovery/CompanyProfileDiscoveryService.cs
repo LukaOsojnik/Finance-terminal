@@ -1,4 +1,4 @@
-﻿using System.Net.Http.Headers;
+using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
 
@@ -7,7 +7,7 @@ namespace simple_bloomberg_terminal.Services.Discovery;
 /// <inheritdoc cref="ICompanyProfileDiscovery"/>
 /// <remarks>
 /// Reuses the Perplexity wire shape (<see cref="PerplexityRequest"/>) and by-hand envelope parse
-/// from <see cref="CounterpartyDiscoveryService"/> â€” same "Perplexity" config section (base URL,
+/// from <see cref="CounterpartyDiscoveryService"/> — same "Perplexity" config section (base URL,
 /// key, model). One grounded sonar call returns the whole profile as JSON; no planner/fan-out
 /// (a single company needs one search, not several).
 /// </remarks>
@@ -36,15 +36,15 @@ public class CompanyProfileDiscoveryService : ICompanyProfileDiscovery
             "(its specific industry as a short label, e.g. 'Software', 'Semiconductors', 'Apparel " +
             "Manufacturing'), country_code (ISO-2 of its headquarters, e.g. US, DE), description (one or two " +
             "sentences on what it does), revenue_usd (the company's MOST RECENT yearly revenue in US dollars as " +
-            "a plain number â€” no symbols/commas, e.g. 12000000000. Always pick the NEWEST year for which a " +
+            "a plain number — no symbols/commas, e.g. 12000000000. Always pick the NEWEST year for which a " +
             "credible figure exists; if several years are reported, choose the latest one, including the most " +
             "recent full year or a trailing-12-month/annualized figure. Private companies rarely file official " +
             "numbers, so use the best credibly-reported figure or estimate from reputable financial press; do " +
             "NOT give a forward projection. Use null ONLY if there is no credible basis at all), revenue_year " +
             "(the year revenue_usd refers to, e.g. 2025; null if unknown), gross_margin (the company's ACTUAL " +
             "gross margin as a decimal 0-1, grounded in its real economics; null if it cannot be reasonably " +
-            "grounded â€” do NOT output a generic industry-average guess), valuation_usd (the company's latest " +
-            "VALUATION in US dollars as a plain number â€” for a private company the most recent post-money " +
+            "grounded — do NOT output a generic industry-average guess), valuation_usd (the company's latest " +
+            "VALUATION in US dollars as a plain number — for a private company the most recent post-money " +
             "valuation from a funding round or credible report; for a public company its market capitalization; " +
             "null if unknown). Reply: {\"name\":\"\",\"sector\":\"\",\"industry\":\"\",\"country_code\":null," +
             "\"description\":null,\"revenue_usd\":null,\"revenue_year\":null,\"gross_margin\":null," +
@@ -59,7 +59,7 @@ public class CompanyProfileDiscoveryService : ICompanyProfileDiscovery
             Model: model,
             Messages: [new DeepSeekMessage("system", system), new DeepSeekMessage("user", user)],
             MaxTokens: 1200,
-            // "high" pulls more (primary) source content before answering â€” slower but the figures are
+            // "high" pulls more (primary) source content before answering — slower but the figures are
             // better grounded, which matters here since the result is saved, not just reviewed.
             WebSearchOptions: new PerplexityWebSearchOptions("high"));
 

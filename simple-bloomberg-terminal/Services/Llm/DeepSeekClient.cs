@@ -1,4 +1,4 @@
-﻿using System.Net.Http.Headers;
+using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Runtime.CompilerServices;
 using System.Text.Json;
@@ -8,7 +8,7 @@ namespace simple_bloomberg_terminal.Services.Llm;
 /// <summary>
 /// Typed HttpClient for the DeepSeek chat-completions API (OpenAI-compatible). Base URL + timeout are
 /// wired from the "DeepSeek" config section in Program.cs; the Bearer key is the CURRENT USER's own key (bring-your-own),
-/// resolved per request from <see cref="IUserApiKeyProvider"/> â€” no global key. A user without a
+/// resolved per request from <see cref="IUserApiKeyProvider"/> — no global key. A user without a
 /// DeepSeek key triggers a <see cref="MissingApiKeyException"/>. The auth header is set per
 /// HttpRequestMessage (not on the shared client) so concurrent calls in one scope can't clobber it.
 /// </summary>

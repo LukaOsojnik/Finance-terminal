@@ -1,4 +1,4 @@
-﻿using System.Net;
+using System.Net;
 using simple_bloomberg_terminal.Models.Entities;
 using simple_bloomberg_terminal.Models.Enums;
 using simple_bloomberg_terminal.Repositories;
@@ -30,16 +30,16 @@ public class IndexImportService(
         return await ImportFromWikipediaAsync(req, progress);
     }
 
-    // â”€â”€ SPDR: real published weights from the daily-holdings file â”€â”€
+    // ── SPDR: real published weights from the daily-holdings file ──
     private async Task<IndexImportResult> ImportFromSpdrAsync(IndexImportRequest req, IProgress<string>? progress)
     {
         var ticker = req.EtfTicker!.Trim();
-        progress?.Report($"Fetching SPDR holdings for {ticker.ToUpperInvariant()}â€¦");
+        progress?.Report($"Fetching SPDR holdings for {ticker.ToUpperInvariant()}…");
         var file = await spdr.GetHoldingsAsync(ticker);
         if (file.Holdings.Count == 0)
             throw new InvalidOperationException($"SPDR returned no holdings for '{ticker}'.");
 
-        progress?.Report("Matching holdings to companiesâ€¦");
+        progress?.Report("Matching holdings to companies…");
         var tickerToCik = await TickerToCikAsync();
         var cikToId = companies.CikToIdMap();
 
@@ -71,18 +71,18 @@ public class IndexImportService(
             created.Values.ToList(), Math.Round(rows.Sum(r => r.WeightPct ?? 0), 2), "SPDR", stoppedEarly);
     }
 
-    // â”€â”€ Wikipedia: scraped membership, cap-weighted from stored MarketCap â”€â”€
+    // ── Wikipedia: scraped membership, cap-weighted from stored MarketCap ──
     private async Task<IndexImportResult> ImportFromWikipediaAsync(IndexImportRequest req, IProgress<string>? progress)
     {
         if (!IsWikiPath(req.WikiPage))
             throw new ArgumentException("wikiPage must be an English-Wikipedia /wiki/ path.", nameof(req));
 
-        progress?.Report("Scraping Wikipedia constituentsâ€¦");
+        progress?.Report("Scraping Wikipedia constituents…");
         var constituents = await wiki.GetConstituentsAsync(req.WikiPage!);
         if (constituents.Count == 0)
             throw new InvalidOperationException($"Wikipedia returned no constituents for '{req.Code}'.");
 
-        progress?.Report($"Matching {constituents.Count} members to companiesâ€¦");
+        progress?.Report($"Matching {constituents.Count} members to companies…");
         var cikToId = companies.CikToIdMap();
 
         // Only pay for the SEC ticker map if some row lacks a CIK (NASDAQ-100/Dow tables omit it).
@@ -109,7 +109,7 @@ public class IndexImportService(
         foreach (var newId in created.Values)
             if (seen.Add(newId)) matchedIds.Add(newId);
 
-        // Cap-weight from stored MarketCap: weight_i = cap_i / ÎŁcap * 100. Members without a MarketCap
+        // Cap-weight from stored MarketCap: weight_i = cap_i / Σcap * 100. Members without a MarketCap
         // get a null weight and are excluded from the denominator (so the rest still sum sensibly).
         var caps = companies.MarketCapsByIds(matchedIds);
         var totalCap = caps.Values.Where(v => v is > 0).Sum(v => v!.Value);
@@ -131,7 +131,7 @@ public class IndexImportService(
     // Create companies for tickers not yet in the DB (so the whole index can be connected, not just the
     // members that happened to already exist). Returns ticker -> new company id for the ones created,
     // plus StoppedEarly: true when the loop bailed because FMP had no key or hit its daily limit (vs.
-    // running to completion). StoppedEarly is the "continuable" signal â€” the still-missing members could
+    // running to completion). StoppedEarly is the "continuable" signal — the still-missing members could
     // be linked by re-running under a key with remaining quota. An individual ticker that errors or has
     // no FMP profile (e.g. a non-US member) is skipped without flipping StoppedEarly.
     private async Task<(Dictionary<string, long> Created, bool StoppedEarly)> ProvisionMissingAsync(
@@ -142,7 +142,7 @@ public class IndexImportService(
         var created = new Dictionary<string, long>(StringComparer.OrdinalIgnoreCase);
         if (todo.Count == 0) return (created, false);
 
-        progress?.Report($"Adding {todo.Count} missing companies from FMPâ€¦");
+        progress?.Report($"Adding {todo.Count} missing companies from FMP…");
         foreach (var t in todo)
         {
             try
@@ -200,7 +200,7 @@ public class IndexImportService(
         return index.Id;
     }
 
-    // ÎŁ stored MarketCap of the matched members â€” the catalog's "size" metric, computed the same way
+    // Σ stored MarketCap of the matched members — the catalog's "size" metric, computed the same way
     // regardless of how the weights were sourced so SPDR and Wikipedia indices sort comparably.
     private double MatchedCap(IReadOnlyList<IndexConstituent> rows)
     {
@@ -217,7 +217,7 @@ public class IndexImportService(
         return inverted;
     }
 
-    // Classify the index by what its matched members are: a fund whose members are â‰Ą80% one sector (by
+    // Classify the index by what its matched members are: a fund whose members are ≥80% one sector (by
     // weight, or by count when weights are absent) is that sector (a Select Sector SPDR like XLK is
     // ~100% one sector); a broad index like the S&P 500 spreads across all -> null = broad market.
     private Sector? InferSectorFromMembers(IReadOnlyList<IndexConstituent> rows)

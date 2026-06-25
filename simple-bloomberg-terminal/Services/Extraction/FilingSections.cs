@@ -1,4 +1,4 @@
-﻿using System.Text;
+using System.Text;
 using System.Text.RegularExpressions;
 using HtmlAgilityPack;
 using simple_bloomberg_terminal.Models.Enums;
@@ -8,7 +8,7 @@ namespace simple_bloomberg_terminal.Services.Extraction;
 /// <summary>One slice of a filing handed to a single worker call. <paramref name="Section"/> is the
 /// provenance label; <paramref name="Item"/> is the SEC Item it belongs to (for grouping in the widget)
 /// and <paramref name="Titles"/> are the sub-heading titles this chunk bundles (one call may pack
-/// several small headings â€” see the heading-packing in FilingExtractionService).</summary>
+/// several small headings — see the heading-packing in FilingExtractionService).</summary>
 public record FilingChunk(string Section, string Text, string Item = "", IReadOnlyList<string>? Titles = null);
 
 /// <summary>A bold sub-heading within a target Item, plus the text under it (until the next heading).</summary>
@@ -16,8 +16,8 @@ public record FilingHeading(string Section, string Title, string Body);
 
 /// <summary>
 /// Turns a raw SEC filing (HTML or plain text) into small, targeted text chunks for the extractor:
-/// strip markup â†’ keep only the revenue-relevant Items (1A risk factors, 7 MD&amp;A, 8 financial
-/// notes) â†’ split each into paragraph chunks so the LLM calls stay cheap. Pure functions, no I/O.
+/// strip markup → keep only the revenue-relevant Items (1A risk factors, 7 MD&amp;A, 8 financial
+/// notes) → split each into paragraph chunks so the LLM calls stay cheap. Pure functions, no I/O.
 /// </summary>
 public static class FilingSections
 {
@@ -27,15 +27,15 @@ public static class FilingSections
     public static string[] ItemsFor(ExtractionNode node) => node switch
     {
         ExtractionNode.RISK => ["1A", "7A"],
-        // COST adds Item 1 (Business) â€” "Sources & Availability of Raw Materials" is the canonical
+        // COST adds Item 1 (Business) — "Sources & Availability of Raw Materials" is the canonical
         // named-supplier / single-source disclosure, which the financial Items don't carry.
         ExtractionNode.COST => ["1", "7", "8"],
         _                   => ["7", "8"],   // REVENUE: financial-detail Items
     };
 
-    public const int MaxChunkChars = 4000;         // ~1k tokens/chunk â€” the per-worker text budget
+    public const int MaxChunkChars = 4000;         // ~1k tokens/chunk — the per-worker text budget
     private const int MaxChunksPerSection = 12;    // keep one giant section from hogging every slot
-    private const int MaxChunks = 36;              // overall safety cap (â‰3 sections Ă— 12)
+    private const int MaxChunks = 36;              // overall safety cap (≈3 sections × 12)
 
     public static List<FilingChunk> Build(string raw, string[] items)
     {
@@ -57,7 +57,7 @@ public static class FilingSections
     }
 
     /// <summary>
-    /// Sequential, document-order chunks of one Item's full body â€” used for Item 8, whose financial
+    /// Sequential, document-order chunks of one Item's full body — used for Item 8, whose financial
     /// tables are detached from their bold headings (so heading-based chunking mislabels and truncates
     /// them). Reuses the same Item-detection + paragraph packing as <see cref="Build"/>, but with a
     /// generous chunk budget so the dense statements/notes aren't cut short. Tables stay whole (a single
@@ -94,7 +94,7 @@ public static class FilingSections
 
         // Normalise: tidy each line, collapse blank runs to a single paragraph break.
         var lines = raw.Replace("\r", "").Split('\n')
-            .Select(l => Regex.Replace(l, "[ \tÂ ]+", " ").Trim());
+            .Select(l => Regex.Replace(l, "[ \t ]+", " ").Trim());
         var sb = new StringBuilder();
         int blanks = 0;
         foreach (var line in lines)
@@ -107,7 +107,7 @@ public static class FilingSections
     }
 
     // The real body of "Item N": of every place that heading appears (TOC + body), take the one with
-    // the most text before the next Item heading â€” that is the section, not the contents-page line.
+    // the most text before the next Item heading — that is the section, not the contents-page line.
     private static string? SectionBody(string text, string item)
     {
         // All "Item <n>" headings with their position, in document order. Leading markdown markers
@@ -131,7 +131,7 @@ public static class FilingSections
     }
 
     // Pack paragraphs (blank-line separated) into <= MaxChunkChars chunks without splitting a
-    // paragraph. A single oversized paragraph is clipped â€” UNLESS it's a table, which is emitted whole
+    // paragraph. A single oversized paragraph is clipped — UNLESS it's a table, which is emitted whole
     // (clipping a financial statement mid-table would drop rows of figures).
     private static IEnumerable<string> Paragraphs(string body)
     {
@@ -155,7 +155,7 @@ public static class FilingSections
         if (current.Length > 0) yield return current.ToString();
     }
 
-    // A paragraph is a table when several of its lines are markdown rows (start with '|') â€” used so an
+    // A paragraph is a table when several of its lines are markdown rows (start with '|') — used so an
     // oversized financial statement is kept whole rather than clipped.
     private static bool LooksLikeTable(string para)
     {
@@ -165,7 +165,7 @@ public static class FilingSections
         return false;
     }
 
-    // â”€â”€ Heading-level view: bold sub-headings inside Items 7/8/1A + the paragraphs under each â”€â”€
+    // ── Heading-level view: bold sub-headings inside Items 7/8/1A + the paragraphs under each ──
 
     private const int HeadingMaxChars = 400;       // a heading is a full bold line (often a sentence)
     private const int HeadingBodyMaxChars = 6000;  // ~1.5k tokens for the worker that reads it
@@ -179,11 +179,11 @@ public static class FilingSections
     /// Bold sub-headings within the target Items, each paired with the text under it (until the next
     /// heading). A heading = a whole line rendered bold (the filing puts each on its own row), of any
     /// length. The user picks from these; one worker then reads one heading's body. Plain-text
-    /// filings (no markup to detect bold) return an empty list â€” the caller falls back to auto-scan.
+    /// filings (no markup to detect bold) return an empty list — the caller falls back to auto-scan.
     /// </summary>
     public static List<FilingHeading> BuildHeadings(string raw, string[] items)
     {
-        // sec2md feeds us markdown (no HTML markup to detect) â€” parse its headings line-by-line.
+        // sec2md feeds us markdown (no HTML markup to detect) — parse its headings line-by-line.
         // Raw SEC HTML (the sidecar-down fallback) still goes through the DOM bold-detection below.
         if (!Regex.IsMatch(raw[..Math.Min(raw.Length, 2000)], "<html|<body|<div|<p|<table", RegexOptions.IgnoreCase))
             return BuildHeadingsFromMarkdown(raw, items);
@@ -252,7 +252,7 @@ public static class FilingSections
 
     // Markdown sibling of BuildHeadings, for the sec2md path. A sub-heading is a markdown ATX heading
     // line ("## Title") or a wholly-bold line ("**Title**"); body = the lines under it until the next
-    // heading. Same Item-scoping and dedupe as the HTML path â€” much simpler since markdown is flat text.
+    // heading. Same Item-scoping and dedupe as the HTML path — much simpler since markdown is flat text.
     private static List<FilingHeading> BuildHeadingsFromMarkdown(string raw, string[] items)
     {
         var result = new List<FilingHeading>();
@@ -314,8 +314,8 @@ public static class FilingSections
             .ToList();
     }
 
-    // The heading text if this markdown line is a heading â€” an ATX line ("#â€¦# Title") or a line that
-    // is entirely bold ("**Title**") â€” else null. Inline markers are stripped so triage sees a clean title.
+    // The heading text if this markdown line is a heading — an ATX line ("#…# Title") or a line that
+    // is entirely bold ("**Title**") — else null. Inline markers are stripped so triage sees a clean title.
     private static string? MarkdownHeadingText(string line)
     {
         var atx = Regex.Match(line, @"^#{1,6}\s+(.+?)\s*#*$");
@@ -361,7 +361,7 @@ public static class FilingSections
             }
             else
             {
-                CollectLines(child, lines, acc);   // inline element (span, b, font, i, aâ€¦)
+                CollectLines(child, lines, acc);   // inline element (span, b, font, i, a…)
             }
         }
     }

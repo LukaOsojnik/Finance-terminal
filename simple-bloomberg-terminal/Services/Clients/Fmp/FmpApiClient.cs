@@ -1,4 +1,4 @@
-﻿using System.Net;
+using System.Net;
 using System.Net.Http.Json;
 
 namespace simple_bloomberg_terminal.Services.Clients.Fmp;
@@ -6,7 +6,7 @@ namespace simple_bloomberg_terminal.Services.Clients.Fmp;
 /// <summary>
 /// Typed HttpClient for Financial Modeling Prep. Base URL is wired from the "Fmp" config section in Program.cs; the
 /// API key is the CURRENT USER's own key (bring-your-own), resolved per request from
-/// <see cref="IUserApiKeyProvider"/> â€” no global key. A user without an FMP key triggers a
+/// <see cref="IUserApiKeyProvider"/> — no global key. A user without an FMP key triggers a
 /// <see cref="MissingApiKeyException"/>. Both endpoints return a JSON array; we take the first
 /// element. A missing symbol returns 404 or an empty array -> null.
 /// </summary>

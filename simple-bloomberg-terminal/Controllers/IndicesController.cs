@@ -1,4 +1,4 @@
-﻿using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using simple_bloomberg_terminal.Models.Enums;
 using simple_bloomberg_terminal.Models.Entities;
@@ -120,10 +120,10 @@ public class IndicesController : Controller
         return Json(new { jobId = job.Id });
     }
 
-    // Continue a job whose FMP auto-provisioning was cut short (Partial) â€” or retry one that errored â€”
+    // Continue a job whose FMP auto-provisioning was cut short (Partial) — or retry one that errored —
     // under THIS user's keys. Re-runs the stored request: existing members re-link for free via the SEC
     // CIK map, and only the still-missing members spend the continuing user's FMP quota. Any authorized
-    // user may continue any user's job â€” that's the point (one person's spent key shouldn't strand it).
+    // user may continue any user's job — that's the point (one person's spent key shouldn't strand it).
     [HttpPost, Route("import/{id:long}/continue", Name = "StockIndexImportContinue"), ValidateAntiForgeryToken]
     public async Task<IActionResult> Continue(long id)
     {
@@ -146,7 +146,7 @@ public class IndicesController : Controller
 
     // The shared detached runner for both a fresh import and a continue. Opens its own DI scope (the
     // request's is gone once the action returns), runs the idempotent import, and writes the durable
-    // outcome â€” Done when provisioning ran to completion, Partial when it stopped on a missing key / FMP
+    // outcome — Done when provisioning ran to completion, Partial when it stopped on a missing key / FMP
     // cap (so the jobs list offers a Continue). Live phase text goes to the in-memory overlay, not the DB.
     private void RunDetached(long jobId, IndexImportRequest request, UserApiKeys keys)
     {
@@ -178,7 +178,7 @@ public class IndicesController : Controller
 
                 // Phase 2: fill financials + industry for the just-added members in the background. The
                 // page has already navigated to the breakdown (weights are correct from MarketCap); this
-                // just completes each new company's data. Best-effort â€” never flips the job to Error.
+                // just completes each new company's data. Best-effort — never flips the job to Error.
                 if (result.ProvisionedIds.Count > 0)
                 {
                     var provisioning = sp.GetRequiredService<ICompanyProvisioningService>();
@@ -227,7 +227,7 @@ public class IndicesController : Controller
     private static string FriendlyError(Exception ex) => ex switch
     {
         ArgumentException => "Invalid index (bad Wikipedia page / ticker).",
-        InvalidOperationException => ex.Message,    // e.g. "no constituents" â€” already user-facing
+        InvalidOperationException => ex.Message,    // e.g. "no constituents" — already user-facing
         HttpRequestException h => $"Source request failed ({(int?)h.StatusCode}).",
         _ => "Import failed."
     };

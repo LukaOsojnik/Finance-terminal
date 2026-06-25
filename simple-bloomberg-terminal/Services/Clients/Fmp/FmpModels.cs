@@ -1,4 +1,4 @@
-﻿namespace simple_bloomberg_terminal.Services.Clients.Fmp;
+namespace simple_bloomberg_terminal.Services.Clients.Fmp;
 
 // Minimal shapes for the FMP /stable JSON we actually read. System.Net.Http.Json uses
 // JsonSerializerDefaults.Web (camelCase, case-insensitive), so the camelCase FMP keys bind
@@ -36,7 +36,7 @@ public record FmpIncome(
     double? NetIncome,
     double? Eps);
 
-// /stable/ratios?symbol={ticker}&period={annual|quarter}&limit={n} â€” ready-made margins/ratios.
+// /stable/ratios?symbol={ticker}&period={annual|quarter}&limit={n} — ready-made margins/ratios.
 public record FmpRatio(
     string? FiscalYear,
     string? Period,

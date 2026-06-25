@@ -1,4 +1,4 @@
-﻿using System.Net.Http.Json;
+using System.Net.Http.Json;
 using System.Text.Json.Serialization;
 
 namespace simple_bloomberg_terminal.Services.Clients.Edgar;
@@ -6,13 +6,13 @@ namespace simple_bloomberg_terminal.Services.Clients.Edgar;
 /// <summary>
 /// Typed HttpClient for the sec2md sidecar (see <c>sec2md-service/</c>). Builds the EDGAR document URL
 /// from the same CIK / accession / primary-document parts the SEC fetch already uses, POSTs it, and
-/// returns the markdown. Any transport or non-success response collapses to <c>null</c> â€” the caller
+/// returns the markdown. Any transport or non-success response collapses to <c>null</c> — the caller
 /// then uses raw HTML, so a stopped sidecar degrades the pipeline rather than breaking it.
 /// </summary>
 public class Sec2MdClient : ISec2MdClient
 {
     private readonly HttpClient _http;
-    private readonly string _dumpDir;   // filings/ under the content root â€” converted markdown is saved here
+    private readonly string _dumpDir;   // filings/ under the content root — converted markdown is saved here
 
     public Sec2MdClient(HttpClient http, IWebHostEnvironment env)
     {
@@ -24,7 +24,7 @@ public class Sec2MdClient : ISec2MdClient
         string cik, string accessionNoDashes, string primaryDocument, string? filingType,
         CancellationToken ct = default)
     {
-        // EDGAR archive URL â€” sec2md.parse_filing fetches this itself (the sidecar adds the User-Agent).
+        // EDGAR archive URL — sec2md.parse_filing fetches this itself (the sidecar adds the User-Agent).
         var url = $"https://www.sec.gov/Archives/edgar/data/{cik}/{accessionNoDashes}/{primaryDocument}";
         try
         {
@@ -38,7 +38,7 @@ public class Sec2MdClient : ISec2MdClient
         }
         catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
         {
-            return null;   // sidecar unreachable / timed out â†’ caller falls back to raw HTML
+            return null;   // sidecar unreachable / timed out → caller falls back to raw HTML
         }
     }
 

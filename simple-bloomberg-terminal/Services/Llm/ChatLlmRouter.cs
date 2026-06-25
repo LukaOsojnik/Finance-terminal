@@ -1,17 +1,17 @@
-﻿using System.Runtime.CompilerServices;
+using System.Runtime.CompilerServices;
 
 namespace simple_bloomberg_terminal.Services.Llm;
 
 /// <summary>
 /// The parsing &amp; structuring LLM, as the rest of the app sees it. Callers no longer pass a model or
-/// know a provider â€” they hand over a prompt and get text/stream back. Which provider+model actually
+/// know a provider — they hand over a prompt and get text/stream back. Which provider+model actually
 /// runs is the signed-in user's stored choice, resolved per request. Replaces the direct
 /// <c>IDeepSeekClient</c> dependency in the extraction/chat/classifier/reviewer services.
 /// </summary>
 public interface IChatLlm
 {
     /// <param name="fast">Route to the provider's fast/cheap model instead of the user's chosen default
-    /// tier â€” for high-volume parallel work (the filing scan's triage + per-chunk workers).</param>
+    /// tier — for high-volume parallel work (the filing scan's triage + per-chunk workers).</param>
     Task<string> CompleteAsync(
         string system, string userPrompt,
         int maxTokens = 4096, bool jsonObject = false, bool fast = false, CancellationToken ct = default);
@@ -19,7 +19,7 @@ public interface IChatLlm
     IAsyncEnumerable<ChatDelta> StreamAsync(
         IReadOnlyList<DeepSeekMessage> messages, int? maxTokens = null, CancellationToken ct = default);
 
-    /// <summary>The provider+model this request will use â€” for labelling stored output (e.g. ReviewerModel).</summary>
+    /// <summary>The provider+model this request will use — for labelling stored output (e.g. ReviewerModel).</summary>
     Task<(ChatProviderId Provider, string Model)> ResolveParsingAsync(CancellationToken ct = default);
 }
 

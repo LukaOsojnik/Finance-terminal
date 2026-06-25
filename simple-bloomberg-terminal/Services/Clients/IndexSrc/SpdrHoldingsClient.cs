@@ -1,4 +1,4 @@
-﻿using System.Globalization;
+using System.Globalization;
 using System.IO.Compression;
 using System.Xml.Linq;
 
@@ -7,7 +7,7 @@ namespace simple_bloomberg_terminal.Services.Clients.IndexSrc;
 /// <summary>One holding parsed from a SPDR daily-holdings file: its ticker and the fund weight in
 /// percent (e.g. 7.12 = 7.12%). Weight is null when the row omitted it (e.g. the trailing cash line).
 /// The file also has a Sector column but SSGA leaves it blank ("-") for equity funds, so it is not
-/// read â€” the index's sector is inferred from its matched members instead.</summary>
+/// read — the index's sector is inferred from its matched members instead.</summary>
 public record SpdrHolding(string Ticker, double? WeightPct);
 
 /// <summary>A parsed SPDR holdings file: the fund's display name (when the header block carried it)
@@ -17,8 +17,8 @@ public record SpdrHoldings(string EtfTicker, string? FundName, IReadOnlyList<Spd
 /// <summary>
 /// HTTP-only boundary to State Street's free, no-auth SPDR daily-holdings files. Unlike Wikipedia
 /// (membership only), these carry the fund's REAL published weight AND a per-holding GICS sector, so an
-/// index imported this way gets accurate weights and a free sector classification. The file is XLSX â€”
-/// a ZIP of OOXML â€” parsed here with framework-only <see cref="ZipArchive"/> + <see cref="XDocument"/>
+/// index imported this way gets accurate weights and a free sector classification. The file is XLSX —
+/// a ZIP of OOXML — parsed here with framework-only <see cref="ZipArchive"/> + <see cref="XDocument"/>
 /// (no spreadsheet dependency). A non-SPDR ticker 404s, which the caller treats as "fall back to
 /// Wikipedia".
 /// </summary>
@@ -98,7 +98,7 @@ public class SpdrHoldingsClient : ISpdrHoldingsClient
                     holdings[i] = holdings[i] with { WeightPct = w * 100 };
     }
 
-    // Pull <sst><si>â€¦</si></sst> into an index-aligned table; concatenate the <t> runs inside each <si>.
+    // Pull <sst><si>…</si></sst> into an index-aligned table; concatenate the <t> runs inside each <si>.
     private static List<string> ReadSharedStrings(ZipArchive zip)
     {
         var entry = zip.GetEntry("xl/sharedStrings.xml");

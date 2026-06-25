@@ -1,4 +1,4 @@
-﻿
+
 namespace simple_bloomberg_terminal.Tests;
 
 /// <summary>
@@ -57,7 +57,7 @@ public class FakeStockApiClient : IStockApiClient
 
     public Task<string?> GetFilingDocument(string cik, string accessionNoDashes, string primaryDocument) =>
         Task.FromResult<string?>(
-            $"FILING {cik}/{accessionNoDashes}/{primaryDocument}\nApple Inc. Form 10-K â€” total net sales 383,285 (in millions).");
+            $"FILING {cik}/{accessionNoDashes}/{primaryDocument}\nApple Inc. Form 10-K — total net sales 383,285 (in millions).");
 
     private static EdgarConcept Concept(double val, int fy, string end) =>
         new(new Dictionary<string, List<EdgarFact>>

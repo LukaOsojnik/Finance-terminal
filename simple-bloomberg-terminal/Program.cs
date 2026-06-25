@@ -1,4 +1,4 @@
-﻿using System.Globalization;
+using System.Globalization;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Localization;
@@ -47,7 +47,7 @@ builder.Services
 // Identity's cookie handler answers an unauthenticated request with a 302 redirect to the login
 // page. That's correct for a full-page click (the browser follows it and the user sees the login
 // form), but a fetch() ALSO silently follows the 302, lands on the login HTML as a 200, and resolves
-// `response.ok === true` â€” so AJAX features (discover / extract / delete) fail silently for logged-out
+// `response.ok === true` — so AJAX features (discover / extract / delete) fail silently for logged-out
 // users. Return a bare 401/403 for non-navigation requests (an /api path, an XHR header, or an Accept
 // that doesn't want HTML) so site.js can detect "not logged in" and surface the sign-in prompt;
 // real browser navigations still get the redirect. This is the ASP.NET equivalent of Spring
@@ -103,7 +103,7 @@ builder.Services.AddScoped<IUserApiKeyProvider, UserApiKeyProvider>();
 // File/Directory access out of AccountController; limits/types come from the "ProfilePicture" config.
 builder.Services.AddScoped<ProfilePictureService>();
 
-// Scoped = one instance per HTTP request (was Singleton â€” Singleton cannot hold a Scoped DbContext).
+// Scoped = one instance per HTTP request (was Singleton — Singleton cannot hold a Scoped DbContext).
 // Spring equivalent: @Transactional method scope vs application-scoped bean.
 builder.Services.AddScoped<ICountryRepository, CountryRepository>();
 builder.Services.AddScoped<ICompanyRepository, CompanyRepository>();
@@ -147,10 +147,10 @@ builder.Services.AddScoped<IStockService, StockService>();
 // classifier all go through IChatLlm, which routes to whichever provider the signed-in user picked.
 // Each provider is its own transport (base URL + key + parameter quirks); they're all registered as
 // IChatProvider and the router resolves one per request.
-//   DeepSeek â€” typed HttpClient (also kept as IDeepSeekClient for its unit tests). OpenAI-compatible.
+//   DeepSeek — typed HttpClient (also kept as IDeepSeekClient for its unit tests). OpenAI-compatible.
 builder.Services.AddHttpClient<IDeepSeekClient, DeepSeekClient>(c => ConfigureHttp(c, "DeepSeek"));
 builder.Services.AddScoped<IChatProvider>(sp => (IChatProvider)sp.GetRequiredService<IDeepSeekClient>());
-//   Kimi (Moonshot) & OpenAI â€” same OpenAI-compatible transport; only base URL, key, and the cap
+//   Kimi (Moonshot) & OpenAI — same OpenAI-compatible transport; only base URL, key, and the cap
 //   parameter name differ (OpenAI's newer models require max_completion_tokens, not max_tokens).
 builder.Services.AddHttpClient("Kimi", c => ConfigureHttp(c, "Kimi"));
 builder.Services.AddHttpClient("OpenAi", c => ConfigureHttp(c, "OpenAi"));
@@ -162,7 +162,7 @@ builder.Services.AddScoped<IChatProvider>(sp => new OpenAiCompatibleChatProvider
     sp.GetRequiredService<IHttpClientFactory>().CreateClient("OpenAi"),
     sp.GetRequiredService<IUserApiKeyProvider>(), ChatProviderId.OpenAi,
     k => k.OpenAi, MissingApiKeyException.OpenAi, "max_completion_tokens"));
-//   Anthropic â€” the one non-OpenAI-compatible provider (Messages API): its own transport.
+//   Anthropic — the one non-OpenAI-compatible provider (Messages API): its own transport.
 builder.Services.AddHttpClient("Anthropic", c => ConfigureHttp(c, "Anthropic"));
 builder.Services.AddScoped<IChatProvider>(sp => new AnthropicChatProvider(
     sp.GetRequiredService<IHttpClientFactory>().CreateClient("Anthropic"),
@@ -173,17 +173,17 @@ builder.Services.AddHttpClient<ISec2MdClient, Sec2MdClient>(c => ConfigureHttp(c
 builder.Services.AddScoped<IFilingExtractionService, FilingExtractionService>();
 builder.Services.AddScoped<IXbrlInstanceReader, XbrlInstanceReader>();
 builder.Services.AddScoped<IExtractionChatService, ExtractionChatService>();
-// Perplexity sonar: typed HttpClient that web-searches a company's named suppliers/customers â€” the
+// Perplexity sonar: typed HttpClient that web-searches a company's named suppliers/customers — the
 // counterparties SEC filings don't disclose. Feeds the "Discover related companies" action.
 builder.Services.AddHttpClient<ICounterpartyDiscovery, CounterpartyDiscoveryService>(c => ConfigureHttp(c, "Perplexity"));
 // Perplexity sonar: typed HttpClient that web-searches a single private company's profile (sector,
-// industry, country, description, estimated financials) â€” the New Company "Private (AI)" path.
+// industry, country, description, estimated financials) — the New Company "Private (AI)" path.
 builder.Services.AddHttpClient<ICompanyProfileDiscovery, CompanyProfileDiscoveryService>(c => ConfigureHttp(c, "Perplexity"));
 // Shared DeepSeek-backed GICS industry classifier (New Company fetch, private discovery, and the
 // ticker-less counterparty stub all need to pick an industry within a sector).
 builder.Services.AddScoped<IIndustryClassifier, IndustryClassifier>();
 // Owns the FMP->enrich->financials->industry/country pipeline that turns a ticker (or a web-searched
-// name) into a company â€” shared by the New Company form, bulk backfill, and counterparty linking.
+// name) into a company — shared by the New Company form, bulk backfill, and counterparty linking.
 builder.Services.AddScoped<ICompanyProvisioningService, CompanyProvisioningService>();
 // Caches a filing's cleaned section text so each chat turn doesn't re-download the document.
 builder.Services.AddMemoryCache();
@@ -195,7 +195,7 @@ builder.Services.AddSingleton<IndexImportJobStore>();
 builder.Services.AddSingleton<BackfillJobStore>();
 
 // Input-output cascade model: load the matrix artifact once at startup and validate every
-// Section-6 invariant â€” a model that violates Hawkinsâ€“Simon fails the app loudly here rather than
+// Section-6 invariant — a model that violates Hawkins–Simon fails the app loudly here rather than
 // producing nonsense rankings later. Singleton: the validated matrices/solver are immutable and
 // shared server-wide. EventImpactService is Scoped because it reads companies via the DbContext.
 builder.Services.AddSingleton(_ => IoModelLoader.LoadFromFile(
@@ -204,13 +204,13 @@ builder.Services.AddScoped<EventImpactService>();
 
 // Financial Modeling Prep: typed HttpClient feeding the New Company form (global fundamentals).
 builder.Services.AddHttpClient<IFmpApiClient, FmpApiClient>(c => ConfigureHttp(c, "Fmp"));
-// Wikipedia: free index-membership source (scrapes the constituents table) â€” FMP's constituent
+// Wikipedia: free index-membership source (scrapes the constituents table) — FMP's constituent
 // endpoint is premium (402). Imports a market index into a StockIndex, resolves members to existing
 // companies by CIK (ticker->CIK via the SEC map when the page omits it), and cap-weights from stored
 // MarketCap. Wikipedia blocks blank user-agents, so one is set from the "Wikipedia" config section.
 builder.Services.AddHttpClient<IWikipediaIndexClient, WikipediaIndexClient>(c => ConfigureHttp(c, "Wikipedia"));
 // SPDR (State Street): free, no-auth daily-holdings XLSX carrying REAL fund weights + a per-holding
-// GICS sector. Preferred over Wikipedia+cap-weight whenever an index has a SPDR ETF (SPY, DIA, XLKâ€¦),
+// GICS sector. Preferred over Wikipedia+cap-weight whenever an index has a SPDR ETF (SPY, DIA, XLK…),
 // since it gives accurate weights and a free sector classification. Blank user-agents are blocked,
 // so one is set from the "Spdr" config section.
 builder.Services.AddHttpClient<ISpdrHoldingsClient, SpdrHoldingsClient>(c => ConfigureHttp(c, "Spdr"));
@@ -229,7 +229,7 @@ builder.Services.AddHttpClient<IYahooFinanceClient, YahooFinanceClient>(c => Con
 // ExchangeRate-API: converts non-US revenue to USD (~160 currencies, no key).
 builder.Services.AddHttpClient<IExchangeRateApiClient, ExchangeRateApiClient>(c => ConfigureHttp(c, "ExchangeRate"));
 // Assembles dated financial history from FMP's statements (Yahoo fallback). Consumes the typed
-// FMP/Yahoo clients above, so a plain scoped service â€” not its own HttpClient.
+// FMP/Yahoo clients above, so a plain scoped service — not its own HttpClient.
 builder.Services.AddScoped<ICompanyFinancialsService, CompanyFinancialsService>();
 
 // Shared FMP profile -> create-model enrichment (AsOf, industry LLM, Yahoo financials). Consumes the
@@ -272,7 +272,7 @@ app.MapControllerRoute(
 app.MapRazorPages();
 
 // Seed the three roles (Admin, Manager, User) once at startup so role-based [Authorize] has
-// something to match. Idempotent â€” skips any role that already exists.
+// something to match. Idempotent — skips any role that already exists.
 using (var scope = app.Services.CreateScope())
 {
     var sp = scope.ServiceProvider;
@@ -285,7 +285,7 @@ using (var scope = app.Services.CreateScope())
 
     // One-time migration of the formerly-global API keys into the new per-user store: seed the
     // developer account with whatever keys are still in config, so local dev keeps working after the
-    // bring-your-own-key switch. Idempotent â€” skips once the account already has any key stored.
+    // bring-your-own-key switch. Idempotent — skips once the account already has any key stored.
     var userManager = sp.GetRequiredService<UserManager<AppUser>>();
     var dev = await userManager.FindByEmailAsync("lukaosojnikinfo@gmail.com");
     if (dev is not null)

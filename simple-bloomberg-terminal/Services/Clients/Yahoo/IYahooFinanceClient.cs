@@ -1,4 +1,4 @@
-﻿namespace simple_bloomberg_terminal.Services.Clients.Yahoo;
+namespace simple_bloomberg_terminal.Services.Clients.Yahoo;
 
 /// <summary>
 /// HTTP-only boundary to Yahoo Finance (unofficial). Returns revenue / gross margin / currency
@@ -17,7 +17,7 @@ public interface IYahooFinanceClient
 
     /// <summary>
     /// Full weekly trading-volume history (one bar per week, oldest first) from Yahoo's chart
-    /// endpoint with range=max â€” back to the security's first trading day. Powers the multi-year
+    /// endpoint with range=max — back to the security's first trading day. Powers the multi-year
     /// volume graph. Needs no crumb. null on any failure.
     /// </summary>
     Task<IReadOnlyList<YahooWeeklyVolume>?> GetWeeklyVolumeHistoryAsync(string symbol);

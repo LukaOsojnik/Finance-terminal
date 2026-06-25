@@ -1,4 +1,4 @@
-﻿using System.Globalization;
+using System.Globalization;
 using System.Text.Json;
 
 namespace simple_bloomberg_terminal.Services.Llm;
@@ -12,12 +12,12 @@ namespace simple_bloomberg_terminal.Services.Llm;
 public static class LlmJson
 {
     /// <summary>
-    /// Slice the first <c>{</c>â€¦last <c>}</c> object out of a model answer (tolerant of code fences
+    /// Slice the first <c>{</c>…last <c>}</c> object out of a model answer (tolerant of code fences
     /// and surrounding prose) and parse it. Returns null if there is no parseable object. The caller
-    /// owns the returned document â€” dispose it with <c>using</c>.
+    /// owns the returned document — dispose it with <c>using</c>.
     /// </summary>
     /// <param name="salvageSuffix">
-    /// Optional text appended and retried if the first parse fails â€” used to recover a response cut
+    /// Optional text appended and retried if the first parse fails — used to recover a response cut
     /// off mid-array (finish_reason=length) by closing the structure ourselves (e.g. <c>"]}"</c>).
     /// </param>
     public static JsonDocument? ParseObject(string answer, string? salvageSuffix = null)

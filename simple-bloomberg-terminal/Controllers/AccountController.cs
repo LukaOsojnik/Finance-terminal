@@ -1,4 +1,4 @@
-﻿using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using simple_bloomberg_terminal.Models.Entities;
@@ -90,9 +90,9 @@ public class AccountController : Controller
         return Ok();
     }
 
-    // â”€â”€ Bring-your-own API keys â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    // ── Bring-your-own API keys ───────────────────────────────────────────────────────────────────
     // The signed-in user's own DeepSeek / FMP / Perplexity keys, stored encrypted (Data Protection)
-    // in UserApiKeys by IUserApiKeyProvider. The page shows only "set Â· â€˘â€˘â€˘â€˘last4" status, never the
+    // in UserApiKeys by IUserApiKeyProvider. The page shows only "set · ••••last4" status, never the
     // raw key.
     [HttpGet]
     public async Task<IActionResult> ApiKeys()
@@ -140,7 +140,7 @@ public class AccountController : Controller
     }
 
     // Build the masked display status from a decrypted key (null/blank = not set). An undecryptable
-    // key resolves to null upstream, so it correctly shows as not set â€” matching how the keyed clients
+    // key resolves to null upstream, so it correctly shows as not set — matching how the keyed clients
     // treat it.
     private static ApiKeyStatus Status(string? plain) =>
         string.IsNullOrEmpty(plain)

@@ -1,4 +1,4 @@
-﻿using System.Net.Http.Headers;
+using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Runtime.CompilerServices;
 using System.Text.Json;
@@ -7,8 +7,8 @@ namespace simple_bloomberg_terminal.Services.Llm;
 
 /// <summary>
 /// One transport for every provider that speaks the OpenAI <c>/chat/completions</c> wire shape but
-/// isn't DeepSeek â€” currently Kimi (Moonshot) and OpenAI. Same Bearer-per-request auth and
-/// choicesâ†’content envelope as <see cref="DeepSeekClient"/>; the per-provider differences (base URL +
+/// isn't DeepSeek — currently Kimi (Moonshot) and OpenAI. Same Bearer-per-request auth and
+/// choices→content envelope as <see cref="DeepSeekClient"/>; the per-provider differences (base URL +
 /// key are wired in DI, and the cap parameter is <c>max_tokens</c> vs OpenAI's <c>max_completion_tokens</c>)
 /// are passed to the constructor. The body is built as a dictionary so each provider emits exactly the
 /// keys its API accepts.

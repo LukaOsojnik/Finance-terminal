@@ -1,4 +1,4 @@
-﻿using simple_bloomberg_terminal.Models.Enums;
+using simple_bloomberg_terminal.Models.Enums;
 using simple_bloomberg_terminal.Models.ViewModels;
 
 namespace simple_bloomberg_terminal.Services.Extraction;
@@ -7,7 +7,7 @@ namespace simple_bloomberg_terminal.Services.Extraction;
 /// Mode B extractor: read one SEC filing and propose revenue sources for human review. Fetches the
 /// document, splits it into Item 1A/7/8 paragraph chunks (<see cref="FilingSections"/>), asks the
 /// model to pull structured rows + verbatim proof from each, and returns de-duplicated suggestions. It
-/// never writes to the database â€” the page fills the form and the human confirms each cell.
+/// never writes to the database — the page fills the form and the human confirms each cell.
 /// </summary>
 public interface IFilingExtractionService
 {
@@ -15,7 +15,7 @@ public interface IFilingExtractionService
         long companyId, string accession, string doc, ExtractionNode node, string? filingType = null,
         CancellationToken ct = default);
 
-    /// <summary>The chat's grounding digest for a filing+node â€” cached; built by the all-sections
+    /// <summary>The chat's grounding digest for a filing+node — cached; built by the all-sections
     /// auto-scan on a miss, or pre-populated by <see cref="ScanSelectedHeadingsAsync"/>.</summary>
     Task<string> GetOrScanDigestAsync(
         long companyId, string accession, string doc, ExtractionNode node, string? filingType = null,

@@ -1,4 +1,4 @@
-﻿using simple_bloomberg_terminal.Models.Entities;
+using simple_bloomberg_terminal.Models.Entities;
 using simple_bloomberg_terminal.Models.Enums;
 using simple_bloomberg_terminal.Repositories;
 
@@ -25,12 +25,12 @@ public interface IContributionWriter
     // Create or update the source row for the active node, returning its id. Null when the
     // classification can't be parsed, or an existing-row id pointed at no row.
     // <paramref name="reference"/> is the per-record source passage stored on the saved row
-    // (CostSource/RevenueSource/CompanyRisk.Reference) â€” the verbatim filing excerpt the row came from.
+    // (CostSource/RevenueSource/CompanyRisk.Reference) — the verbatim filing excerpt the row came from.
     long? UpsertRow(ExtractionNode node, long companyId, long? rowId, string classification,
         string name, double? value, double? percentage, string? note, long? relatedCompanyId, Contributor by,
         string? reference = null);
 
-    // One current proof per (row, field) â€” upsert, not blind insert. A new proof clears any prior
+    // One current proof per (row, field) — upsert, not blind insert. A new proof clears any prior
     // phase-2 verdict (stale-pass guard).
     SourceFieldReview UpsertReview(ExtractionNode node, long companyId, long rowId, ReviewableField field,
         string endpoint, string pointer, string snapshot, string? referencedValue, long? filingId);
@@ -287,7 +287,7 @@ public class ContributionWriter(
     }
 
     // Mark a pending row Rejected so it leaves both the public app (reads filter Approved) and the
-    // review queue (reads filter Pending). The live row a rejected edit targeted is left untouched â€”
+    // review queue (reads filter Pending). The live row a rejected edit targeted is left untouched —
     // nothing was ever swapped.
     private static void Reject<T>(IEnumerable<long> ids, Func<long, T?> getById, Action<T> update)
         where T : IContribution

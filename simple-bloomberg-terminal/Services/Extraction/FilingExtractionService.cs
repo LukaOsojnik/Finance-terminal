@@ -1,4 +1,4 @@
-﻿using System.Text;
+using System.Text;
 using System.Text.Json;
 using Microsoft.Extensions.Caching.Memory;
 using simple_bloomberg_terminal.Models.Enums;
@@ -58,13 +58,13 @@ public class FilingExtractionService : IFilingExtractionService
     {
         ExtractionNode.COST =>
             "You extract COST sources for a single US public company from one excerpt of its SEC " +
-            "filing. Return ONLY the costs clearly evidenced in THIS excerpt â€” do not guess or carry " +
+            "filing. Return ONLY the costs clearly evidenced in THIS excerpt — do not guess or carry " +
             "over outside knowledge. Focus on the cost LABEL, its segment, and any NAMED SUPPLIER or " +
             "raw-material dependence; the exact company-total dollar figures are sourced separately " +
             "from tagged XBRL, so prioritise getting the name/segment/supplier and proof right over " +
             "transcribing big totals. For each cost provide: name (the cost line / segment / supplier " +
             "label), classification (exactly one of COGS, OPEX, TOTAL_COSTS), value (cost in absolute " +
-            "US dollars â€” scale any 'in thousands/millions' to the full number; null if not stated), " +
+            "US dollars — scale any 'in thousands/millions' to the full number; null if not stated), " +
             "percentage (share of total cost or revenue 0-100, null if not stated), related_company (a " +
             "named supplier/counterparty if the row is about one, else null). For every field you " +
             "fill, include in 'proof' the VERBATIM substring of this excerpt that backs it (null for " +
@@ -77,7 +77,7 @@ public class FilingExtractionService : IFilingExtractionService
         ExtractionNode.RISK =>
             "You extract RISKS a single US public company discloses, from one excerpt of its SEC " +
             "filing (Item 1A risk factors / Item 7A market risk). Return ONLY risks clearly evidenced " +
-            "in THIS excerpt â€” do not guess or carry over outside knowledge. For each risk provide: " +
+            "in THIS excerpt — do not guess or carry over outside knowledge. For each risk provide: " +
             "name (a short label for the risk), classification (its scope, exactly one of " +
             "MACROECONOMIC, INDUSTRY, BUSINESS, LEGAL_REGULATORY, FINANCIAL, GENERAL), note (one or " +
             "two sentences summarising the risk in plain language). For every field you fill, include " +
@@ -89,13 +89,13 @@ public class FilingExtractionService : IFilingExtractionService
 
         _ =>
             "You extract revenue sources for a single US public company from one excerpt of its SEC " +
-            "filing. Return ONLY the sources clearly evidenced in THIS excerpt â€” do not guess or carry " +
-            "over outside knowledge. Focus on the revenue LABEL and its breakdown â€” segment, product, " +
+            "filing. Return ONLY the sources clearly evidenced in THIS excerpt — do not guess or carry " +
+            "over outside knowledge. Focus on the revenue LABEL and its breakdown — segment, product, " +
             "region or major customer; the exact company-total dollar figures are sourced separately " +
             "from tagged XBRL, so prioritise getting the name/segment/customer and proof right over " +
             "transcribing big totals. For each source provide: name (the segment / product / region / " +
             "major-customer label), classification (exactly one of CUSTOMER, SEGMENT, REGION, PRODUCT), " +
-            "value (revenue in absolute US dollars â€” scale any 'in thousands/millions' to the full " +
+            "value (revenue in absolute US dollars — scale any 'in thousands/millions' to the full " +
             "number; null if not stated), percentage (share of total revenue 0-100, null if not stated), " +
             "related_company (a named counterparty/customer if the row is about one, else null). For " +
             "every field you fill, include in 'proof' the VERBATIM substring of this excerpt that backs " +
@@ -135,7 +135,7 @@ public class FilingExtractionService : IFilingExtractionService
         return digest;
     }
 
-    // Mode B (auto) â€” the replacement for hand-picking sections: surface every bold heading, let a
+    // Mode B (auto) — the replacement for hand-picking sections: surface every bold heading, let a
     // cheap triage model read just the titles and choose the ones worth reading for this node, then
     // scan only those in parallel and stash the digest as the chat's grounding. No user picking.
     public async Task<AutoScanResult> ScanAutoAsync(
@@ -154,11 +154,11 @@ public class FilingExtractionService : IFilingExtractionService
         for (int i = 0; i < headings.Count; i++)
             if (headings[i].Section == "Item 7") pickedSet.Add(i);
 
-        // Heading-based chunks for the picked headings â€” but NOT Item 8. In the financial statements the
+        // Heading-based chunks for the picked headings — but NOT Item 8. In the financial statements the
         // tables are detached from their bold headings, so "nearest heading" mislabels them (a segment
         // revenue table lands under a tax note) and the per-heading cap truncates them.
         // Pack consecutive same-Item headings into one worker call up to the chunk budget: a tiny heading
-        // body no longer wastes a whole LLM call â€” several small titles ride together, fewer calls.
+        // body no longer wastes a whole LLM call — several small titles ride together, fewer calls.
         var pickedHeadings = pickedSet
             .OrderBy(i => i)
             .Where(i => headings[i].Section != "Item 8")
@@ -208,7 +208,7 @@ public class FilingExtractionService : IFilingExtractionService
         }
         catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException) { /* fall through */ }
 
-        return Enumerable.Range(0, headings.Count).ToList();   // triage failed â†’ read them all
+        return Enumerable.Range(0, headings.Count).ToList();   // triage failed → read them all
     }
 
     // The triage system prompt: pick the headings whose section is most likely to carry this node's data.
@@ -258,7 +258,7 @@ public class FilingExtractionService : IFilingExtractionService
     private static string RawKey(string accession, string doc) => $"filing-raw:{accession}:{doc}";
 
     // Fetch the filing as clean markdown via the sec2md sidecar (so headings/triage read semantic
-    // titles); fall back to the raw SEC HTML when the sidecar is down â€” FilingSections reads both.
+    // titles); fall back to the raw SEC HTML when the sidecar is down — FilingSections reads both.
     // Cached per filing so a single scan (headings + sequential Item 8) converts the document once.
     private async Task<string?> FetchRawAsync(
         long companyId, string accession, string doc, string? filingType, CancellationToken ct)
@@ -361,7 +361,7 @@ public class FilingExtractionService : IFilingExtractionService
     }
 
     // One worker: read a single chunk under the concurrency gate and return its candidates. Reports
-    // Running once it acquires a slot (so the widget shows queuedâ†’running as the pool drains) and
+    // Running once it acquires a slot (so the widget shows queued→running as the pool drains) and
     // Done/Error with the candidate count when it finishes.
     private async Task<List<ExtractionSuggestion>> ScanChunkAsync(
         FilingChunk chunk, int index, ExtractionNode node, SemaphoreSlim gate,
@@ -371,9 +371,9 @@ public class FilingExtractionService : IFilingExtractionService
         onProgress?.Invoke(new ScanProgress(ScanChunkPhase.Running, index, 0, null));
         var system = SystemFor(node);
         var prompt = $"Section: {chunk.Section}\n\nExcerpt:\n\"\"\"\n{chunk.Text}\n\"\"\"";
-        // The full transcript the worker saw â€” both halves, so the widget's inspector shows exactly
+        // The full transcript the worker saw — both halves, so the widget's inspector shows exactly
         // what was sent, not just the excerpt.
-        var transcript = $"â”â” SYSTEM PROMPT â”â”\n{system}\n\nâ”â” USER PROMPT â”â”\n{prompt}";
+        var transcript = $"━━ SYSTEM PROMPT ━━\n{system}\n\n━━ USER PROMPT ━━\n{prompt}";
         try
         {
             // A packed chunk can carry many sources, and each echoes its backing text verbatim in
@@ -394,8 +394,8 @@ public class FilingExtractionService : IFilingExtractionService
 
     // Pull suggestions out of the model's JSON, tolerant of code fences and string-or-number values.
     // Salvage a truncated reply (finish_reason=length): the sources array was cut mid-stream so the
-    // outer structure never closed â€” `]}` recovers every complete source up to the last closing brace,
-    // dropping only the half-written trailing object (instead of voiding the whole chunk â†’ "0 matches").
+    // outer structure never closed — `]}` recovers every complete source up to the last closing brace,
+    // dropping only the half-written trailing object (instead of voiding the whole chunk → "0 matches").
     private static IEnumerable<ExtractionSuggestion> Parse(string answer, string section)
     {
         using var doc = LlmJson.ParseObject(answer, "]}");

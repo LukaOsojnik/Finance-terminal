@@ -1,4 +1,4 @@
-﻿using System.Text.Json;
+using System.Text.Json;
 using Microsoft.Extensions.Logging;
 using simple_bloomberg_terminal.Models.Enums;
 using simple_bloomberg_terminal.Repositories;
@@ -23,7 +23,7 @@ public class IndustryClassifier : IIndustryClassifier
         string? description = null, bool bypassCache = false, CancellationToken ct = default)
     {
         // A vendor label maps to the same sub-industry for every company, so look it up in the learned
-        // cache first â€” that's what keeps each distinct label to a single model call, ever. The on-demand
+        // cache first — that's what keeps each distinct label to a single model call, ever. The on-demand
         // "Resolve with AI" path sets bypassCache so it always RE-REASONS (the whole point of the button is
         // to override a cached value), and below it neither reads nor re-writes the cache.
         if (!bypassCache && !string.IsNullOrWhiteSpace(fmpLabel) && _mappings.Get(fmpLabel) is { } cached)
@@ -35,7 +35,7 @@ public class IndustryClassifier : IIndustryClassifier
         // driven by the company's name/description because the label was ambiguous or misleading for THIS
         // company (e.g. FMP labels Public Storage "REIT - Industrial"); caching it by label would mis-map
         // the next company that shares the label. So those stay uncached and are re-reasoned each time.
-        // A bypassCache (manual) re-resolve also doesn't write â€” it's a per-company judgement, not a label rule.
+        // A bypassCache (manual) re-resolve also doesn't write — it's a per-company judgement, not a label rule.
         if (sub is { } resolved && cacheable && !bypassCache && !string.IsNullOrWhiteSpace(fmpLabel))
             _mappings.Set(fmpLabel, resolved);
 
@@ -47,15 +47,15 @@ public class IndustryClassifier : IIndustryClassifier
     private async Task<(GicsSubIndustry? Sub, bool Cacheable)> ClassifyAsync(Sector? sector, string? companyName,
         string? sourceLabel, string? description, CancellationToken ct)
     {
-        // Stage 1 â€” when we have a (trusted) source sector, constrain the model to that sector's
+        // Stage 1 — when we have a (trusted) source sector, constrain the model to that sector's
         // sub-industries: a cheap guardrail so a stray pick can't land in the wrong sector.
         if (sector is { } sec && await PickAsync(sec, companyName, sourceLabel, description, ct) is { } within)
             return (within, true);
 
-        // Stage 2 â€” UNCONSTRAINED fallback across every sub-industry. Reached when there was no source
+        // Stage 2 — UNCONSTRAINED fallback across every sub-industry. Reached when there was no source
         // sector at all, OR stage 1 found no fit. The latter usually means the source sector itself is
         // wrong: vendor taxonomies disagree with GICS (FMP files First Solar under "Energy/Solar", but
-        // GICS has no solar sub-industry in Energy â€” it rolls up under IT/Utilities). Reasoning from the
+        // GICS has no solar sub-industry in Energy — it rolls up under IT/Utilities). Reasoning from the
         // company's identity (name + description + label) lets the model pick the right home; its sector
         // and industry then roll up deterministically, self-healing the bad source sector at the caller.
         return (await PickAsync(restrictTo: null, companyName, sourceLabel, description, ct), false);
@@ -83,7 +83,7 @@ public class IndustryClassifier : IIndustryClassifier
             $"Allowed sub-industries: {allowed}";
 
         // BOTH stages use the pro model (fast: false). The flash tier looked tempting for the constrained
-        // stage 1 (a one-of-N pick within a known sector), but it made silent *sibling* errors â€” picking a
+        // stage 1 (a one-of-N pick within a known sector), but it made silent *sibling* errors — picking a
         // plausible neighbour in the right sector (Self-Storage labelled Industrial REIT; a brokerage
         // labelled Diversified Capital Markets). Those land as a confident "Resolved" and never surface,
         // and the label->sub mapping is CACHED, so a flash mistake is permanent. The cost argues for pro
@@ -100,7 +100,7 @@ public class IndustryClassifier : IIndustryClassifier
         var (result, reason) = Parse(raw, restrictTo);
         if (result is { } ok) return ok;
 
-        _logger.LogInformation("Classify no-fit: {Company} [{Sector}] label='{Label}' â€” {Reason}. raw='{Raw}'",
+        _logger.LogInformation("Classify no-fit: {Company} [{Sector}] label='{Label}' — {Reason}. raw='{Raw}'",
             companyName, restrictTo?.ToString() ?? "(unconstrained)", sourceLabel ?? "(none)", reason, Trim(raw, 200));
         return null;
     }
@@ -111,7 +111,7 @@ public class IndustryClassifier : IIndustryClassifier
     private static (GicsSubIndustry? Result, string Reason) Parse(string raw, Sector? restrictTo)
     {
         if (string.IsNullOrWhiteSpace(raw))
-            return (null, "empty reply (likely truncated â€” token budget hit before the JSON)");
+            return (null, "empty reply (likely truncated — token budget hit before the JSON)");
 
         try
         {
@@ -134,5 +134,5 @@ public class IndustryClassifier : IIndustryClassifier
     }
 
     private static string Trim(string s, int max) =>
-        s.Length <= max ? s : s[..max] + "â€¦";
+        s.Length <= max ? s : s[..max] + "…";
 }

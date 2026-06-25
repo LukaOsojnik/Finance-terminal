@@ -1,4 +1,4 @@
-﻿using System.Net.Http.Json;
+using System.Net.Http.Json;
 using System.Runtime.CompilerServices;
 using System.Text;
 using System.Text.Json;
@@ -6,10 +6,10 @@ using System.Text.Json;
 namespace simple_bloomberg_terminal.Services.Llm;
 
 /// <summary>
-/// Parsing-LLM transport for Anthropic's Messages API â€” the one provider that is NOT OpenAI-compatible.
+/// Parsing-LLM transport for Anthropic's Messages API — the one provider that is NOT OpenAI-compatible.
 /// Differences absorbed here: auth is the <c>x-api-key</c> header (not Bearer) plus a required
 /// <c>anthropic-version</c>; the system prompt is a top-level field, not a message; <c>max_tokens</c> is
-/// mandatory; and the reply is a <c>content[]</c> array of typed blocks rather than choicesâ†’message.
+/// mandatory; and the reply is a <c>content[]</c> array of typed blocks rather than choices→message.
 /// Base URL (https://api.anthropic.com) is wired in DI; the user's Anthropic key is per request.
 /// </summary>
 public sealed class AnthropicChatProvider : IChatProvider
@@ -52,7 +52,7 @@ public sealed class AnthropicChatProvider : IChatProvider
         string model, IReadOnlyList<DeepSeekMessage> messages,
         int? maxTokens, [EnumeratorCancellation] CancellationToken ct = default)
     {
-        // Messages API forbids a "system" role in the array â€” fold any system turns into the top-level
+        // Messages API forbids a "system" role in the array — fold any system turns into the top-level
         // system field, and pass only user/assistant turns as messages.
         var system = string.Join("\n\n", messages
             .Where(m => string.Equals(m.Role, "system", StringComparison.OrdinalIgnoreCase))

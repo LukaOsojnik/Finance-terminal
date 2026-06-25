@@ -1,4 +1,4 @@
-﻿using System.Net;
+using System.Net;
 using System.Net.Http.Json;
 
 namespace simple_bloomberg_terminal.Services.Clients.Yahoo;
@@ -6,7 +6,7 @@ namespace simple_bloomberg_terminal.Services.Clients.Yahoo;
 /// <summary>
 /// Typed HttpClient for Yahoo Finance's unofficial quoteSummary API. Yahoo requires a session
 /// cookie plus a matching "crumb" token on each data call, so we seed a cookie (fc.yahoo.com),
-/// fetch a crumb, then query. A stale crumb returns 401 â€” we drop it and re-handshake once.
+/// fetch a crumb, then query. A stale crumb returns 401 — we drop it and re-handshake once.
 /// Everything is best-effort: any failure returns null so the caller falls back to manual entry.
 /// </summary>
 public class YahooFinanceClient : IYahooFinanceClient
@@ -47,8 +47,8 @@ public class YahooFinanceClient : IYahooFinanceClient
         {
             // Chart endpoint is crumb-free, so no EnsureCrumb handshake here.
             // NB: range=max silently coerces interval to 3mo (quarterly) to cap point count. To get TRUE
-            // weekly bars over full history we must pass an explicit window: period1=0 (epoch â€” Yahoo
-            // clamps to the first trade date) .. period2=now. This returns ~1wk granularity (gapâ‰7d).
+            // weekly bars over full history we must pass an explicit window: period1=0 (epoch — Yahoo
+            // clamps to the first trade date) .. period2=now. This returns ~1wk granularity (gap≈7d).
             var period2 = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
             var resp = await _http.GetAsync(
                 $"/v8/finance/chart/{Uri.EscapeDataString(symbol)}?period1=0&period2={period2}&interval=1wk");

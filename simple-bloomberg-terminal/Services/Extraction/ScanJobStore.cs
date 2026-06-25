@@ -1,4 +1,4 @@
-﻿using System.Collections.Concurrent;
+using System.Collections.Concurrent;
 using simple_bloomberg_terminal.Models.ViewModels;
 
 namespace simple_bloomberg_terminal.Services.Extraction;
@@ -19,7 +19,7 @@ public class ScanChunkState
     public string Response { get; set; } = "";
 }
 
-/// <summary>An SEC Item group (e.g. "Item 7") and the agent calls scanning it â€” the widget shows
+/// <summary>An SEC Item group (e.g. "Item 7") and the agent calls scanning it — the widget shows
 /// one expandable box per section, drilling into its <see cref="Chunks"/>.</summary>
 public class ScanSection
 {
@@ -30,7 +30,7 @@ public class ScanSection
 /// <summary>
 /// One detached auto-scan: the filing context, its live status, the scan report, and the auto
 /// AI summary the worker produces when it finishes. Lives in <see cref="ScanJobStore"/> (a
-/// singleton) so it outlives the HTTP request that started it â€” the page that kicked it off can
+/// singleton) so it outlives the HTTP request that started it — the page that kicked it off can
 /// navigate away and the notification widget polls the store to learn when it's done.
 /// </summary>
 public class ScanJob
@@ -45,11 +45,11 @@ public class ScanJob
     public string FilingLabel { get; init; } = "";   // e.g. "10-K 2024-01-31" for the widget header
 
     public ScanJobStatus Status { get; set; } = ScanJobStatus.Running;
-    public string Progress { get; set; } = "Queuedâ€¦"; // live phase text shown while running
+    public string Progress { get; set; } = "Queued…"; // live phase text shown while running
 
     // The live parallel-scan tree: one section per SEC Item, each holding its agent-call states.
     // Mutated from the scan's progress callback (concurrent workers) and read by the poll DTO, so both
-    // sides take `SectionsLock` â€” these are plain mutable objects, not thread-safe on their own.
+    // sides take `SectionsLock` — these are plain mutable objects, not thread-safe on their own.
     public List<ScanSection> Sections { get; } = new();
     public List<ScanChunkState> ChunkList { get; } = new();  // flat, index-aligned with the scan plan
     public object SectionsLock { get; } = new();
@@ -62,7 +62,7 @@ public class ScanJob
 
     // A follow-up chat reply, generated detached so it survives the user navigating away. The
     // browser POSTs a message, the background task streams the model into these buffers, and the
-    // widget polls them â€” no page-bound fetch to abort on navigation.
+    // widget polls them — no page-bound fetch to abort on navigation.
     public bool Replying { get; set; }
     public string ReplyBuffer { get; set; } = "";    // incremental answer text
     public string ReplyThink { get; set; } = "";     // incremental reasoning/thinking
@@ -72,7 +72,7 @@ public class ScanJob
 /// <summary>
 /// Tracks detached scan jobs across requests. Singleton (server-wide): the only shared state a
 /// fire-and-forget scan needs. The browser tracks its own job ids in localStorage and asks this
-/// store for their status â€” there is no per-user partitioning (single-user terminal).
+/// store for their status — there is no per-user partitioning (single-user terminal).
 /// </summary>
 public class ScanJobStore
 {

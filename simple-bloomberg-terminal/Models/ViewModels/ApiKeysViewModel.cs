@@ -1,9 +1,9 @@
-﻿
+
 namespace simple_bloomberg_terminal.Models.ViewModels;
 
 /// <summary>
 /// Read-only status of the signed-in user's bring-your-own API keys for the keys page, plus the
-/// per-user model-routing choices. Never carries a raw key back to the browser â€” only whether each is
+/// per-user model-routing choices. Never carries a raw key back to the browser — only whether each is
 /// set and its last 4 characters for recognition.
 /// </summary>
 public class ApiKeysViewModel

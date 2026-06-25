@@ -1,4 +1,4 @@
-﻿using System.Net.Http.Headers;
+using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
 using simple_bloomberg_terminal.Models.Enums;
@@ -9,7 +9,7 @@ namespace simple_bloomberg_terminal.Services.Discovery;
 /// <remarks>
 /// Mirrors <see cref="CompanyProfileDiscoveryService"/>: same "Perplexity" config section + by-hand
 /// envelope parse, one grounded sonar call (a query needs one search, not a fan-out). The critical
-/// field is wikipedia_page â€” the import pipeline scrapes Wikipedia, so each suggestion must carry the
+/// field is wikipedia_page — the import pipeline scrapes Wikipedia, so each suggestion must carry the
 /// constituents-table page path or it can't be fetched.
 /// </remarks>
 public class IndexDiscoveryService : IIndexDiscovery
@@ -32,15 +32,15 @@ public class IndexDiscoveryService : IIndexDiscovery
             "You identify stock-market indices matching a user request and return them as JSON only (no " +
             "prose, no code fences). For EACH index provide: code (a short lowercase slug, e.g. 'nasdaq100', " +
             "'sp500', 'ftse100'), name (the index's common name), wikipedia_page (the path on ENGLISH " +
-            "Wikipedia of the page that contains the index's CONSTITUENTS / COMPONENTS table â€” the list of " +
-            "member companies â€” e.g. '/wiki/Nasdaq-100', '/wiki/List_of_S%26P_500_companies', " +
+            "Wikipedia of the page that contains the index's CONSTITUENTS / COMPONENTS table — the list of " +
+            "member companies — e.g. '/wiki/Nasdaq-100', '/wiki/List_of_S%26P_500_companies', " +
             "'/wiki/FTSE_100_Index'. Give the path starting with /wiki/, NOT a full URL. Only include an " +
             "index if such a constituents page exists), region (a short label like 'US', 'UK', 'Europe'; " +
             "null if unclear), sector (if the index covers ONE sector, the GICS sector as one of: ENERGY, " +
             "MATERIALS, INDUSTRIALS, CONSUMER_DISCRETIONARY, CONSUMER_STAPLES, HEALTH_CARE, FINANCIALS, " +
             "INFORMATION_TECHNOLOGY, COMMUNICATION_SERVICES, UTILITIES, REAL_ESTATE; if it is a broad " +
             "multi-sector index like the S&P 500 or FTSE 100, use null), etf_ticker (the ticker of the " +
-            "State Street SPDR ETF that tracks this index if one exists â€” e.g. 'SPY' for S&P 500, 'DIA' " +
+            "State Street SPDR ETF that tracks this index if one exists — e.g. 'SPY' for S&P 500, 'DIA' " +
             "for the Dow, 'XLK' for US technology, 'XLF' for US financials; null if no SPDR ETF tracks it). " +
             "Return at most 12, most relevant first. Reply: {\"indices\":[{\"code\":\"\",\"name\":\"\"," +
             "\"wikipedia_page\":\"\",\"region\":null,\"sector\":null,\"etf_ticker\":null}]}. " +
@@ -100,7 +100,7 @@ public class IndexDiscoveryService : IIndexDiscovery
     private static Sector? MapSector(string? raw) =>
         Enum.TryParse<Sector>(raw, ignoreCase: true, out var s) ? s : null;
 
-    // Keep an ETF ticker only if it's a plausible symbol (letters, â‰¤6 chars); drop noise like "none".
+    // Keep an ETF ticker only if it's a plausible symbol (letters, ≤6 chars); drop noise like "none".
     private static string? NormalizeTicker(string? raw)
     {
         var t = raw?.Trim().ToUpperInvariant();

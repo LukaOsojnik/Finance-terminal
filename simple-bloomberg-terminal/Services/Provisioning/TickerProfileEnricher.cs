@@ -1,15 +1,15 @@
-﻿using simple_bloomberg_terminal.Models.Enums;
+using simple_bloomberg_terminal.Models.Enums;
 using simple_bloomberg_terminal.Models.ViewModels;
 
 namespace simple_bloomberg_terminal.Services.Provisioning;
 
 /// <summary>
 /// The shared FMP-by-ticker enrichment kernel: given an FMP profile (+ optional income), map it to a
-/// <see cref="CompanyCreateModel"/> and fill the fields that aren't on the raw payload â€” a fetch-date
+/// <see cref="CompanyCreateModel"/> and fill the fields that aren't on the raw payload — a fetch-date
 /// "as of", the GICS industry (static label map, then LLM on a miss), and Yahoo-sourced revenue/margin
 /// when FMP income is premium-gated. Extracted so the New Company fetch (<c>CompaniesController</c>)
 /// and the counterparty link (<c>ExtractionController</c>) share one path instead of two copies that
-/// drift apart â€” the link copy had silently dropped the AsOf + industry steps. Each caller keeps its
+/// drift apart — the link copy had silently dropped the AsOf + industry steps. Each caller keeps its
 /// own FMP fetch/error policy, country resolution, and (form-only) ViewBag notes.
 /// </summary>
 public interface ITickerProfileEnricher
@@ -57,7 +57,7 @@ public class TickerProfileEnricher : ITickerProfileEnricher
         if (income == null)
             note = await ApplyYahooFinancials(model, ticker);
         else if (!string.Equals(income.ReportedCurrency, "USD", StringComparison.OrdinalIgnoreCase))
-            note = $"Revenue is reported in {income.ReportedCurrency}; left blank â€” enter the USD value manually.";
+            note = $"Revenue is reported in {income.ReportedCurrency}; left blank — enter the USD value manually.";
 
         return new TickerProfileEnrichment(model, note);
     }
@@ -69,7 +69,7 @@ public class TickerProfileEnricher : ITickerProfileEnricher
     {
         var yf = await _yahoo.GetFinancialsAsync(ticker);
         if (yf == null)
-            return "Financials aren't available for this symbol â€” enter revenue and gross margin manually.";
+            return "Financials aren't available for this symbol — enter revenue and gross margin manually.";
 
         if (yf.GrossMargins is { } gm)
             model.GrossMargin = Math.Round(gm, 2); // 2 dp to satisfy the form's step="0.01"
@@ -80,7 +80,7 @@ public class TickerProfileEnricher : ITickerProfileEnricher
             if (rate is { } r)
                 model.RevenueTotal = Math.Round(rev * r);
             else
-                return $"Revenue is in {yf.Currency} (no USD conversion rate available) â€” enter it manually.";
+                return $"Revenue is in {yf.Currency} (no USD conversion rate available) — enter it manually.";
         }
 
         return "Financials filled from Yahoo Finance (FMP is premium-gated for this symbol).";

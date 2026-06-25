@@ -1,4 +1,4 @@
-﻿using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Filters;
 
 namespace simple_bloomberg_terminal.Services.ApiKeys;
@@ -8,7 +8,7 @@ namespace simple_bloomberg_terminal.Services.ApiKeys;
 /// Dependency) carrying {code:"MISSING_KEY", provider, message}. site.js intercepts that status and
 /// shows the "add your key" popup. Full-page form actions catch the exception themselves (to add a
 /// ModelState error) before it reaches here, so this only fires for AJAX/JSON endpoints.
-/// Note: streaming endpoints validate the key BEFORE writing the response â€” once the body has
+/// Note: streaming endpoints validate the key BEFORE writing the response — once the body has
 /// started this filter can no longer set a result.
 /// </summary>
 public class MissingApiKeyExceptionFilter : IExceptionFilter

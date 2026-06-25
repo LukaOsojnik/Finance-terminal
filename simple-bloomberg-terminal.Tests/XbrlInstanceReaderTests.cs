@@ -1,17 +1,17 @@
-﻿
+
 namespace simple_bloomberg_terminal.Tests;
 
 /// <summary>
 /// Unit tests for the pure segment-cost parser (<see cref="XbrlInstanceReader.ParseSegmentCosts"/>),
-/// exercised against a hand-built XBRL instance fixture â€” no HTTP. Covers the happy path (cost =
-/// revenue â’ operating income), the subtraction-sanity flag (a wrong profit measure â†’ non-reconciling),
+/// exercised against a hand-built XBRL instance fixture — no HTTP. Covers the happy path (cost =
+/// revenue − operating income), the subtraction-sanity flag (a wrong profit measure → non-reconciling),
 /// and the two context kinds that must be excluded: a product-axis sub-breakdown and an off-period context.
 /// </summary>
 public class XbrlInstanceReaderTests
 {
     // Two clean FY2023 segments (Americas, Europe), one FY2023 segment whose tagged "profit" exceeds
-    // revenue (â†’ negative implied cost â†’ must NOT reconcile), one product-axis context (must be
-    // ignored â€” it's a sub-breakdown, not the segment total), and one off-period Americas context.
+    // revenue (→ negative implied cost → must NOT reconcile), one product-axis context (must be
+    // ignored — it's a sub-breakdown, not the segment total), and one off-period Americas context.
     private const string Fixture = """
         <xbrl>
           <context id="c-amer-2023"><entity><segment><xbrldi:explicitMember dimension="us-gaap:StatementBusinessSegmentsAxis">x:AmericasSegmentMember</xbrldi:explicitMember></segment></entity><period><startDate>2022-09-25</startDate><endDate>2023-09-30</endDate></period></context>
@@ -44,7 +44,7 @@ public class XbrlInstanceReaderTests
         var amer = segs.Single(s => s.Segment == "Americas");
         Assert.Equal(162560000000, amer.Revenue);
         Assert.Equal(60508000000, amer.OperatingIncome);
-        Assert.Equal(102052000000, amer.Cost);   // revenue â’ operating income
+        Assert.Equal(102052000000, amer.Cost);   // revenue − operating income
         Assert.True(amer.Reconciles);
     }
 
@@ -53,7 +53,7 @@ public class XbrlInstanceReaderTests
     {
         var segs = XbrlInstanceReader.ParseSegmentCosts(Fixture, "2023-09-30");
 
-        // Japan's tagged "profit" (30B) exceeds its revenue (24.26B) â†’ negative implied cost â†’ flagged.
+        // Japan's tagged "profit" (30B) exceeds its revenue (24.26B) → negative implied cost → flagged.
         var bad = segs.Single(s => s.Segment == "Japan");
         Assert.True(bad.Cost < 0);
         Assert.False(bad.Reconciles);
@@ -62,7 +62,7 @@ public class XbrlInstanceReaderTests
     [Fact]
     public void ParseSegmentCosts_NullPeriod_FallsBackToLatestSegmentPeriod()
     {
-        // No period given â†’ the parser targets the newest segment period present (2023-09-30), so the
+        // No period given → the parser targets the newest segment period present (2023-09-30), so the
         // 2022 Americas context still doesn't leak in alongside the 2023 one.
         var segs = XbrlInstanceReader.ParseSegmentCosts(Fixture, null);
 

@@ -1,4 +1,4 @@
-﻿using System.Collections.Concurrent;
+using System.Collections.Concurrent;
 using simple_bloomberg_terminal.Models.ViewModels;
 
 namespace simple_bloomberg_terminal.Services.Provisioning;
@@ -6,7 +6,7 @@ namespace simple_bloomberg_terminal.Services.Provisioning;
 /// <summary>
 /// One detached private-company profile re-discovery: its live status and phase text. Lives in
 /// <see cref="RediscoverJobStore"/> (a singleton) so the ~90s Perplexity call outlives the HTTP
-/// request that began it â€” the bottom-right notification widget (which polls /extraction/scan-jobs,
+/// request that began it — the bottom-right notification widget (which polls /extraction/scan-jobs,
 /// where these are merged in) learns when it finishes. Reuses <see cref="ScanJobStatus"/>.
 /// </summary>
 public class RediscoverJob
@@ -16,7 +16,7 @@ public class RediscoverJob
     public string CompanyName { get; init; } = "";
 
     public ScanJobStatus Status { get; set; } = ScanJobStatus.Running;
-    public string Progress { get; set; } = "Queuedâ€¦"; // live phase text shown while running
+    public string Progress { get; set; } = "Queued…"; // live phase text shown while running
     public string? Result { get; set; }              // proposed-vs-current summary shown for review
     public string? Error { get; set; }
 

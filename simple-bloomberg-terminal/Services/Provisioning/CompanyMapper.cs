@@ -1,4 +1,4 @@
-﻿using simple_bloomberg_terminal.Models.Entities;
+using simple_bloomberg_terminal.Models.Entities;
 using simple_bloomberg_terminal.Models.Enums;
 using simple_bloomberg_terminal.Models.ViewModels;
 
@@ -8,12 +8,12 @@ namespace simple_bloomberg_terminal.Services.Provisioning;
 /// The single source of truth for turning a <see cref="CompanyCreateModel"/> into a
 /// <see cref="Company"/> entity. Every create path (the New Company form, index-import provisioning,
 /// counterparty linking, financials backfill) routes through here so the field list lives in one
-/// place â€” previously each site hand-copied it and they drifted (e.g. the counterparty copy silently
+/// place — previously each site hand-copied it and they drifted (e.g. the counterparty copy silently
 /// dropped <c>Type</c>; an earlier refactor dropped <c>AsOf</c> + industry).
 ///
 /// Two intents, deliberately not shared:
-///   â€˘ <see cref="ToEntity"/> â€” birth: a full assign for a brand-new row, sets every field incl. Type.
-///   â€˘ <see cref="Apply"/>     â€” merge: coalesces fetched fields onto an existing row, and skips Type
+///   • <see cref="ToEntity"/> — birth: a full assign for a brand-new row, sets every field incl. Type.
+///   • <see cref="Apply"/>     — merge: coalesces fetched fields onto an existing row, and skips Type
 ///     on purpose so re-fetching/backfilling never reclassifies a company.
 /// </summary>
 public static class CompanyMapper
@@ -40,7 +40,7 @@ public static class CompanyMapper
 
     /// <summary>Merge freshly-fetched data onto an existing company: each field overwrites only when the
     /// model actually carries one (<c>?? e.X</c>), so a partial/premium-gated fetch can't null out good
-    /// data. Type is intentionally untouched â€” a backfill must not reclassify the row.</summary>
+    /// data. Type is intentionally untouched — a backfill must not reclassify the row.</summary>
     public static void Apply(Company e, CompanyCreateModel m)
     {
         e.Cik = m.Cik ?? e.Cik;

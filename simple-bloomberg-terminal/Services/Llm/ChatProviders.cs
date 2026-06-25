@@ -1,4 +1,4 @@
-﻿namespace simple_bloomberg_terminal.Services.Llm;
+namespace simple_bloomberg_terminal.Services.Llm;
 
 /// <summary>
 /// The chat/parsing LLM providers the app can route the "parsing &amp; structuring" role to. The
@@ -49,7 +49,7 @@ public static class ChatProviders
 
     public static ProviderInfo Info(ChatProviderId id) => Parsing.First(p => p.Id == id);
 
-    /// <summary>The provider's fast/cheap model â€” used for the high-volume parallel filing scan (triage
+    /// <summary>The provider's fast/cheap model — used for the high-volume parallel filing scan (triage
     /// + per-chunk workers), where the heavyweight default is slow, costly, and (for reasoners) starves
     /// the small per-call token budget. The interactive chat keeps the user's chosen default tier.</summary>
     public static string FastModel(ChatProviderId id) => Info(id).FastModel;

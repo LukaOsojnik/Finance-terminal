@@ -1,4 +1,4 @@
-﻿using simple_bloomberg_terminal.Models.Enums;
+using simple_bloomberg_terminal.Models.Enums;
 
 namespace simple_bloomberg_terminal.Services.Indices;
 
@@ -6,10 +6,10 @@ namespace simple_bloomberg_terminal.Services.Indices;
 /// Imports a market index's membership and links members to existing companies (by CIK, resolving
 /// ticker -> CIK via the SEC map). Two sources, picked per index:
 /// <list type="bullet">
-/// <item><b>SPDR</b> â€” when the index has a State Street SPDR ETF (SPY, DIA, XLKâ€¦): the daily-holdings
+/// <item><b>SPDR</b> — when the index has a State Street SPDR ETF (SPY, DIA, XLK…): the daily-holdings
 /// file gives REAL published weights and a per-holding GICS sector, so weights are accurate and the
 /// index's sector is inferred for free.</item>
-/// <item><b>Wikipedia</b> â€” the fallback for everything else (FTSE, DAX, non-US): membership is
+/// <item><b>Wikipedia</b> — the fallback for everything else (FTSE, DAX, non-US): membership is
 /// scraped and the index is cap-weighted from each matched company's stored MarketCap.</item>
 /// </list>
 /// Members that don't resolve to an existing Company are skipped; the result reports coverage.
@@ -37,6 +37,6 @@ public record IndexImportResult(
     int Provisioned,         // members that didn't exist and were created from FMP during this import
     IReadOnlyList<long> ProvisionedIds,  // ids of the newly-created companies, for background enrichment
     double WeightCovered,    // summed WeightPct of the matched members
-    string Source,           // "SPDR" or "Wikipedia" â€” which source actually supplied the data
+    string Source,           // "SPDR" or "Wikipedia" — which source actually supplied the data
     bool CanContinue);       // true => auto-provisioning stopped early (no FMP key / daily cap), so a
                              // continue under another user's key would link more members
