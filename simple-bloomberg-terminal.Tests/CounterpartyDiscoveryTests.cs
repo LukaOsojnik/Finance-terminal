@@ -1,9 +1,8 @@
-using System.Text.Json;
+﻿using System.Text.Json;
 using Microsoft.Extensions.Configuration;
 using simple_bloomberg_terminal.Models.Enums;
 using simple_bloomberg_terminal.Models.Entities;
 using simple_bloomberg_terminal.Models.ViewModels;
-using simple_bloomberg_terminal.Services;
 
 namespace simple_bloomberg_terminal.Tests;
 
@@ -11,7 +10,7 @@ namespace simple_bloomberg_terminal.Tests;
 /// Integration tests for the Perplexity call layer: the real <see cref="CounterpartyDiscoveryService"/>
 /// against a scripted HTTP handler. The handler tells the planner turn (web context "low") apart from
 /// the grounded-search turn ("high") and answers each with a canned Perplexity envelope, so the tests
-/// drive the actual two-phase flow and the fragile hand-rolled parsing: the choices→content +
+/// drive the actual two-phase flow and the fragile hand-rolled parsing: the choicesâ†’content +
 /// top-level <c>citations</c> envelope, [n]-marker resolution, truncation salvage, and cross-query dedupe.
 /// </summary>
 public class CounterpartyDiscoveryTests
@@ -125,7 +124,7 @@ public class CounterpartyDiscoveryTests
     public async Task DiscoverAsync_SalvagesTruncatedSearchAnswer()
     {
         var planner = Envelope("""{"queries":["q"]}""");
-        // finish_reason=length: the array was cut mid-stream — the first object completed but the outer
+        // finish_reason=length: the array was cut mid-stream â€” the first object completed but the outer
         // structure never closed. Parse appends "]}" to recover the complete object.
         var search = Envelope(
             """{"counterparties":[{"segment":"iPhone","name":"Microsoft","classification":"CUSTOMER","note":"x","source_url":null}""");
@@ -151,7 +150,7 @@ public class CounterpartyDiscoveryTests
     public async Task DiscoverAsync_DedupesSameCounterpartyAcrossQueries()
     {
         // Two planned queries, each surfacing the same company: the shared seen-set means the name is
-        // emitted by whichever search lands first and suppressed in the other — one item total.
+        // emitted by whichever search lands first and suppressed in the other â€” one item total.
         var planner = Envelope("""{"queries":["q1","q2"]}""");
         var search = Envelope(
             """{"counterparties":[{"segment":"iPhone","name":"Microsoft","classification":"CUSTOMER","source_url":null}]}""");

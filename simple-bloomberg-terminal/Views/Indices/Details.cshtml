@@ -92,7 +92,7 @@
             {
                 <tr>
                     <td class="name-cell">@c.Company!.Name</td>
-                    <td class="tag-cell">@c.Company.Sector.ToString().Replace("_", " ")</td>
+                    <td class="tag-cell">@(c.Company.Sector?.ToString().Replace("_", " ") ?? "—")</td>
                     <td class="num-cell">@(c.WeightPct.HasValue ? c.WeightPct.Value.ToString("0.##") + "%" : "—")</td>
                     <td><a asp-controller="Companies" asp-action="Details" asp-route-id="@c.CompanyId" class="btn-detail">VIEW →</a></td>
                 </tr>

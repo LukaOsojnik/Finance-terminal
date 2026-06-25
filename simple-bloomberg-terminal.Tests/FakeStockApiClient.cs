@@ -1,5 +1,4 @@
-using simple_bloomberg_terminal.Services;
-
+﻿
 namespace simple_bloomberg_terminal.Tests;
 
 /// <summary>
@@ -47,6 +46,10 @@ public class FakeStockApiClient : IStockApiClient
         Task.FromResult<IReadOnlyDictionary<string, string>>(
             new Dictionary<string, string> { [AppleCik10] = "AAPL" });
 
+    public Task<IReadOnlyList<EdgarTicker>> GetTickerEntries() =>
+        Task.FromResult<IReadOnlyList<EdgarTicker>>(
+            new[] { new EdgarTicker(320193, "AAPL", "Apple Inc.") });
+
     public Task<string?> GetCompanyFactsJson(string cik10) =>
         Task.FromResult<string?>(cik10 == AppleCik10
             ? "{\"cik\":320193,\"entityName\":\"Apple Inc.\",\"facts\":{\"us-gaap\":{\"Revenues\":{\"units\":{\"USD\":[{\"end\":\"2023-09-30\",\"val\":383000000000,\"fy\":2023,\"form\":\"10-K\"}]}}}}}"
@@ -54,7 +57,7 @@ public class FakeStockApiClient : IStockApiClient
 
     public Task<string?> GetFilingDocument(string cik, string accessionNoDashes, string primaryDocument) =>
         Task.FromResult<string?>(
-            $"FILING {cik}/{accessionNoDashes}/{primaryDocument}\nApple Inc. Form 10-K — total net sales 383,285 (in millions).");
+            $"FILING {cik}/{accessionNoDashes}/{primaryDocument}\nApple Inc. Form 10-K â€” total net sales 383,285 (in millions).");
 
     private static EdgarConcept Concept(double val, int fy, string end) =>
         new(new Dictionary<string, List<EdgarFact>>

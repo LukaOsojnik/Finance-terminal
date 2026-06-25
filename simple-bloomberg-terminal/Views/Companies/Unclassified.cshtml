@@ -1,0 +1,100 @@
+@using simple_bloomberg_terminal.Models.Entities
+@using simple_bloomberg_terminal.Models.Enums
+@model IReadOnlyList<Company>
+@{
+    ViewData["Title"] = "Unclassified Companies";
+}
+
+<div class="page-header">
+    <h2><span class="page-header-accent">//</span> Unclassified Companies</h2>
+    <div class="page-subtitle">NO GICS SUB-INDUSTRY — RE-RESOLVE WITH AI</div>
+</div>
+
+@* Token for the per-row reclassify POST (sent as the RequestVerificationToken header). *@
+@Html.AntiForgeryToken()
+
+<div class="d-flex" style="margin-bottom:1rem; gap:0.75rem; align-items:center;">
+    <a asp-action="Index" class="btn btn-secondary">← ALL COMPANIES</a>
+    <div class="muted-cell" style="margin-left:auto;">
+        @Model.Count compan@(Model.Count == 1 ? "y" : "ies") awaiting classification
+    </div>
+</div>
+
+@if (Model.Count == 0)
+{
+    <div class="empty-state">Every company has a resolved GICS sub-industry. Nothing to classify.</div>
+}
+else
+{
+    <table class="terminal-table">
+        <thead>
+            <tr>
+                <th>Name</th>
+                <th>Country</th>
+                <th>Sector</th>
+                <th>Source Label</th>
+                <th>Status</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var c in Model)
+            {
+                <tr data-company-id="@c.Id">
+                    <td class="name-cell" style="font-weight:500;">
+                        <a asp-action="Details" asp-route-id="@c.Id" class="btn-detail" style="padding:0; border:none; background:none;">@c.Name</a>
+                    </td>
+                    <td class="tag-cell">@(c.Country?.Name ?? "—")</td>
+                    <td class="tag-cell js-sector">@(c.Sector?.ToString().Replace("_", " ") ?? "—")</td>
+                    <td class="muted-cell" style="font-size:0.75rem;">@(string.IsNullOrWhiteSpace(c.FmpIndustry) ? "—" : c.FmpIndustry)</td>
+                    <td class="tag-cell js-status">
+                        <span class="type-badge @(c.ClassifyStatus == ClassifyStatus.NoFit ? "type-private" : "type-public")">@c.ClassifyStatus.ToString().ToUpperInvariant()</span>
+                    </td>
+                    <td class="num-cell">
+                        <button type="button" class="btn btn-outline-primary btn-sm js-reclassify"
+                                data-url="@Url.Action("Reclassify", new { id = c.Id })">✦ RESOLVE WITH AI</button>
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </table>
+}
+
+@section Scripts {
+<script>
+// Per-row "Resolve with AI": POST to /companies/{id}/reclassify, then update the row in place. A hit
+// drops the row out (it's classified now); a miss flips the status badge to NOFIT.
+(function () {
+    const token = () => document.querySelector('input[name="__RequestVerificationToken"]')?.value;
+    const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;' }[c]));
+
+    document.querySelectorAll('.js-reclassify').forEach(btn => btn.addEventListener('click', async () => {
+        const row = btn.closest('tr');
+        const original = btn.textContent;
+        btn.disabled = true;
+        btn.textContent = '… RESOLVING';
+        try {
+            const res = await fetch(btn.dataset.url, { method: 'POST', headers: { 'RequestVerificationToken': token() } });
+            if (!res.ok) throw new Error('HTTP ' + res.status);
+            const d = await res.json();
+            if (d.resolved) {
+                // Classified — fade the row out (it no longer belongs on this list).
+                row.style.transition = 'opacity .4s ease';
+                row.style.opacity = '0';
+                setTimeout(() => row.remove(), 400);
+            } else {
+                // Still no fit — reflect the flagged status and re-enable for another try.
+                row.querySelector('.js-status').innerHTML =
+                    '<span class="type-badge type-private">' + esc(d.status).toUpperCase() + '</span>';
+                if (d.sector) row.querySelector('.js-sector').textContent = esc(d.sector);
+                btn.disabled = false;
+                btn.textContent = original;
+            }
+        } catch (e) {
+            btn.disabled = false;
+            btn.textContent = '⚠ RETRY';
+        }
+    }));
+})();
+</script>
+}

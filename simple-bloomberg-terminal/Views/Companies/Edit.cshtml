@@ -28,6 +28,19 @@
     </div>
     <div class="mb-3"><label asp-for="Sector" class="form-label"></label><select asp-for="Sector" asp-items="ViewBag.Sectors" class="form-control"></select><span asp-validation-for="Sector" class="text-danger"></span></div>
     <div class="mb-3"><label asp-for="Industry" class="form-label"></label><select asp-for="Industry" asp-items="ViewBag.Industries" class="form-control"><option value="">— none —</option></select><span asp-validation-for="Industry" class="text-danger"></span></div>
+    <div class="mb-3">
+        <label asp-for="GicsSubIndustry" class="form-label">GICS Sub-Industry</label>
+        <select asp-for="GicsSubIndustry" asp-items="ViewBag.SubIndustries" class="form-control"></select>
+        <span class="form-text">Finest tier. When set, it overrides Sector + Industry above (they roll up from it).</span>
+        <span asp-validation-for="GicsSubIndustry" class="text-danger"></span>
+    </div>
+    <div class="mb-3">
+        <label class="form-label" style="display:flex; align-items:center; gap:0.5rem;">
+            <input asp-for="ClassificationLocked" type="checkbox" style="width:auto;"/>
+            Lock classification
+        </label>
+        <span class="form-text">Pin this classification so the backfill and "Resolve with AI" never overwrite it.</span>
+    </div>
     <div class="mb-3"><label asp-for="RevenueTotal" class="form-label"></label><input asp-for="RevenueTotal" class="form-control" type="number" step="any"/><span asp-validation-for="RevenueTotal" class="text-danger"></span></div>
     <div class="mb-3"><label asp-for="MarketCap" class="form-label">Market Cap (USD)</label><input asp-for="MarketCap" class="form-control" type="number" step="any"/><span asp-validation-for="MarketCap" class="text-danger"></span></div>
     <div class="mb-3"><label asp-for="GrossMargin" class="form-label">Gross Margin (0–1)</label><input asp-for="GrossMargin" class="form-control" type="number" step="0.01"/><span asp-validation-for="GrossMargin" class="text-danger"></span></div>

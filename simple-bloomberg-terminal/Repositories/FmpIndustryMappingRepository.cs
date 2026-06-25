@@ -30,4 +30,18 @@ public class FmpIndustryMappingRepository(AppDbContext db) : IFmpIndustryMapping
             existing.SubIndustry = subIndustry;
         db.SaveChanges();
     }
+
+    public void Remove(string? label)
+    {
+        if (string.IsNullOrWhiteSpace(label)) return;
+        var key = IFmpIndustryMappingRepository.Normalize(label);
+        if (key.Length == 0) return;
+
+        var existing = db.FmpIndustryMappings.FirstOrDefault(m => m.Label == key);
+        if (existing is not null)
+        {
+            db.FmpIndustryMappings.Remove(existing);
+            db.SaveChanges();
+        }
+    }
 }

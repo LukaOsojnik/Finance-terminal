@@ -264,7 +264,15 @@ public enum GicsSubIndustry
     DIVERSIFIED_REAL_ESTATE_ACTIVITIES,
     REAL_ESTATE_OPERATING_COMPANIES,
     REAL_ESTATE_DEVELOPMENT,
-    REAL_ESTATE_SERVICES
+    REAL_ESTATE_SERVICES,
+
+    // ── Appended out of sector-group on purpose ──
+    // GICS 2023 (code 20202030) "Data Processing & Outsourced Services" lives under PROFESSIONAL SERVICES
+    // (Industrials) — it moved there from IT Services in the 2023 revision. It belongs logically beside
+    // RESEARCH_AND_CONSULTING_SERVICES, but the enum ORDINAL is the value persisted in
+    // Company.GicsSubIndustry / FmpIndustryMapping, so a new member MUST be appended last: inserting it
+    // in place would shift every later ordinal and silently corrupt stored rows.
+    DATA_PROCESSING_AND_OUTSOURCED_SERVICES
 }
 
 public static class GicsSubIndustryExtensions
@@ -320,6 +328,8 @@ public static class GicsSubIndustryExtensions
         [GicsSubIndustry.SECURITY_AND_ALARM_SERVICES] = GicsIndustry.COMMERCIAL_SERVICES_AND_SUPPLIES,
         [GicsSubIndustry.HUMAN_RESOURCE_AND_EMPLOYMENT_SERVICES] = GicsIndustry.PROFESSIONAL_SERVICES,
         [GicsSubIndustry.RESEARCH_AND_CONSULTING_SERVICES] = GicsIndustry.PROFESSIONAL_SERVICES,
+        // Declared last in the enum (ordinal stability) but rolls up here — GICS 2023 code 20202030.
+        [GicsSubIndustry.DATA_PROCESSING_AND_OUTSOURCED_SERVICES] = GicsIndustry.PROFESSIONAL_SERVICES,
         [GicsSubIndustry.AIR_FREIGHT_AND_LOGISTICS_SUB] = GicsIndustry.AIR_FREIGHT_AND_LOGISTICS,
         [GicsSubIndustry.PASSENGER_AIRLINES_SUB] = GicsIndustry.PASSENGER_AIRLINES,
         [GicsSubIndustry.MARINE_TRANSPORTATION_SUB] = GicsIndustry.MARINE_TRANSPORTATION,

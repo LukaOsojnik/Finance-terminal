@@ -19,6 +19,9 @@ public class CompanyDetailsViewModel
     // Dated financial history (one per fiscal period), newest first, for the history table.
     public IEnumerable<CompanyFinancial> Financials { get; set; } = [];
 
+    // Weekly trading-volume history, oldest first, for the volume graph next to Financial Overview.
+    public IReadOnlyList<CompanyVolumeHistory> VolumeHistory { get; set; } = [];
+
     // Sector enum formatted for display (underscores → spaces)
     public required string SectorLabel { get; set; }
 

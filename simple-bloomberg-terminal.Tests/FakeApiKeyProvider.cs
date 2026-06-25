@@ -1,5 +1,4 @@
-using simple_bloomberg_terminal.Services;
-
+﻿
 namespace simple_bloomberg_terminal.Tests;
 
 /// <summary>

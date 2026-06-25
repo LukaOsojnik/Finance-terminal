@@ -311,6 +311,12 @@ namespace simple_bloomberg_terminal.Migrations
                     b.Property<string>("Cik")
                         .HasColumnType("longtext");
 
+                    b.Property<bool>("ClassificationLocked")
+                        .HasColumnType("tinyint(1)");
+
+                    b.Property<int>("ClassifyStatus")
+                        .HasColumnType("int");
+
                     b.Property<long>("CountryId")
                         .HasColumnType("bigint");
 
@@ -342,7 +348,7 @@ namespace simple_bloomberg_terminal.Migrations
                     b.Property<double?>("RevenueTotal")
                         .HasColumnType("double");
 
-                    b.Property<int>("Sector")
+                    b.Property<int?>("Sector")
                         .HasColumnType("int");
 
                     b.Property<int>("Type")
@@ -489,6 +495,34 @@ namespace simple_bloomberg_terminal.Migrations
                     b.HasIndex("ContributedByUserId");
 
                     b.ToTable("CompanyRisks");
+                });
+
+            modelBuilder.Entity("simple_bloomberg_terminal.Models.Entities.CompanyVolumeHistory", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b.Property<long>("Id"));
+
+                    b.Property<DateTime>("CapturedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<long>("CompanyId")
+                        .HasColumnType("bigint");
+
+                    b.Property<long>("Volume")
+                        .HasColumnType("bigint");
+
+                    b.Property<DateOnly>("WeekStart")
+                        .HasColumnType("date");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CompanyId", "WeekStart")
+                        .IsUnique();
+
+                    b.ToTable("CompanyVolumeHistories");
                 });
 
             modelBuilder.Entity("simple_bloomberg_terminal.Models.Entities.CostSource", b =>
@@ -1342,6 +1376,17 @@ namespace simple_bloomberg_terminal.Migrations
                     b.Navigation("ContributedBy");
                 });
 
+            modelBuilder.Entity("simple_bloomberg_terminal.Models.Entities.CompanyVolumeHistory", b =>
+                {
+                    b.HasOne("simple_bloomberg_terminal.Models.Entities.Company", "Company")
+                        .WithMany("VolumeHistory")
+                        .HasForeignKey("CompanyId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Company");
+                });
+
             modelBuilder.Entity("simple_bloomberg_terminal.Models.Entities.CostSource", b =>
                 {
                     b.HasOne("simple_bloomberg_terminal.Models.Entities.Company", "Company")
@@ -1548,6 +1593,8 @@ namespace simple_bloomberg_terminal.Migrations
                     b.Navigation("RevenueFromDependents");
 
                     b.Navigation("RevenueSources");
+
+                    b.Navigation("VolumeHistory");
                 });
 
             modelBuilder.Entity("simple_bloomberg_terminal.Models.Entities.CompanyRisk", b =>

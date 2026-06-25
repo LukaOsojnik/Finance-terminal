@@ -21,7 +21,7 @@
             <h1 class="detail-hero-name">@co.Name</h1>
             <a asp-controller="Graph" asp-action="Index" asp-route-companyId="@co.Id" class="detail-graph-link" title="View relationship graph">◉ GRAPH →</a>
             <a asp-controller="Companies" asp-action="Edit" asp-route-id="@co.Id" class="btn-detail">EDIT →</a>
-            <span class="detail-code-badge">@co.Sector.ToString().Replace("_", " ")</span>
+            <span class="detail-code-badge">@(co.Sector?.ToString().Replace("_", " ") ?? "UNCLASSIFIED")</span>
             <span class="type-badge type-@co.Type.ToString().ToLowerInvariant()">@co.Type</span>
             @if (co.Country != null)
             {
@@ -114,8 +114,8 @@
 
 @* ── Financial Overview ── *@
 <div class="detail-section-label">// FINANCIAL OVERVIEW</div>
-<div class="row g-3 mb-4" id="cvCompanyData">
-    <div class="col-12">
+<div class="row g-3 mb-4">
+    <div class="col-lg-6" id="cvCompanyData">
         <div class="detail-card">
             <div class="detail-card-title">COMPANY DATA</div>
             @{
@@ -210,6 +210,27 @@
                     </tbody>
                 </table>
             }
+        </div>
+    </div>
+
+    @* Weekly volume graph — sits beside COMPANY DATA. INGEST pulls range=max weekly bars from Yahoo
+       (US-listed only, resolved from the company's CIK) and stores them; the chart re-renders in place. *@
+    <div class="col-lg-6">
+        <div class="detail-card">
+            <div class="detail-card-title" style="display:flex;justify-content:space-between;align-items:center;gap:.5rem;">
+                <span>VOLUME (WEEKLY)</span>
+                <span style="display:flex;align-items:center;gap:.5rem;">
+                    <span id="volMsg" class="muted-cell"></span>
+                    <button type="button" class="btn-detail js-ingest-volume" data-company="@co.Id"
+                            title="Pull full weekly volume history from Yahoo (US-listed only).">⤓ INGEST VOLUME (YAHOO) →</button>
+                </span>
+            </div>
+            @Html.AntiForgeryToken()
+            <div style="position:relative;height:260px;margin-top:.5rem;">
+                <canvas id="volumeChart"></canvas>
+            </div>
+            <div id="volHint" class="muted-cell" style="font-size:.7rem;margin-top:.35rem;@(Model.VolumeHistory.Count > 0 ? "" : "display:none")">showing latest ~1 year · click-drag to scroll weeks left/right · scroll-wheel to zoom · double-click to reset</div>
+            <div id="volEmpty" class="detail-pending" style="@(Model.VolumeHistory.Count > 0 ? "display:none" : "")">NO VOLUME DATA — INGEST TO POPULATE</div>
         </div>
     </div>
 </div>
@@ -672,7 +693,140 @@
 </style>
 
 @section Scripts {
+@* Pan/zoom for the volume graph. The zoom UMD bundle auto-registers against the global Chart (loaded
+   in _Layout). Hammer.js MUST load first: chartjs-plugin-zoom needs it for mouse drag-pan (wheel zoom
+   works without it, but click-drag panning silently no-ops if Hammer is absent). *@
+<script src="https://cdnjs.cloudflare.com/ajax/libs/hammer.js/2.0.8/hammer.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom@2.0.1/dist/chartjs-plugin-zoom.min.js"></script>
 <script>
+// ── Weekly volume graph ───────────────────────────────────────────────────────────────────────
+// Render the server-supplied series on load; INGEST posts to Yahoo, then re-renders from the JSON
+// the action returns (no full-page reload). Chart.js 4 is loaded globally in _Layout.
+(function () {
+    const canvas = document.getElementById('volumeChart');
+    if (!canvas) return;
+    const initial = @Html.Raw(System.Text.Json.JsonSerializer.Serialize(
+        Model.VolumeHistory.Select(v => new { w = v.WeekStart.ToString("yyyy-MM-dd"), v = v.Volume })));
+    let chart = null;
+
+    // Compact share counts for the y-axis (3.1M, 1.2B) — raw weekly volumes are millions+.
+    const compact = n =>
+        n >= 1e9 ? (n / 1e9).toFixed(1) + 'B' :
+        n >= 1e6 ? (n / 1e6).toFixed(1) + 'M' :
+        n >= 1e3 ? (n / 1e3).toFixed(0) + 'k' : String(n);
+
+    // Crosshair: drop a dashed vertical line from the top of the plot down to the hovered point, so the
+    // eye lands on the exact dot the tooltip describes. Reads the tooltip's active element (set by the
+    // index-mode interaction below) rather than requiring the cursor to sit on the line itself.
+    const hoverLine = {
+        id: 'volHoverLine',
+        afterDatasetsDraw(c) {
+            const active = c.tooltip?.getActiveElements?.() ?? [];
+            if (!active.length) return;
+            const x = active[0].element.x;
+            const { ctx, chartArea: { top, bottom } } = c;
+            ctx.save();
+            ctx.beginPath();
+            ctx.moveTo(x, top);
+            ctx.lineTo(x, bottom);
+            ctx.lineWidth = 1;
+            ctx.setLineDash([4, 4]);
+            ctx.strokeStyle = '#00d4ff66';
+            ctx.stroke();
+            ctx.restore();
+        }
+    };
+
+    const WINDOW = 52; // weeks (~1 year) shown by default, so there's earlier history to pan/drag into.
+
+    function render(series) {
+        const empty = document.getElementById('volEmpty');
+        const hint = document.getElementById('volHint');
+        if (!series || series.length === 0) {
+            if (empty) empty.style.display = '';
+            if (hint) hint.style.display = 'none';
+            return;
+        }
+        if (empty) empty.style.display = 'none';
+        if (hint) hint.style.display = '';
+        if (chart) chart.destroy();
+
+        // Start zoomed to the most recent WINDOW weeks (category-axis min/max are label values). With
+        // the full range > a year, dragging then scrolls left/right through the older weeks.
+        const labels = series.map(p => p.w);
+        const start = series.length > WINDOW ? labels[series.length - WINDOW] : undefined;
+        const end = series.length > WINDOW ? labels[series.length - 1] : undefined;
+
+        chart = new Chart(canvas, {
+            type: 'line',
+            data: {
+                labels,
+                datasets: [{
+                    label: 'Weekly volume', data: series.map(p => p.v),
+                    borderColor: '#00d4ff', backgroundColor: '#00d4ff22',
+                    borderWidth: 1, fill: true, tension: .15,
+                    // No dots at rest (hundreds of weeks), but the hovered one pops on the line.
+                    pointRadius: 0, pointHoverRadius: 4,
+                    pointHoverBackgroundColor: '#00d4ff', pointHoverBorderColor: '#04080d'
+                }]
+            },
+            plugins: [hoverLine],
+            options: {
+                responsive: true, maintainAspectRatio: false,
+                // Snap to the nearest week by x even when the cursor is off the line → the highlighted
+                // dot and tooltip track horizontally under the mouse.
+                interaction: { mode: 'index', intersect: false },
+                plugins: {
+                    legend: { display: false },
+                    tooltip: {
+                        callbacks: {
+                            title: items => items[0]?.label ?? '',
+                            // Exact share count with thousands separators (the user wants the real number).
+                            label: c => c.parsed.y.toLocaleString() + ' shares'
+                        }
+                    },
+                    // Click-drag to scroll weeks left/right; wheel to zoom the x-axis. limits keep the
+                    // pan/zoom inside the real data range so you can't drag off into empty space.
+                    zoom: {
+                        pan: { enabled: true, mode: 'x' },
+                        zoom: { wheel: { enabled: true }, pinch: { enabled: true }, mode: 'x' },
+                        limits: { x: { min: 'original', max: 'original' } }
+                    }
+                },
+                scales: {
+                    x: { min: start, max: end, grid: { color: '#1e2d42' }, ticks: { maxTicksLimit: 8, autoSkip: true } },
+                    y: { grid: { color: '#1e2d42' }, ticks: { callback: v => compact(v) }, beginAtZero: true }
+                }
+            }
+        });
+    }
+    render(initial);
+
+    // Double-click anywhere on the chart to undo pan/zoom back to the full range.
+    canvas.addEventListener('dblclick', () => chart?.resetZoom());
+
+    const btn = document.querySelector('.js-ingest-volume');
+    const msg = document.getElementById('volMsg');
+    btn?.addEventListener('click', async () => {
+        const original = btn.textContent;
+        btn.disabled = true; btn.textContent = 'INGESTING…'; msg.textContent = '';
+        try {
+            const token = document.querySelector('input[name="__RequestVerificationToken"]')?.value;
+            const res = await fetch(`/companies/${btn.dataset.company}/ingest-volume`, {
+                method: 'POST', headers: { 'RequestVerificationToken': token }
+            });
+            if (!res.ok) { msg.textContent = 'Failed — ' + (await res.text() || res.status); return; }
+            const { count, series } = await res.json();
+            render(series);
+            msg.textContent = `Loaded ${count} weeks.`;
+        } catch (e) {
+            msg.textContent = 'Failed — ' + e.message;
+        } finally {
+            btn.disabled = false; btn.textContent = original;
+        }
+    });
+})();
+
 // RE-DISCOVER (private companies): fire the detached re-discovery, hand the job id to the bottom-right
 // widget, and let the page reload itself when the widget sees the job finish (see site.js poll()).
 document.querySelectorAll('.js-rediscover').forEach(btn => {

@@ -18,6 +18,14 @@ public interface ICompanyRepository
     // Active company whose CIK matches (normalised to 10-digit). The canonical join when a name match
     // can't bridge an acronym↔legal-name gap (e.g. "TSMC" vs "Taiwan Semiconductor Manufacturing Co").
     Company? MatchByCik(string? cik);
+
+    // Assign a CIK to every US company that lacks one (null or all-zeros placeholder) by matching its
+    // normalized name against the supplied SEC ticker-map titles. secEntries: (company title, 10-digit
+    // CIK). Uses the same name normalization as MatchByName, and skips titles whose normalized name is
+    // ambiguous (maps to several CIKs) so a wrong CIK is never written. Persists and returns the
+    // (company name, CIK) pairs it set.
+    IReadOnlyList<(string Name, string Cik)> BackfillUsCiksByName(IEnumerable<(string Title, string Cik)> secEntries);
+
     void Add(Company entity);
     void Update(Company entity);
     void SoftDelete(long id);
@@ -25,6 +33,13 @@ public interface ICompanyRepository
     // Replace a company's financial history with a freshly-fetched set (clear-reinsert, like EDGAR
     // sources). Derived API data, so old rows are hard-deleted; a no-op if rows is empty.
     void ReplaceFinancials(long companyId, IReadOnlyList<CompanyFinancial> rows);
+
+    // A company's weekly volume history, oldest first, for the volume graph.
+    IReadOnlyList<CompanyVolumeHistory> GetVolumeHistory(long companyId);
+
+    // Replace a company's weekly volume history with a freshly-fetched set (clear-reinsert, like
+    // ReplaceFinancials). Derived API data, so old rows are hard-deleted; a no-op if rows is empty.
+    void ReplaceVolumeHistory(long companyId, IReadOnlyList<CompanyVolumeHistory> rows);
 
     // Ids of active companies that already have FMP-sourced financials — the backfill's "done" marker.
     // Companies with only YAHOO rows (a quota-degraded fallback) stay eligible so a later run upgrades

@@ -1,4 +1,4 @@
-using simple_bloomberg_terminal.Models.Entities;
+﻿using simple_bloomberg_terminal.Models.Entities;
 using simple_bloomberg_terminal.Repositories;
 
 namespace simple_bloomberg_terminal.Tests;
@@ -7,7 +7,7 @@ namespace simple_bloomberg_terminal.Tests;
 /// Tiny in-memory <see cref="ICompanyRepository"/> for the Perplexity discovery tests. The discovery
 /// service only calls <see cref="GetById"/> (the inspected company) and <see cref="MatchByName"/>
 /// (mapping a found counterparty to an existing company), so only those are implemented. Backed by a
-/// plain list — no EF DbContext — so the service's parallel sub-query searches can call MatchByName
+/// plain list â€” no EF DbContext â€” so the service's parallel sub-query searches can call MatchByName
 /// concurrently without tripping "a second operation was started on this context".
 /// </summary>
 public sealed class FakeCompanyRepository : ICompanyRepository
@@ -27,12 +27,15 @@ public sealed class FakeCompanyRepository : ICompanyRepository
 
     public Company? MatchByCik(string? cik)
     {
-        var norm = simple_bloomberg_terminal.Services.Cik.Normalize(cik);
+        var norm = Cik.Normalize(cik);
         return norm is null ? null : _companies.FirstOrDefault(c => c.DeletedAt == null &&
-            simple_bloomberg_terminal.Services.Cik.Normalize(c.Cik) == norm);
+            Cik.Normalize(c.Cik) == norm);
     }
 
     // Unused by the discovery path under test.
+    public IReadOnlyList<(string Name, string Cik)> BackfillUsCiksByName(IEnumerable<(string Title, string Cik)> secEntries) => throw new NotSupportedException();
+    public IReadOnlyList<CompanyVolumeHistory> GetVolumeHistory(long companyId) => throw new NotSupportedException();
+    public void ReplaceVolumeHistory(long companyId, IReadOnlyList<CompanyVolumeHistory> rows) => throw new NotSupportedException();
     public IEnumerable<Company> GetAll() => throw new NotSupportedException();
     public Company? GetWithGraphRelations(long id) => throw new NotSupportedException();
     public Company? GetWithGraphRelationsByCik(string cik) => throw new NotSupportedException();

@@ -46,7 +46,7 @@ public class CompanyGraphConverter : ITypeConverter<Company, GraphResponse>
             Id: centerId,
             Label: company.Name,
             Group: "center",
-            Title: $"{company.Sector} · {company.Country?.Code}",
+            Title: $"{company.Sector?.ToString() ?? "Unclassified"} · {company.Country?.Code}",
             ValueUsd: company.RevenueTotal
         ));
 

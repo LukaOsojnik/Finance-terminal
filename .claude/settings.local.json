@@ -16,7 +16,15 @@
       "Bash(curl -s -L -A \"Mozilla/5.0\" \"https://www.ssga.com/library-content/products/fund-data/etfs/us/holdings-daily-us-en-spy.xlsx\" -o spy.xlsx)",
       "PowerShell(& \"$env:USERPROFILE\\\\.dotnet\\\\tools\\\\dotnet-ef.exe\" migrations add AddIndexImportJobs --project simple-bloomberg-terminal/simple-bloomberg-terminal.csproj --startup-project simple-bloomberg-terminal/simple-bloomberg-terminal.csproj 2>&1 | Select-Object -Last 30)",
       "PowerShell(& \"$env:USERPROFILE\\\\.dotnet\\\\tools\\\\dotnet-ef.exe\" database update --project simple-bloomberg-terminal/simple-bloomberg-terminal.csproj --startup-project simple-bloomberg-terminal/simple-bloomberg-terminal.csproj 2>&1 | Select-Object -Last 25)",
-      "PowerShell(dotnet test *)"
+      "PowerShell(dotnet test *)",
+      "WebFetch(domain:github.com)",
+      "Bash(curl -s -H \"User-Agent: test test@test.com\" \"https://www.sec.gov/files/company_tickers.json\" -o ct.json)",
+      "Bash(curl -s \"https://financialmodelingprep.com/stable/profile?symbol=WEN&apikey=iTDKtcS6e1zJaTrw5tLxoyJSPYurMqR7\")",
+      "Bash(python -m json.tool)",
+      "Bash(dotnet build *)",
+      "Bash(~/.dotnet/tools/dotnet-ef.exe database *)",
+      "Bash('/c/Program Files/MySQL/MySQL Server 8.0/bin/mysql.exe' -h127.0.0.1 -P3306 -uluka -pKrokodil123! myappdb -e 'SELECT Id,Name,Sector,FmpIndustry,GicsSubIndustry,Industry,ClassifyStatus FROM Companies WHERE Name IN \\('\\\\''Public Storage'\\\\'','\\\\''Robinhood Markets, Inc.'\\\\'','\\\\''Raymond James Financial, Inc.'\\\\'','\\\\''Qnity Electronics, Inc.'\\\\'','\\\\''Rockwell Automation, Inc.'\\\\''\\);')",
+      "Bash(python -)"
     ]
   },
   "outputStyle": "Learning"

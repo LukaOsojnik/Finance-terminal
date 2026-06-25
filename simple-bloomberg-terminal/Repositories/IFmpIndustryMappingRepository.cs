@@ -14,6 +14,11 @@ public interface IFmpIndustryMappingRepository
     // Persist (or refresh) the mapping for a label. No-op for a blank label.
     void Set(string? label, GicsSubIndustry subIndustry);
 
+    // Forget a label's learned mapping (no-op if absent). Called when a human corrects a company whose
+    // label produced a wrong/ambiguous cached sub-industry, so the poisoned entry can't keep mis-mapping
+    // other companies — they'll be re-resolved fresh by the model next time.
+    void Remove(string? label);
+
     // Normalize a vendor label to its lookup key — exposed so callers can store the same normalized
     // form (e.g. on Company.FmpIndustry) that the cache keys on.
     static string Normalize(string label) =>

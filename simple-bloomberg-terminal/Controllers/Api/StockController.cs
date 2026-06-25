@@ -1,8 +1,7 @@
-using Microsoft.AspNetCore.Authorization;
+﻿using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using simple_bloomberg_terminal.Dtos;
 using simple_bloomberg_terminal.Repositories;
-using simple_bloomberg_terminal.Services;
 
 namespace simple_bloomberg_terminal.Controllers.Api;
 
@@ -30,7 +29,7 @@ public class StockController : ControllerBase
         var company = _companies.GetById(companyId);
         if (company is null) return NotFound();
         if (string.IsNullOrWhiteSpace(company.Cik))
-            return Conflict("Company has no CIK — not an SEC filer.");
+            return Conflict("Company has no CIK â€” not an SEC filer.");
 
         try
         {
@@ -50,7 +49,7 @@ public class StockController : ControllerBase
         return cik is null ? NotFound() : Ok(new { ticker, cik });
     }
 
-    // ---- read-only EDGAR browser (right pane of /extraction) — no persistence ----
+    // ---- read-only EDGAR browser (right pane of /extraction) â€” no persistence ----
 
     // Raw XBRL company facts JSON, straight from SEC.
     [HttpGet("facts/{companyId:long}")]
@@ -75,7 +74,7 @@ public class StockController : ControllerBase
     {
         var company = _companies.GetById(companyId);
         if (company is null) return NotFound();
-        if (string.IsNullOrWhiteSpace(company.Cik)) return Conflict("Company has no CIK — not an SEC filer.");
+        if (string.IsNullOrWhiteSpace(company.Cik)) return Conflict("Company has no CIK â€” not an SEC filer.");
 
         EdgarSubmissions? subs;
         try { subs = await _client.GetSubmissions(Cik.Pad(company.Cik)); }
@@ -113,7 +112,7 @@ public class StockController : ControllerBase
     {
         var company = _companies.GetById(companyId);
         if (company is null) return NotFound();
-        if (string.IsNullOrWhiteSpace(company.Cik)) return Conflict("Company has no CIK — not an SEC filer.");
+        if (string.IsNullOrWhiteSpace(company.Cik)) return Conflict("Company has no CIK â€” not an SEC filer.");
         if (string.IsNullOrWhiteSpace(accession) || string.IsNullOrWhiteSpace(doc))
             return BadRequest("accession and doc are required.");
 
@@ -135,7 +134,7 @@ public class StockController : ControllerBase
         cik10 = null; fail = null;
         var company = _companies.GetById(companyId);
         if (company is null) { fail = NotFound(); return true; }
-        if (string.IsNullOrWhiteSpace(company.Cik)) { fail = Conflict("Company has no CIK — not an SEC filer."); return true; }
+        if (string.IsNullOrWhiteSpace(company.Cik)) { fail = Conflict("Company has no CIK â€” not an SEC filer."); return true; }
         cik10 = Cik.Pad(company.Cik);
         return false;
     }

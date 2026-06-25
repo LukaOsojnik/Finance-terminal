@@ -14,8 +14,9 @@ public class CompanyCreateModel
     [Required]
     public long CountryId { get; set; }
 
-    [Required]
-    public Sector Sector { get; set; }
+    // Optional: blank = unclassified (NULL on the entity). The classifier resolves it from the label,
+    // and an unconstrained pick can fill it in later, so we don't force a manual choice at create time.
+    public Sector? Sector { get; set; }
 
     // PUBLIC by default; the private (AI-discovery) create path sets PRIVATE. Carried hidden through
     // the discover -> Create POST round-trip like Symbol.
@@ -46,4 +47,7 @@ public class CompanyCreateModel
 public class CompanyEditModel : CompanyCreateModel
 {
     public long Id { get; set; }
+
+    // When set, a human has pinned the GICS sub-industry — backfill / AI re-resolve must not overwrite it.
+    public bool ClassificationLocked { get; set; }
 }

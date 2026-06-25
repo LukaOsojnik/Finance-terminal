@@ -1,4 +1,4 @@
-using System.Globalization;
+﻿using System.Globalization;
 using System.Security.Claims;
 using System.Text;
 using System.Text.Json;
@@ -9,7 +9,6 @@ using simple_bloomberg_terminal.Models.Entities;
 using simple_bloomberg_terminal.Models.Enums;
 using simple_bloomberg_terminal.Models.ViewModels;
 using simple_bloomberg_terminal.Repositories;
-using simple_bloomberg_terminal.Services;
 
 namespace simple_bloomberg_terminal.Controllers;
 
@@ -20,7 +19,7 @@ namespace simple_bloomberg_terminal.Controllers;
 /// <see cref="SourceFieldReview"/> (one per cell, <c>Mark=null</c> for the phase-2 reviewer).
 /// </summary>
 [Route("extraction")]
-// Any authenticated user — the keyed features run on the USER's own API keys (bring-your-own), so a
+// Any authenticated user â€” the keyed features run on the USER's own API keys (bring-your-own), so a
 // signed-in customer can use them; no Admin/Manager role required. A missing key surfaces the
 // "add your key" popup; logged-out callers get the sign-in prompt.
 [Authorize]
@@ -75,7 +74,7 @@ public class ExtractionController : Controller
 
     // Write the same 424 "missing key" envelope the global filter produces, for STREAMING actions
     // that have already begun writing (the filter can't replace a started response). site.js reads
-    // {code:"MISSING_KEY", …} off a 424 and shows the "add your key" popup.
+    // {code:"MISSING_KEY", â€¦} off a 424 and shows the "add your key" popup.
     private async Task WriteMissingKeyAsync(MissingApiKeyException ex, CancellationToken ct)
     {
         Response.StatusCode = StatusCodes.Status424FailedDependency;
@@ -102,7 +101,7 @@ public class ExtractionController : Controller
         var vm = new ExtractionIndexViewModel { CompanyId = companyId, Node = parsedNode };
 
         // Opened from a source's Details "Add references": prefill that row's values so the user
-        // browses EDGAR against the existing source instead of a blank new row. (Revenue only — the
+        // browses EDGAR against the existing source instead of a blank new row. (Revenue only â€” the
         // deep-link comes from a RevenueSource.)
         if (parsedNode == ExtractionNode.REVENUE && revenueSourceId is { } rowId && _revenue.GetById(rowId) is { } row)
         {
@@ -119,7 +118,7 @@ public class ExtractionController : Controller
         if (vm.CompanyId is { } id)
             vm.CompanyLabel = _companies.GetById(id)?.Name;
 
-        // Classification option lists per node — the page swaps the dropdown when the node changes.
+        // Classification option lists per node â€” the page swaps the dropdown when the node changes.
         ViewBag.SourceTypes = EnumSelect.Of<SourceType>();
         ViewBag.Nodes = EnumSelect.Of<ExtractionNode>();
         // Classification options the page swaps between when the node changes.
@@ -168,7 +167,7 @@ public class ExtractionController : Controller
         // Company Facts. Attached per-field, so one source can cite different filings per cell.
         var filingId = ResolveFilingId(req.CompanyId, req.FilingAccessionNumber, req.FilingForm, req.FilingDate, req.FilingUrl);
 
-        // The source row is the source of truth for the values — upsert it first so a review FK can
+        // The source row is the source of truth for the values â€” upsert it first so a review FK can
         // only ever point at a row that exists.
         var rowId = _writer.UpsertRow(node, req.CompanyId, req.RevenueSourceId, req.SourceType,
             req.Name, req.Value, req.Percentage, req.Note, req.RelatedCompanyId, By);
@@ -210,8 +209,8 @@ public class ExtractionController : Controller
 
     // Batch save from the notification widget's chat: persist every ticked AI ```save``` block in one
     // call. Each item upserts its source row + per-field proof; items naming a counterparty resolve
-    // (or create via the FMP/Yahoo pipeline) that company and get a reciprocal mirror row — so the
-    // relationship is saved bidirectionally, the same way the discover→link flow does it.
+    // (or create via the FMP/Yahoo pipeline) that company and get a reciprocal mirror row â€” so the
+    // relationship is saved bidirectionally, the same way the discoverâ†’link flow does it.
     [HttpPost, Route("save-batch")]
     public async Task<IActionResult> SaveBatch([FromBody] SaveBatchRequest req)
     {
@@ -226,7 +225,7 @@ public class ExtractionController : Controller
         {
             if (string.IsNullOrWhiteSpace(item.Name)) continue;
 
-            // Counterparty objects (revenue customer / cost supplier) resolve like discover→link.
+            // Counterparty objects (revenue customer / cost supplier) resolve like discoverâ†’link.
             var hasCounterparty = node != ExtractionNode.RISK && !string.IsNullOrWhiteSpace(item.RelatedCompany);
             long? counterpartyId = null;
             if (hasCounterparty)
@@ -245,7 +244,7 @@ public class ExtractionController : Controller
 
             var rowId = _writer.UpsertRow(node, req.CompanyId, null, item.Classification, item.Name,
                 item.Value, item.Percentage, item.Note, counterpartyId, By, item.Reference);
-            if (rowId is null) continue;   // unparseable classification — skip this item
+            if (rowId is null) continue;   // unparseable classification â€” skip this item
             saved++;
 
             // Per-field proof: the verbatim filing excerpts the model carried in the save block.
@@ -295,7 +294,7 @@ public class ExtractionController : Controller
         _                   => r.RevenueSourceId == rowId,
     };
 
-    // Mode B — AI reads one filing and proposes revenue rows + per-field proof for the human to
+    // Mode B â€” AI reads one filing and proposes revenue rows + per-field proof for the human to
     // confirm. Persists nothing; the page fills the form and the existing save path freezes proof.
     [HttpPost, Route("auto-extract/{companyId:long}")]
     public async Task<IActionResult> AutoExtract(long companyId, [FromQuery] string accession, [FromQuery] string doc, [FromQuery] string? node, [FromQuery] string? form)
@@ -314,7 +313,7 @@ public class ExtractionController : Controller
         }
     }
 
-    // Mode B (auto) — triage every bold heading by title, scan the AI-chosen ones in parallel, and
+    // Mode B (auto) â€” triage every bold heading by title, scan the AI-chosen ones in parallel, and
     // stash the result as the chat's grounding. Replaces the hand-pick flow. Returns scanned + found.
     [HttpPost, Route("scan-auto/{companyId:long}")]
     public async Task<IActionResult> ScanAuto(
@@ -334,10 +333,10 @@ public class ExtractionController : Controller
         }
     }
 
-    // Mode B (async) — same scan as scan-auto, but detached: register a job, fire the work on a
+    // Mode B (async) â€” same scan as scan-auto, but detached: register a job, fire the work on a
     // background task, and return its id at once so the page doesn't block. The user can navigate
     // away; the notification widget polls scan-jobs for the result. The background task opens its
-    // OWN DI scope — the request scope (and its DbContext) is gone the moment this returns.
+    // OWN DI scope â€” the request scope (and its DbContext) is gone the moment this returns.
     [HttpPost, Route("scan-auto-async/{companyId:long}")]
     public async Task<IActionResult> ScanAutoAsync(
         long companyId, [FromQuery] string accession, [FromQuery] string doc,
@@ -381,15 +380,15 @@ public class ExtractionController : Controller
             {
                 // Coarse phase text for the pre-triage window; once chunks are planned the widget shows
                 // the live section tree instead (filled by the progress callback below).
-                job.Progress = $"Reading the {job.FilingLabel} & triaging sections with parallel agents…";
+                job.Progress = $"Reading the {job.FilingLabel} & triaging sections with parallel agentsâ€¦";
                 job.Report = await extractor.ScanAutoAsync(
                     companyId, accession, doc, parsedNode, form, p => ApplyScanProgress(job, p));
-                // The audited tagged XBRL facts (COST/REVENUE; null for RISK) for the widget's table —
+                // The audited tagged XBRL facts (COST/REVENUE; null for RISK) for the widget's table â€”
                 // also primes the cache the summary turn below grounds on, so it's one SEC round-trip.
                 job.Xbrl = await chat.GetXbrlViewAsync(companyId, accession, parsedNode);
                 // Auto AI summary: one chat turn grounded on the digest the scan just cached, so the
                 // notification opens with a real answer rather than just counts.
-                job.Progress = $"Found {job.Report.Found} candidate(s) · writing summary…";
+                job.Progress = $"Found {job.Report.Found} candidate(s) Â· writing summaryâ€¦";
                 var seed = new List<ChatMessage>
                 {
                     new("user", "Summarize the candidates you found in this filing.")
@@ -428,7 +427,7 @@ public class ExtractionController : Controller
 
     // Cross-segment hand-off (worker-less). The SOURCE segment's agent already FOUND the fact and
     // emitted a ```handoff``` block; this spins up the TARGET segment's agent to re-dress it in that
-    // segment's save schema — NO worker re-scan (scanIfMissing:false grounds on whatever's cached + the
+    // segment's save schema â€” NO worker re-scan (scanIfMissing:false grounds on whatever's cached + the
     // seed + the cheap XBRL view). It runs one turn whose first user message IS the seed, so the target
     // widget opens with a proposed ```save``` block ready to tick + Save. See docs/extraction/cross-extraction.md.
     [HttpPost, Route("scan-handoff/{companyId:long}")]
@@ -469,10 +468,10 @@ public class ExtractionController : Controller
             var chat = scope.ServiceProvider.GetRequiredService<IExtractionChatService>();
             try
             {
-                // No ScanAutoAsync — the source agent already found this; we only re-dress it in this
+                // No ScanAutoAsync â€” the source agent already found this; we only re-dress it in this
                 // segment's schema. The XBRL view is a cheap cached read (audited figures if tagged).
                 job.Xbrl = await chat.GetXbrlViewAsync(companyId, accession, parsedNode);
-                job.Progress = "Recording the handed-over item…";
+                job.Progress = "Recording the handed-over itemâ€¦";
                 job.Replying = true;
                 job.ReplyBuffer = "";
                 job.ReplyThink = "";
@@ -507,7 +506,7 @@ public class ExtractionController : Controller
     }
 
     // Status of the jobs the browser is tracking (ids it holds in localStorage, comma-separated).
-    // Unknown ids are skipped — the store evicts nothing, but a dismissed/lost job just drops out.
+    // Unknown ids are skipped â€” the store evicts nothing, but a dismissed/lost job just drops out.
     [HttpGet, Route("scan-jobs")]
     public IActionResult ScanJobs([FromQuery] string? ids)
     {
@@ -562,7 +561,7 @@ public class ExtractionController : Controller
             sections = j.Sections.Select(s => (object)new
             {
                 item = s.Item,
-                // idx is the chunk's position in the flat ChunkList — the key the inspector endpoint
+                // idx is the chunk's position in the flat ChunkList â€” the key the inspector endpoint
                 // takes; hasDetail flags that the prompt/reply are captured (chunk finished), so the
                 // widget only makes finished rows clickable.
                 chunks = s.Chunks.Select(c => new
@@ -596,7 +595,7 @@ public class ExtractionController : Controller
     }
 
     // Project the structured XBRL view into the camelCase shape the widget's xbrlBox() reads. Null when
-    // the node is RISK or the filing tagged nothing — the widget then renders no XBRL box.
+    // the node is RISK or the filing tagged nothing â€” the widget then renders no XBRL box.
     private static object? XbrlDto(XbrlView? x) => x is null ? null : new
     {
         node = x.Node,
@@ -648,7 +647,7 @@ public class ExtractionController : Controller
         }
     }
 
-    // Drop a job the user dismissed from the widget. Try both stores — the id is from either.
+    // Drop a job the user dismissed from the widget. Try both stores â€” the id is from either.
     [HttpPost, Route("scan-jobs/dismiss/{jobId}")]
     public IActionResult DismissScanJob(string jobId)
     {
@@ -720,10 +719,10 @@ public class ExtractionController : Controller
         return Json(new { replying = job.Replying, reply = job.ReplyBuffer, think = job.ReplyThink, error = job.ReplyError });
     }
 
-    // Web discovery — ask Perplexity sonar for the named counterparties behind the company's revenue
+    // Web discovery â€” ask Perplexity sonar for the named counterparties behind the company's revenue
     // (Side=CUSTOMER) or cost (Side=SUPPLIER) segments. Runs Perplexity-style: a planner decomposes the
     // request into focused sub-queries, each its own grounded search. Streams NDJSON lines as it goes
-    // ({"t":"plan"|"searching"|"result"|"error", …}) so the page renders a live feed. Persists nothing;
+    // ({"t":"plan"|"searching"|"result"|"error", â€¦}) so the page renders a live feed. Persists nothing;
     // the user confirms each found counterparty via LinkCounterparty.
     [HttpPost, Route("discover-related")]
     public async Task DiscoverRelated([FromBody] DiscoverCounterpartiesRequest req, CancellationToken ct)
@@ -734,7 +733,7 @@ public class ExtractionController : Controller
             return;
         }
 
-        // Discovery streams via Perplexity — verify the user's key BEFORE the NDJSON body starts.
+        // Discovery streams via Perplexity â€” verify the user's key BEFORE the NDJSON body starts.
         if (string.IsNullOrWhiteSpace((await _keys.GetAsync(ct)).Perplexity))
         {
             await WriteMissingKeyAsync(MissingApiKeyException.Perplexity(), ct);
@@ -744,7 +743,7 @@ public class ExtractionController : Controller
         Response.ContentType = "application/x-ndjson; charset=utf-8";
         // Flush headers NOW, before the planner LLM call. Otherwise the response stays uncommitted until
         // the first "plan" event (seconds later), so the client's `await fetch` doesn't resolve and the
-        // button shows no "Planning searches…" feedback. The 424 key-check above already returned, so
+        // button shows no "Planning searchesâ€¦" feedback. The 424 key-check above already returned, so
         // committing here is safe.
         await Response.Body.FlushAsync(ct);
         var side = string.Equals(req.Side, "SUPPLIER", StringComparison.OrdinalIgnoreCase) ? "SUPPLIER" : "CUSTOMER";
@@ -756,7 +755,7 @@ public class ExtractionController : Controller
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToList();
 
-        // Web options (camelCase) so the streamed items match what the page reads (s.name, s.sourceUrl…).
+        // Web options (camelCase) so the streamed items match what the page reads (s.name, s.sourceUrlâ€¦).
         var json = new JsonSerializerOptions(JsonSerializerDefaults.Web);
         try
         {
@@ -780,7 +779,7 @@ public class ExtractionController : Controller
     }
 
     // Confirm one discovered counterparty: resolve (or create) its Company row, then create a revenue
-    // source (CUSTOMER) or cost source (SUPPLIER) on the inspected company pointing at it — feeding the
+    // source (CUSTOMER) or cost source (SUPPLIER) on the inspected company pointing at it â€” feeding the
     // graph's RELATED COMPANIES hub via RelatedCompanyId. Value is null (web gives no figure); the row
     // exists to carry the relationship.
     [HttpPost, Route("link-counterparty")]

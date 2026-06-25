@@ -1,7 +1,6 @@
-using Microsoft.AspNetCore.Authorization;
+﻿using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using simple_bloomberg_terminal.Models.Enums;
-using simple_bloomberg_terminal.Services;
 
 namespace simple_bloomberg_terminal.Controllers;
 

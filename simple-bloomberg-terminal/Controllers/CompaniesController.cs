@@ -1,4 +1,4 @@
-using System.Net;
+﻿using System.Net;
 using System.Text.Json;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -7,12 +7,11 @@ using simple_bloomberg_terminal.Models.Entities;
 using simple_bloomberg_terminal.Models.Enums;
 using simple_bloomberg_terminal.Models.ViewModels;
 using simple_bloomberg_terminal.Repositories;
-using simple_bloomberg_terminal.Services;
 
 namespace simple_bloomberg_terminal.Controllers;
 
 [Route("companies")]
-// Any authenticated user — keyed actions (FMP fetch, private discovery, rediscover) run on the
+// Any authenticated user â€” keyed actions (FMP fetch, private discovery, rediscover) run on the
 // USER's own API keys. Browse actions stay [AllowAnonymous] (overrides below). A missing key shows
 // the "add your key" popup; logged-out callers get the sign-in prompt.
 [Authorize]
@@ -26,12 +25,14 @@ public class CompaniesController : Controller
     private readonly BackfillJobStore _backfillJobs;
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly IUserApiKeyProvider _keys;
+    private readonly IFmpIndustryMappingRepository _mappings;
 
     public CompaniesController(ICompanyRepository companies,
         ICompanyFinancialsService financials,
         ICompanyProfileDiscovery profileDiscovery, ICompanyProvisioningService provisioning,
         RediscoverJobStore rediscoverJobs, BackfillJobStore backfillJobs,
-        IServiceScopeFactory scopeFactory, IUserApiKeyProvider keys)
+        IServiceScopeFactory scopeFactory, IUserApiKeyProvider keys,
+        IFmpIndustryMappingRepository mappings)
     {
         _rediscoverJobs = rediscoverJobs;
         _backfillJobs = backfillJobs;
@@ -41,6 +42,7 @@ public class CompaniesController : Controller
         _financials = financials;
         _profileDiscovery = profileDiscovery;
         _provisioning = provisioning;
+        _mappings = mappings;
     }
 
     [AllowAnonymous]
@@ -78,15 +80,39 @@ public class CompaniesController : Controller
             Financials = company.Financials.Where(f => f.DeletedAt == null)
                 .OrderByDescending(f => f.EndDate ?? DateOnly.FromDateTime(DateTime.MinValue))
                 .ThenByDescending(f => f.FiscalYear),
-            SectorLabel = company.Sector.ToString().Replace("_", " "),
+            VolumeHistory = _companies.GetVolumeHistory(company.Id),
+            SectorLabel = company.Sector?.ToString().Replace("_", " ") ?? "â€”",
             IndustryLabel = company.Industry.HasValue
                 ? company.Industry.Value.ToString().Replace("_", " ")
-                : "—",
+                : "â€”",
             SubIndustryLabel = company.GicsSubIndustry.HasValue
                 ? company.GicsSubIndustry.Value.ToString().Replace("_SUB", "").Replace("_", " ")
-                : "—"
+                : "â€”"
         };
         return View(vm);
+    }
+
+    // Ingest this company's weekly volume history from Yahoo (range=max) and store it (clear-reinsert).
+    // Synchronous â€” one Yahoo call + a bulk write, fast enough to skip the detached backfill machinery
+    // the all-company runs use. Needs no API key (Yahoo's chart endpoint is unauthenticated). Returns
+    // the fresh series so the Details page re-renders the chart in place without a full reload.
+    [HttpPost, Route("{id:long}/ingest-volume", Name = "CompanyIngestVolume"), ValidateAntiForgeryToken]
+    public async Task<IActionResult> IngestVolume(long id)
+    {
+        var result = await _provisioning.IngestWeeklyVolumeAsync(id);
+        switch (result.Status)
+        {
+            case VolumeIngestStatus.CompanyNotFound:
+                return NotFound();
+            case VolumeIngestStatus.NoTicker:
+                return UnprocessableEntity("No SEC ticker for this company â€” Yahoo volume is US-listed only.");
+            case VolumeIngestStatus.NoData:
+                return UnprocessableEntity("Yahoo returned no volume data for this ticker.");
+        }
+
+        var series = _companies.GetVolumeHistory(id)
+            .Select(v => new { w = v.WeekStart.ToString("yyyy-MM-dd"), v = v.Volume });
+        return Json(new { count = result.RowCount, series });
     }
 
     // Named route: both this MVC controller and the API CompaniesController have a "Create"
@@ -99,7 +125,7 @@ public class CompaniesController : Controller
         return View(new CompanyCreateModel());
     }
 
-    // Prefill the create form from FMP by ticker. Does not save — returns the Create view with
+    // Prefill the create form from FMP by ticker. Does not save â€” returns the Create view with
     // the mapped model so the user reviews/edits before submitting the normal Create POST.
     [HttpPost, Route("fetch"), ValidateAntiForgeryToken]
     public async Task<IActionResult> Fetch(string? symbol)
@@ -124,7 +150,7 @@ public class CompaniesController : Controller
         // than the AJAX popup the keyed buttons get.
         catch (MissingApiKeyException ex)
         {
-            ModelState.AddModelError("", $"{ex.Message}. Add your FMP API key under Profile ▸ API Keys, then try again.");
+            ModelState.AddModelError("", $"{ex.Message}. Add your FMP API key under Profile â–¸ API Keys, then try again.");
             return View("Create", new CompanyCreateModel());
         }
 
@@ -153,7 +179,7 @@ public class CompaniesController : Controller
         if (!string.IsNullOrWhiteSpace(model.Symbol))
         {
             try { _companies.ReplaceFinancials(entity.Id, await _financials.BuildAsync(entity.Id, model.Symbol)); }
-            catch (Exception ex) when (ex is HttpRequestException or MissingApiKeyException) { /* financials unavailable — company still created */ }
+            catch (Exception ex) when (ex is HttpRequestException or MissingApiKeyException) { /* financials unavailable â€” company still created */ }
         }
         // Private company with an AI-estimated revenue: store it as a single CLAUDE_ESTIMATED history
         // row so the Details matrix shows it clearly flagged as an estimate (not reported API data).
@@ -173,7 +199,7 @@ public class CompaniesController : Controller
     }
 
     // Prefill the create form for a PRIVATE company (no ticker) from a web-search profile. Like Fetch,
-    // it saves nothing — the user reviews the AI-estimated fields before submitting the Create POST.
+    // it saves nothing â€” the user reviews the AI-estimated fields before submitting the Create POST.
     [HttpPost, Route("discover-private"), ValidateAntiForgeryToken]
     public async Task<IActionResult> DiscoverPrivate(string? name)
     {
@@ -197,7 +223,7 @@ public class CompaniesController : Controller
         // No Perplexity key on this account: full-page form, so guide inline.
         catch (MissingApiKeyException ex)
         {
-            ModelState.AddModelError("", $"{ex.Message}. Add your Perplexity API key under Profile ▸ API Keys, then try again.");
+            ModelState.AddModelError("", $"{ex.Message}. Add your Perplexity API key under Profile â–¸ API Keys, then try again.");
             return View("Create", new CompanyCreateModel { Type = CompanyType.PRIVATE, Name = companyName });
         }
 
@@ -210,7 +236,7 @@ public class CompaniesController : Controller
         var draft = await _provisioning.BuildPrivateAsync(result, companyName);
         if (draft.CountryLabel != null) ViewBag.CountryLabel = draft.CountryLabel;
         ViewBag.Fetched = true;
-        ViewBag.FetchNote = "Profile and financials are AI-estimated from web search — review before saving.";
+        ViewBag.FetchNote = "Profile and financials are AI-estimated from web search â€” review before saving.";
         return View("Create", draft.Model);
     }
 
@@ -218,7 +244,7 @@ public class CompaniesController : Controller
     // place (the Details "RE-DISCOVER" button). Detached: the ~90s sonar-pro call + LLM industry +
     // country lookup run on a background task with a fresh DI scope (the request-scoped DbContext is
     // gone once this returns), so a slow/unreliable web search can't time out the request. Returns a
-    // job id the bottom-right widget polls. Public companies are rejected — they have a ticker.
+    // job id the bottom-right widget polls. Public companies are rejected â€” they have a ticker.
     [HttpPost, Route("{id:long}/rediscover", Name = "CompanyRediscover"), ValidateAntiForgeryToken]
     public async Task<IActionResult> Rediscover(long id)
     {
@@ -247,24 +273,24 @@ public class CompaniesController : Controller
                 var company = companies.GetById(job.CompanyId);
                 if (company is null) { job.Status = ScanJobStatus.Error; job.Error = "Company no longer exists."; return; }
 
-                job.Progress = "Searching the web with sonar-pro…";
+                job.Progress = "Searching the web with sonar-proâ€¦";
                 var result = await discovery.DiscoverAsync(company.Name);
                 if (result is null) { job.Status = ScanJobStatus.Error; job.Error = "No profile found from web search."; return; }
 
-                job.Progress = "Mapping sector / industry / country…";
+                job.Progress = "Mapping sector / industry / countryâ€¦";
                 var model = (await provisioning.BuildPrivateAsync(result, company.Name)).Model;
 
-                // Park the proposal for the user to judge in the widget — DO NOT save yet. ACCEPT applies
+                // Park the proposal for the user to judge in the widget â€” DO NOT save yet. ACCEPT applies
                 // this; REJECT dismisses it. Summarise proposed-vs-current so the verdict is informed.
-                static string B(double? v) => v is { } x ? "$" + (x / 1e9).ToString("F2") + "B" : "—";
-                static string P(double? v) => v is { } x ? (x * 100).ToString("0.#") + "%" : "—";
+                static string B(double? v) => v is { } x ? "$" + (x / 1e9).ToString("F2") + "B" : "â€”";
+                static string P(double? v) => v is { } x ? (x * 100).ToString("0.#") + "%" : "â€”";
                 var yr = model.AsOf?.Year;
                 job.Proposed = model;
                 job.Sources = result.Sources;
                 job.Result =
                     $"Proposed: rev {B(model.RevenueTotal)}{(yr is { } y ? $" (FY{y})" : "")}, margin {P(model.GrossMargin)}, " +
                     $"valuation {B(model.MarketCap)}, " +
-                    $"{model.Sector.ToString().Replace('_', ' ')}{(model.Industry is { } ind ? " / " + ind.ToString().Replace('_', ' ') : "")}. " +
+                    $"{model.Sector?.ToString().Replace('_', ' ') ?? "Unclassified"}{(model.Industry is { } ind ? " / " + ind.ToString().Replace('_', ' ') : "")}. " +
                     $"Current: rev {B(company.RevenueTotal)}, margin {P(company.GrossMargin)}, valuation {B(company.MarketCap)}.";
 
                 job.Progress = "";
@@ -286,13 +312,13 @@ public class CompaniesController : Controller
     }
 
     // ACCEPT a finished re-discovery from the widget: apply its parked proposal to the company and save.
-    // Idempotent. REJECT has no endpoint — the widget just dismisses the job (nothing was written).
+    // Idempotent. REJECT has no endpoint â€” the widget just dismisses the job (nothing was written).
     [HttpPost, Route("rediscover/{jobId}/accept", Name = "CompanyRediscoverAccept"), ValidateAntiForgeryToken]
     public IActionResult AcceptRediscover(string jobId)
     {
         var job = _rediscoverJobs.Get(jobId);
         if (job?.Proposed is null) return NotFound();
-        if (job.Applied) return Ok();   // already accepted — no-op
+        if (job.Applied) return Ok();   // already accepted â€” no-op
 
         var company = _companies.GetById(job.CompanyId);
         if (company is null) return NotFound();
@@ -322,7 +348,7 @@ public class CompaniesController : Controller
         return Ok();
     }
 
-    // Backfill #1 — real financial history + profile refresh from FMP/Yahoo. Runs DETACHED so the page
+    // Backfill #1 â€” real financial history + profile refresh from FMP/Yahoo. Runs DETACHED so the page
     // can show live per-company progress and Cancel can stop it. Returns the job id to poll.
     [HttpPost, Route("backfill/financials"), ValidateAntiForgeryToken]
     public async Task<IActionResult> BackfillFinancials()
@@ -334,7 +360,7 @@ public class CompaniesController : Controller
         return Json(new { jobId = job.Id });
     }
 
-    // Backfill #2 — resolve missing GICS sub-industries (cheap LLM, cache-deduped). Same detached
+    // Backfill #2 â€” resolve missing GICS sub-industries (cheap LLM, cache-deduped). Same detached
     // progress/cancel machinery; Cancel aborts the in-flight LLM call.
     [HttpPost, Route("backfill/industries"), ValidateAntiForgeryToken]
     public async Task<IActionResult> BackfillIndustries()
@@ -346,8 +372,88 @@ public class CompaniesController : Controller
         return Json(new { jobId = job.Id });
     }
 
+    // Backfill #3 â€” assign CIKs to US companies missing one (FMP returns null for some US filers). Pure
+    // SEC name match: fast and quota-free, but reuses the same detached job/progress machinery for a
+    // consistent popup. No FMP/LLM keys needed, so none are captured.
+    [HttpPost, Route("backfill/ciks"), ValidateAntiForgeryToken]
+    public async Task<IActionResult> BackfillCiks()
+    {
+        var keys = await _keys.GetAsync();
+        var job = new BackfillJob();
+        _backfillJobs.Add(job);
+        RunBackfillDetached(job.Id, keys, (svc, p, ct) => svc.BackfillCiksAsync(p, ct));
+        return Json(new { jobId = job.Id });
+    }
+
+    // The classification review: EVERY active company with its raw FMP label beside the resolved
+    // Sector/Industry/Sub, so a human can catch a confident mis-fit (which is marked "Resolved" and never
+    // shows on the Unclassified list). Rows whose FMP label resolved to >1 distinct sub-industry across
+    // the book are flagged (ambiguous/colliding label â€” the cache can't disambiguate it). Flagged first,
+    // then by sector. Filter client-side (All / Unclassified / Flagged); per-row Resolve-with-AI + Edit.
+    [AllowAnonymous]
+    [HttpGet, Route("classification")]
+    public IActionResult Classification()
+    {
+        var all = _companies.GetAll().ToList();
+
+        // A normalized FMP label that resolved to more than one distinct sub-industry is ambiguous/colliding.
+        var ambiguous = all
+            .Where(c => c.GicsSubIndustry != null && !string.IsNullOrWhiteSpace(c.FmpIndustry))
+            .GroupBy(c => IFmpIndustryMappingRepository.Normalize(c.FmpIndustry!))
+            .Where(g => g.Select(c => c.GicsSubIndustry).Distinct().Count() > 1)
+            .Select(g => g.Key)
+            .ToHashSet();
+
+        var rows = all.Select(c => new ClassificationRow(
+                c.Id, c.Name, c.FmpIndustry,
+                c.Sector?.ToString().Replace("_", " ") ?? "â€”",
+                c.Industry?.ToString().Replace("_", " ") ?? "â€”",
+                c.GicsSubIndustry?.ToString().Replace("_SUB", "").Replace("_", " ") ?? "â€”",
+                c.ClassifyStatus, c.ClassificationLocked,
+                Flagged: c.GicsSubIndustry != null && !string.IsNullOrWhiteSpace(c.FmpIndustry)
+                         && ambiguous.Contains(IFmpIndustryMappingRepository.Normalize(c.FmpIndustry!)),
+                Resolved: c.GicsSubIndustry != null))
+            .OrderByDescending(r => r.Flagged)
+            .ThenBy(r => r.Sector)
+            .ThenBy(r => r.Name)
+            .ToList();
+
+        return View(rows);
+    }
+
+    // The Unclassified report: every active company without a resolved GICS sub-industry, NoFit first
+    // (the genuine misses the backfill flagged) then Pending. Each row offers a "Resolve with AI" action.
+    [AllowAnonymous]
+    [HttpGet, Route("unclassified")]
+    public IActionResult Unclassified() =>
+        View(_companies.GetAll()
+            .Where(c => c.GicsSubIndustry == null)
+            .OrderByDescending(c => c.ClassifyStatus == ClassifyStatus.NoFit)
+            .ThenBy(c => c.Name)
+            .ToList());
+
+    // On-demand AI re-resolve of one company (the "Resolve with AI" button). Runs inline on the user's
+    // own keys (FMP label fetch + the cheap classifier); the classifier swallows a missing key and just
+    // returns null, so a key-less account sees "couldn't place" rather than an error. Returns the fresh
+    // classification so the row updates in place.
+    [HttpPost, Route("{id:long}/reclassify"), ValidateAntiForgeryToken]
+    public async Task<IActionResult> Reclassify(long id)
+    {
+        var sub = await _provisioning.ReclassifyAsync(id);
+        var c = _companies.GetById(id);
+        if (c is null) return NotFound();
+        return Json(new
+        {
+            resolved = sub != null,
+            status = c.ClassifyStatus.ToString(),
+            sector = c.Sector?.ToString().Replace('_', ' '),
+            industry = c.Industry?.ToString().Replace('_', ' '),
+            subIndustry = sub?.ToString().Replace("_SUB", "").Replace('_', ' ')
+        });
+    }
+
     // Poll one backfill job: returns the progress lines the browser hasn't seen yet (sliced from `since`),
-    // the new cursor, and — once done — the final summary for the results popup.
+    // the new cursor, and â€” once done â€” the final summary for the results popup.
     [HttpGet, Route("backfill/{id}/status")]
     public IActionResult BackfillStatus(string id, int since = 0)
     {
@@ -391,7 +497,7 @@ public class CompaniesController : Controller
             var sp = scope.ServiceProvider;
             sp.GetRequiredService<IUserApiKeyProvider>().Set(keys);
             var provisioning = sp.GetRequiredService<ICompanyProvisioningService>();
-            var jobs = sp.GetRequiredService<BackfillJobStore>();   // singleton — same instance the poll reads
+            var jobs = sp.GetRequiredService<BackfillJobStore>();   // singleton â€” same instance the poll reads
             var job = jobs.Get(jobId);
             if (job is null) return;
 
@@ -401,7 +507,7 @@ public class CompaniesController : Controller
                 job.Result = await run(provisioning, progress, job.Cts.Token);
             }
             catch (HttpRequestException) { job.Error = "SEC ticker map is unreachable. Try again."; }
-            catch (OperationCanceledException) { /* cancelled before any partial result — just mark done */ }
+            catch (OperationCanceledException) { /* cancelled before any partial result â€” just mark done */ }
             catch (Exception ex) { job.Error = ex.Message; }
             finally { job.Done = true; }
         });
@@ -427,8 +533,16 @@ public class CompaniesController : Controller
         var ok = await TryUpdateModelAsync(model);
         if (!ok || !ModelState.IsValid) { PopulateDropdowns(); ViewBag.CountryLabel = entity.Country?.Name; return View("Edit", model); }
 
+        // If the human changed the sub-industry, the row's FMP label produced a wrong/ambiguous cached
+        // mapping â€” forget it so it can't keep mis-classifying other companies that share the label.
+        var subChanged = entity.GicsSubIndustry != model.GicsSubIndustry;
+        var oldLabel = entity.FmpIndustry;
+
         ApplyEdit(entity, model);
         _companies.Update(entity);
+
+        if (subChanged && !string.IsNullOrWhiteSpace(oldLabel))
+            _mappings.Remove(oldLabel);
         return RedirectToAction(nameof(Index));
     }
 
@@ -467,10 +581,20 @@ public class CompaniesController : Controller
 
     private void PopulateDropdowns()
     {
+        // Leading blank = unclassified (Sector is nullable). Lets a user clear a wrong sector and leave
+        // the AI/backfill to re-resolve it.
         ViewBag.Sectors = Enum.GetValues<Sector>()
-            .Select(s => new SelectListItem(s.ToString().Replace("_", " "), s.ToString())).ToList();
+            .Select(s => new SelectListItem(s.ToString().Replace("_", " "), s.ToString()))
+            .Prepend(new SelectListItem("â€” Unclassified â€”", "")).ToList();
         ViewBag.Industries = Enum.GetValues<GicsIndustry>()
             .Select(i => new SelectListItem(i.ToString().Replace("_", " "), i.ToString())).ToList();
+        // The finest tier. Grouped by sector so the long list is navigable; the option text drops the
+        // _SUB disambiguator suffix. Leading blank = leave unresolved (the backfill/AI fills it).
+        ViewBag.SubIndustries = Enum.GetValues<GicsSubIndustry>()
+            .Select(s => new SelectListItem(
+                $"{s.GetSector().ToString().Replace("_", " ")} Â· {s.ToString().Replace("_SUB", "").Replace("_", " ")}",
+                s.ToString()))
+            .Prepend(new SelectListItem("â€” Unresolved â€”", "")).ToList();
     }
 
     private static CompanyEditModel ToEditModel(Company c) => new()
@@ -482,6 +606,8 @@ public class CompaniesController : Controller
         CountryId = c.CountryId,
         Sector = c.Sector,
         Industry = c.Industry,
+        GicsSubIndustry = c.GicsSubIndustry,
+        ClassificationLocked = c.ClassificationLocked,
         RevenueTotal = c.RevenueTotal,
         GrossMargin = c.GrossMargin,
         MarketCap = c.MarketCap,
@@ -495,8 +621,21 @@ public class CompaniesController : Controller
         c.Cik = m.Cik;
         c.Type = m.Type;
         c.CountryId = m.CountryId;
-        c.Sector = m.Sector;
-        c.Industry = m.Industry;
+        // The sub-industry is the finest tier and is authoritative: when set, Industry + Sector roll up
+        // from it (ignoring the coarser dropdowns) so the row stays self-consistent. When cleared, fall
+        // back to the explicit Sector/Industry the user picked.
+        c.GicsSubIndustry = m.GicsSubIndustry;
+        if (m.GicsSubIndustry is { } sub)
+        {
+            c.Industry = sub.GetIndustry();
+            c.Sector = sub.GetSector();
+        }
+        else
+        {
+            c.Sector = m.Sector;
+            c.Industry = m.Industry;
+        }
+        c.ClassificationLocked = m.ClassificationLocked;
         c.RevenueTotal = m.RevenueTotal;
         c.GrossMargin = m.GrossMargin;
         c.MarketCap = m.MarketCap;

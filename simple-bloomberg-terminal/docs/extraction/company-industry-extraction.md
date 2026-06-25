@@ -92,34 +92,39 @@ Importing an index (SPDR / Wikipedia) can provision hundreds of companies, so th
 **Backfill** — two independent sweeps on the Companies page, each its own button + service method, both
 sharing the detached-job / live-progress / cancel machinery:
 
-- **Backfill financials** (`BackfillFinancialsAsync`) — FMP-bound: for companies without FMP financials
-  yet, re-fetch the profile (via the shared `BuildFromTickerAsync` kernel) + dated financial history
-  (Yahoo fallback). Because it runs the full kernel, it *incidentally* captures the raw `FmpIndustry`
-  label (and resolves the sub-industry) and merges it in via `CompanyMapper.Apply` — but with `??`
-  semantics, so it only **fills** a null industry, never **overwrites** an existing one. Stops cleanly
-  on the FMP daily 429 so a re-run tomorrow resumes. This is the path that gives label-less rows a label.
-- **Resolve industries** (`BackfillIndustriesAsync`) — LLM-bound: the sub-industry sweep described below.
+- **Backfill financials** (`BackfillFinancialsAsync`) — FMP-bound, the **expensive** sweep: for companies
+  without FMP financials yet, re-fetch the profile + dated financial history (Yahoo fallback) — ~5 FMP
+  calls/company (profile + four statement endpoints). Stops cleanly on the FMP daily 429 so a re-run
+  tomorrow resumes.
+- **Resolve industries** (`BackfillIndustriesAsync`) — the **call-cheap, higher-priority** sweep,
+  self-contained per company (below).
 
-The industries sweep resolves the sub-industry for every company that still lacks one **and already
-carries an FMP label** (`GicsSubIndustry == null && FmpIndustry != null`). It is **purely LLM-bound** —
-it makes **no FMP call at all**, so it can neither hit nor be stopped by the FMP daily quota. One step
-per company: resolve label → sub-industry (cache, else cheap LLM) → roll up to `Industry`.
+The industries sweep resolves the sub-industry for every company still missing one
+(`GicsSubIndustry == null`), and gets its **own** label so it never depends on the financials backfill.
+Per company, two steps:
 
-Label-less rows are skipped **on purpose**: acquiring a label needs an FMP profile fetch, and once the
-FMP quota is reached those fetches fail — resolving such rows from name + sector alone produced weak,
-quota-blind guesses. So labels are captured upstream (provision, New Company fetch, or the financials
-backfill above) and this sweep only classifies rows that already have one.
+1. **Ensure a label** — if `FmpIndustry` is null, fetch the FMP **profile** (one call) and store it.
+2. **Resolve** — label → GICS sub-industry (cache, else cheap LLM) → roll up to `Industry`.
+
+So a previously-unclassified company costs **one FMP profile call + one LLM call** (or zero FMP if the
+label is already stored, and zero LLM if the label is already in the cache) — far cheaper than routing
+through the ~5-call financials backfill. Industry is ranked above financials, so this is the sweep to run
+first when FMP quota is scarce.
+
+A company we can't get a label for — no SEC ticker, or the FMP daily quota is already spent — is
+**skipped**, not weak-guessed from name + sector (those guesses were poor and quota-blind). On the 429
+the sweep stops fetching *new* labels but keeps resolving rows that already carry one (cache/stored
+labels need no FMP call); the summary reports how many were skipped so a re-run tomorrow can finish them.
 
 Backfill runs **detached** with live progress: the page polls a status endpoint and streams one line
 per company as it resolves; the Close button cancels the run (the token aborts the in-flight LLM
 request and stops the loop, keeping whatever resolved so far).
 
-> Note: the Backfill key is `GicsSubIndustry == null && FmpIndustry != null`. Because `GicsSubIndustry`
-> is a new column (null on every existing row), the first Backfill processes **all** labelled companies
-> lacking a sub-industry — not only the previously-unclassified ones — and **overwrites** the existing
-> `Industry` with the rollup of the newly-resolved sub-industry. A wrong stored `Sector` still
-> constrains the candidate list, so a mislabelled-sector company may resolve to "no fit" until its
-> sector is corrected.
+> Note: the Backfill key is `GicsSubIndustry == null`. Because that column is new (null on every existing
+> row), the first run processes **all** companies lacking a sub-industry — not only the previously-shown-as
+> -unclassified ones — and **overwrites** the existing `Industry` with the rollup of the newly-resolved
+> sub-industry. A wrong stored `Sector` still constrains the candidate list, so a mislabelled-sector
+> company may resolve to "no fit" until its sector is corrected.
 
 ---
 

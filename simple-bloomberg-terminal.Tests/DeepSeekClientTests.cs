@@ -1,14 +1,13 @@
-using System.Net;
+﻿using System.Net;
 using System.Text.Json;
 using Microsoft.Extensions.Configuration;
-using simple_bloomberg_terminal.Services;
 
 namespace simple_bloomberg_terminal.Tests;
 
 /// <summary>
 /// Integration tests for the DeepSeek call layer: the real <see cref="DeepSeekClient"/> against a
-/// scripted HTTP handler. Covers what's fragile — the snake_case request shaping, the json_object
-/// toggle, the choices→content envelope, and the streaming split of reasoning vs answer SSE frames.
+/// scripted HTTP handler. Covers what's fragile â€” the snake_case request shaping, the json_object
+/// toggle, the choicesâ†’content envelope, and the streaming split of reasoning vs answer SSE frames.
 /// </summary>
 public class DeepSeekClientTests
 {
@@ -55,7 +54,7 @@ public class DeepSeekClientTests
 
         Assert.Equal("plain", answer);
         // response_format has no JsonIgnore, so without jsonObject it serializes present-but-null
-        // (never "json_object") — that null is what tells DeepSeek to return free-form text.
+        // (never "json_object") â€” that null is what tells DeepSeek to return free-form text.
         using var doc = JsonDocument.Parse(handler.Single().Body);
         Assert.Equal(JsonValueKind.Null, doc.RootElement.GetProperty("response_format").ValueKind);
     }
@@ -93,7 +92,7 @@ public class DeepSeekClientTests
     public async Task StreamAsync_SplitsReasoningAndText_InOrder_IgnoringRoleOnlyFrame()
     {
         // A role-only opening frame (no content), then a thinking-trace frame, then two answer frames,
-        // then the terminator — exactly the v4 streaming shape the chat UI renders live.
+        // then the terminator â€” exactly the v4 streaming shape the chat UI renders live.
         const string sse =
             "data: {\"choices\":[{\"delta\":{\"role\":\"assistant\"}}]}\n\n" +
             "data: {\"choices\":[{\"delta\":{\"reasoning_content\":\"hmm\"}}]}\n\n" +

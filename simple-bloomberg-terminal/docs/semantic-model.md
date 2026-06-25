@@ -9,6 +9,7 @@
 | Countries | Country | Core geographic/economic entity |
 | Companies | Company | Corporation linked to a country |
 | CompanyFinancials | CompanyFinancial | Dated per-fiscal-period financial history for a Company (time series) |
+| CompanyVolumeHistories | CompanyVolumeHistory | Weekly trading-volume history per Company, backfilled from Yahoo Finance's chart endpoint (price-feed time series) |
 | Events | Event | Market event (earnings, sanctions, etc.) |
 | TradeBlocs | TradeBloc | Economic bloc (EU, NAFTA, etc.) |
 | CountryDetails | CountryDetails | 1:1 extended profile for a Country |
@@ -53,7 +54,9 @@
 | Id | long | PK |
 | Name | string | |
 | CountryId | long | FK → Countries |
-| Sector | Sector | GICS sector enum |
+| Sector | Sector? | GICS sector enum; **nullable** — NULL = unclassified. (A non-nullable `Sector` silently defaulted to ordinal 0 / ENERGY, making any company born without a sector look like an energy company; NULL can't masquerade as a real sector. The Sector ordinals are frozen — IoCore maps them to BEA matrix rows — so "unclassified" can't be a new enum member.) |
+| ClassifyStatus | ClassifyStatus | Where this row sits in the GICS sub-industry classification pipeline (Pending → Resolved \| NoFit); default Pending. Drives the "Unclassified" report and the AI re-resolve flow |
+| ClassificationLocked | bool | When true a human has pinned the GICS classification; the auto-backfill and the AI re-resolve must never overwrite it. Set when someone corrects the sub-industry by hand, so a vendor-label mis-fit (the cache can't disambiguate two companies sharing one label) stays corrected. Default false. Migration: `20260625141310_AddClassificationLocked` |
 | FmpIndustry | string? | Raw vendor (FMP/sonar) industry label, stored verbatim (nullable `longtext`) — the finest, source-of-truth tier; kept so industry can be re-resolved without re-fetching FMP and as the LLM's strongest signal |
 | GicsSubIndustry | GicsSubIndustry? | GICS 163-tier sub-industry, LLM-reasoned from `FmpIndustry`; stored as nullable int |
 | Industry | GicsIndustry? | GICS 74-tier industry enum; now a **denormalized rollup** of `GicsSubIndustry` (via `GicsSubIndustry.GetIndustry()`), cached for cheap querying |
@@ -65,7 +68,7 @@
 | Type | CompanyType | PUBLIC (ticker-backed, real FMP/Yahoo data) / PRIVATE (no ticker, profile + estimated financials from web search); default PUBLIC |
 | DeletedAt | DateTime? | Soft-delete timestamp |
 
-Nav: `Financials` (ICollection<CompanyFinancial>) — the dated per-period history; Company itself keeps only the latest denormalized snapshot.
+Nav: `Financials` (ICollection<CompanyFinancial>) — the dated per-period history; Company itself keeps only the latest denormalized snapshot. `VolumeHistory` (ICollection<CompanyVolumeHistory>) — the weekly trading-volume time series.
 
 ### CompanyFinancial
 | Property | Type | Notes |
@@ -97,6 +100,17 @@ Nav: `Financials` (ICollection<CompanyFinancial>) — the dated per-period histo
 | DeletedAt | DateTime? | Soft-delete timestamp |
 
 Dated per-fiscal-period financial time series for a Company (Company holds only the latest denormalized snapshot). Unique index on `(CompanyId, FiscalYear, Period)`. Source = FMP for US filers (full data); YAHOO for non-US fallback (only Revenue + NetIncome, annual).
+
+### CompanyVolumeHistory
+| Property | Type | Notes |
+|---|---|---|
+| Id | long | PK |
+| CompanyId | long | FK → Companies (cascade delete) |
+| WeekStart | DateOnly | Monday of the week the volume bar covers |
+| Volume | long | Shares traded that week (`long`; large-cap weeks exceed `int.MaxValue`) |
+| CapturedAt | DateTime | |
+
+Weekly trading-volume time series per Company, backfilled from Yahoo Finance's chart endpoint (`/v8/finance/chart?interval=1wk&range=max`) — the price-feed series powering the multi-year volume graph (distinct from CompanyFinancial's fiscal-period fundamentals). Unique index on `(CompanyId, WeekStart)` — the upsert key; re-fetching refreshes rows in place instead of duplicating. No soft-delete `DeletedAt` (the importer clears-and-reinserts). Migration: `20260624140324_AddCompanyVolumeHistory`.
 
 ### Event
 | Property | Type | Notes |
@@ -338,6 +352,7 @@ Note: Country.Advantages / Country.Challenges / Country.GdpHistory nav props exi
       CountryDetails.Advantages / .Challenges / .GdpHistory are the same rows via a different path.
 
 Company ──────────────── CompanyFinancial   (1:N, FK CompanyId, Cascade — nav: Financials)
+Company ──────────────── CompanyVolumeHistory (1:N, FK CompanyId, Cascade — nav: VolumeHistory)
 Company ──────────────── RevenueSource      (1:N, FK CompanyId — owner)
 Company ──────────────── CostSource         (1:N, FK CompanyId — owner)
 Company ──────────────── CompanyRisk        (1:N, FK CompanyId — owner)
@@ -376,6 +391,7 @@ AppUser ──────────────── CompanyRisk        (1:N
 |---|---|
 | Sector | ENERGY, MATERIALS, FINANCIALS, INFORMATION_TECHNOLOGY, … (11 total) |
 | CompanyType | PUBLIC, PRIVATE |
+| ClassifyStatus | Pending (default, not yet classified), Resolved (a GICS sub-industry was assigned), NoFit (classifier ran constrained then unconstrained and still found no fitting sub-industry); tracks where a Company sits in the GICS sub-industry classification pipeline |
 | GicsIndustry | SOFTWARE, AUTOMOBILES, SEMICONDUCTORS…, … (74 total); each value rolls up to one Sector |
 | GicsSubIndustry | GICS 2023 sub-industry (163 total); each value rolls up to exactly one GicsIndustry via `GicsSubIndustryExtensions.GetIndustry()` (and one Sector via `.GetSector()`) |
 | EventType | EARNINGS, CENTRAL_BANK, MACRO_DATA, TRADE_DEAL, SANCTIONS, … |

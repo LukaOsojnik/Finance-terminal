@@ -138,7 +138,7 @@
                         </tr>
                         <tr>
                             <td class="tag-cell">Sector</td>
-                            <td class="tag-cell">@Model.RelatedCompany.Sector.ToString().Replace("_", " ")</td>
+                            <td class="tag-cell">@(Model.RelatedCompany.Sector?.ToString().Replace("_", " ") ?? "—")</td>
                         </tr>
                         <tr>
                             <td class="tag-cell"></td>

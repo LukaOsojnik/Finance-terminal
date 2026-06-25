@@ -1,0 +1,129 @@
+@using simple_bloomberg_terminal.Models.Enums
+@using simple_bloomberg_terminal.Models.ViewModels
+@model IReadOnlyList<ClassificationRow>
+@{
+    ViewData["Title"] = "Classification Review";
+    var flagged = Model.Count(r => r.Flagged);
+    var unresolved = Model.Count(r => !r.Resolved);
+}
+
+<div class="page-header">
+    <h2><span class="page-header-accent">//</span> Classification Review</h2>
+    <div class="page-subtitle">SOURCE LABEL vs RESOLVED GICS — SPOT &amp; FIX MIS-FITS</div>
+</div>
+
+@Html.AntiForgeryToken()
+
+<div class="d-flex" style="margin-bottom:1rem; gap:0.75rem; align-items:center; flex-wrap:wrap;">
+    <a asp-action="Index" class="btn btn-secondary">← ALL COMPANIES</a>
+    <div class="type-filter" style="display:flex; gap:0.4rem;">
+        <button type="button" class="btn btn-sm btn-primary" data-filter="all">ALL (@Model.Count)</button>
+        <button type="button" class="btn btn-sm btn-secondary" data-filter="unclassified">UNCLASSIFIED (@unresolved)</button>
+        <button type="button" class="btn btn-sm btn-secondary" data-filter="flagged">⚑ FLAGGED (@flagged)</button>
+    </div>
+    <div class="muted-cell" style="margin-left:auto;">⚑ = label resolved to more than one sub-industry (ambiguous)</div>
+</div>
+
+<table class="terminal-table">
+    <thead>
+        <tr>
+            <th>Name</th>
+            <th>Source Label</th>
+            <th>Sector</th>
+            <th>Industry</th>
+            <th>Sub-Industry</th>
+            <th></th>
+        </tr>
+    </thead>
+    <tbody id="cls-body">
+        @foreach (var r in Model)
+        {
+            <tr data-company-id="@r.Id" data-resolved="@r.Resolved.ToString().ToLowerInvariant()" data-flagged="@r.Flagged.ToString().ToLowerInvariant()">
+                <td class="name-cell" style="font-weight:500;">
+                    @if (r.Flagged) { <span title="Ambiguous label — verify">⚑ </span> }
+                    <a asp-action="Details" asp-route-id="@r.Id" class="btn-detail" style="padding:0; border:none; background:none;">@r.Name</a>
+                    @if (r.Locked) { <span class="type-badge type-private" title="Classification locked">🔒</span> }
+                </td>
+                <td class="muted-cell" style="font-size:0.75rem;">@(string.IsNullOrWhiteSpace(r.Label) ? "—" : r.Label)</td>
+                <td class="tag-cell js-sector">@r.Sector</td>
+                <td class="muted-cell js-industry" style="font-size:0.75rem;">@r.Industry</td>
+                <td class="tag-cell js-sub">@r.SubIndustry</td>
+                <td class="num-cell" style="white-space:nowrap;">
+                    @if (!r.Locked)
+                    {
+                        <button type="button" class="btn btn-outline-primary btn-sm js-reclassify"
+                                data-url="@Url.Action("Reclassify", new { id = r.Id })">✦ AI</button>
+                    }
+                    <a asp-action="Edit" asp-route-id="@r.Id" class="btn btn-outline-secondary btn-sm">EDIT</a>
+                </td>
+            </tr>
+        }
+    </tbody>
+</table>
+
+@section Scripts {
+<script>
+// Client-side filter (All / Unclassified / Flagged).
+(function () {
+    const tbody = document.getElementById('cls-body');
+    if (!tbody) return;
+    let active = 'all';
+    const apply = () => tbody.querySelectorAll('tr[data-company-id]').forEach(tr => {
+        const show = active === 'all'
+            || (active === 'unclassified' && tr.dataset.resolved === 'false')
+            || (active === 'flagged' && tr.dataset.flagged === 'true');
+        tr.style.display = show ? '' : 'none';
+    });
+    document.querySelectorAll('[data-filter]').forEach(b => b.addEventListener('click', () => {
+        active = b.dataset.filter;
+        document.querySelectorAll('[data-filter]').forEach(x => {
+            const on = x === b;
+            x.classList.toggle('btn-primary', on);
+            x.classList.toggle('btn-secondary', !on);
+        });
+        apply();
+    }));
+})();
+
+// Per-row "Resolve with AI": re-run the classifier and update the row's cells in place.
+(function () {
+    const token = () => document.querySelector('input[name="__RequestVerificationToken"]')?.value;
+    const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;' }[c]));
+    // Flash a cell to signal it changed (uses the accent token so it themes).
+    const flash = cell => {
+        cell.style.transition = 'background .15s ease';
+        cell.style.background = 'var(--accent-dim)';
+        setTimeout(() => { cell.style.background = ''; }, 900);
+    };
+    const setCell = (cell, val) => {
+        const next = esc(val ?? '—');
+        const changed = cell.textContent.trim() !== next;
+        cell.textContent = next;
+        if (changed) flash(cell);
+        return changed;
+    };
+    document.querySelectorAll('.js-reclassify').forEach(btn => btn.addEventListener('click', async () => {
+        const row = btn.closest('tr');
+        btn.disabled = true; btn.textContent = '…';
+        try {
+            const res = await fetch(btn.dataset.url, { method: 'POST', headers: { 'RequestVerificationToken': token() } });
+            if (!res.ok) throw new Error('HTTP ' + res.status);
+            const d = await res.json();
+            let changed = false;
+            if (d.resolved) {
+                if (setCell(row.querySelector('.js-sector'), d.sector)) changed = true;
+                if (setCell(row.querySelector('.js-industry'), d.industry)) changed = true;
+                if (setCell(row.querySelector('.js-sub'), d.subIndustry)) changed = true;
+                row.dataset.resolved = 'true';
+            }
+            // Feedback even when nothing changed, so a confirmed-correct row doesn't look like a dead button.
+            btn.disabled = false;
+            btn.textContent = changed ? '✦ AI' : (d.resolved ? '✓' : '— no fit');
+            if (!changed) setTimeout(() => { btn.textContent = '✦ AI'; }, 1500);
+        } catch (e) {
+            btn.disabled = false; btn.textContent = '⚠';
+        }
+    }));
+})();
+</script>
+}

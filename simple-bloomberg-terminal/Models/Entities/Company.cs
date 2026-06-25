@@ -6,7 +6,7 @@ namespace simple_bloomberg_terminal.Models.Entities;
 
 public class Company
 {
-    public Company(string name, long countryId, Sector sector)
+    public Company(string name, long countryId, Sector? sector)
     {
         Name = name;
         CountryId = countryId;
@@ -19,7 +19,21 @@ public class Company
     public string? Cik { get; set; }
     public CompanyType Type { get; set; } = CompanyType.PUBLIC;
     public long CountryId { get; set; }
-    public Sector Sector { get; set; }
+
+    // Nullable on purpose: NULL = unclassified. A non-nullable Sector defaulted to the enum's value 0
+    // (ENERGY), so any company born without a sector silently looked like an energy company. NULL can't
+    // masquerade as a real sector. (The Sector enum's ordinals are frozen — IoCore maps them to BEA
+    // matrix rows — so "unclassified" can't be a new enum member.)
+    public Sector? Sector { get; set; }
+
+    // Where this row sits in the GICS classification pipeline (Pending -> Resolved | NoFit). Drives the
+    // "Unclassified" report and the AI re-resolve flow.
+    public ClassifyStatus ClassifyStatus { get; set; } = ClassifyStatus.Pending;
+
+    // A human pinned this classification: the auto-backfill and the AI re-resolve must never overwrite it.
+    // Set when someone edits the GICS sub-industry by hand, so a vendor-label mis-fit (the cache can't
+    // disambiguate two companies sharing one label) stays corrected.
+    public bool ClassificationLocked { get; set; }
 
     // The raw vendor (FMP) industry label, stored verbatim — the finest, source-of-truth tier. Kept
     // so industry can be re-resolved later without re-fetching FMP, and as the LLM's strongest signal.
@@ -51,6 +65,9 @@ public class Company
 
     [InverseProperty("Company")]
     public virtual ICollection<CompanyFinancial> Financials { get; set; } = [];
+
+    [InverseProperty("Company")]
+    public virtual ICollection<CompanyVolumeHistory> VolumeHistory { get; set; } = [];
 
     [InverseProperty("RelatedCompany")]
     public virtual ICollection<RevenueSource> RevenueFromDependents { get; set; } = [];

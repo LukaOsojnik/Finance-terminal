@@ -16,6 +16,7 @@ public class AppDbContext : IdentityDbContext<AppUser>
     public DbSet<CostSource> CostSources { get; set; }
     public DbSet<CompanyRisk> CompanyRisks { get; set; }
     public DbSet<CompanyFinancial> CompanyFinancials { get; set; }
+    public DbSet<CompanyVolumeHistory> CompanyVolumeHistories { get; set; }
     public DbSet<CountryDetails> CountryDetails { get; set; }
     public DbSet<CountryAdvantage> CountryAdvantages { get; set; }
     public DbSet<CountryChallenge> CountryChallenges { get; set; }
@@ -91,6 +92,18 @@ public class AppDbContext : IdentityDbContext<AppUser>
             // One row per company per fiscal period — the upsert key. Re-fetching a company
             // refreshes these rows in place instead of duplicating history.
             e.HasIndex(f => new { f.CompanyId, f.FiscalYear, f.Period }).IsUnique();
+        });
+
+        modelBuilder.Entity<CompanyVolumeHistory>(e =>
+        {
+            e.HasOne(v => v.Company)
+                .WithMany(c => c.VolumeHistory)
+                .HasForeignKey(v => v.CompanyId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            // One row per company per week — the upsert key. Re-backfilling refreshes these rows
+            // in place instead of duplicating the time series.
+            e.HasIndex(v => new { v.CompanyId, v.WeekStart }).IsUnique();
         });
 
         modelBuilder.Entity<Filing>(e =>

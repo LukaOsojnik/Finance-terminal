@@ -13,7 +13,7 @@
             <span class="type-badge type-@company.Type.ToString().ToLowerInvariant()">@(company.Type == simple_bloomberg_terminal.Models.Enums.CompanyType.PRIVATE ? "PVT" : "PUB")</span>
         </td>
         <td class="tag-cell">@(company.Country?.Name ?? "—")</td>
-        <td class="tag-cell">@company.Sector</td>
+        <td class="tag-cell">@(company.Sector?.ToString().Replace("_", " ") ?? "—")</td>
         <td class="muted-cell" style="font-size:0.75rem;">@(company.Industry.HasValue ? company.Industry.Value.ToString().Replace("_", " ") : "—")</td>
         <td class="num-cell">@(company.RevenueTotal.HasValue ? $"${company.RevenueTotal.Value / 1e9:F0}B" : "—")</td>
         <td class="num-cell">

@@ -156,7 +156,7 @@
                             {
                                 <tr>
                                     <td class="name-cell">@co.Name</td>
-                                    <td class="tag-cell">@co.Sector.ToString().Replace("_", " ")</td>
+                                    <td class="tag-cell">@(co.Sector?.ToString().Replace("_", " ") ?? "—")</td>
                                     <td class="num-cell">
                                         @if (co.RevenueTotal.HasValue)
                                         {

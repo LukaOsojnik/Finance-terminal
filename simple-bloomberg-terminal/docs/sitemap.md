@@ -213,6 +213,20 @@
 
 ---
 
+## /companies/backfill/ciks
+
+| Field | Value |
+|---|---|
+| Controller | CompaniesController |
+| Action | BackfillCiks |
+| HTTP | POST |
+| Route source | `[Route("companies")]` + `[Route("backfill/ciks")]` (ValidateAntiForgeryToken) |
+| View | — (JSON `{ jobId }` — starts a detached background backfill job, no redirect; results render in the existing Companies/Index backfill popup) |
+| Parameters | — |
+| Notes | Sibling to `backfill/financials` and `backfill/industries`. Launches a detached `BackfillJob` (registered in the singleton in-memory `BackfillJobStore`) that assigns SEC CIKs to US companies missing one (FMP returns null for some US filers) by matching each company's name against the SEC ticker map — a fast, quota-free pure name match needing no FMP/LLM keys. Returns the `jobId` at once; the popup polls `backfill/{id}/status` for live per-company progress + the final summary, and the close button cancels via `backfill/{id}/cancel` |
+
+---
+
 ## /companies/{id}/profile
 
 | Field | Value |
@@ -236,6 +250,7 @@
 | Route source | `[Route("companies")]` + `[Route("{id:long}/edit")]` |
 | View | Views/Companies/Edit.cshtml |
 | Parameters | id: long (route, constrained); form fields (POST) |
+| Notes | The form exposes a GICS Sub-Industry select that is authoritative — when set, Industry + Sector roll up from it (the coarser Sector/Industry picks are ignored); cleared, they fall back to the explicit Sector/Industry. A "Lock classification" checkbox pins the row so the backfill/AI re-resolve leaves it alone. Changing the sub-industry forgets the row's cached FMP-label mapping so a wrong/ambiguous label can't keep mis-classifying others |
 
 ---
 
@@ -278,6 +293,62 @@
 | View | — (soft-delete; returns status codes, not a redirect) |
 | Parameters | id: long (route, constrained) |
 | Notes | Driven by fetch in site.js, so it returns 200 OK on success and 409 Conflict (with the blocking message) when active linked sources prevent deletion, rather than redirecting |
+
+---
+
+## /companies/{id}/ingest-volume
+
+| Field | Value |
+|---|---|
+| Controller | CompaniesController |
+| Action | IngestVolume |
+| HTTP | POST |
+| Route source | `[Route("companies")]` + `[Route("{id:long}/ingest-volume")]` (named route `CompanyIngestVolume`, Authorize, ValidateAntiForgeryToken) |
+| View | — (JSON `{ count, series }`) |
+| Parameters | id: long (route, constrained) |
+| Notes | Ingests the company's weekly trading-volume history from Yahoo Finance (range=max) and stores it, then returns the stored series. Triggered by the "INGEST VOLUME (YAHOO)" button on the Company Details page (Views/Companies/Details.cshtml) to populate the weekly volume graph next to the Financial Overview / COMPANY DATA card. Returns 404 when the company is not found; 422 when the company has no SEC ticker (non-US) or Yahoo returns no data |
+
+---
+
+## /companies/classification
+
+| Field | Value |
+|---|---|
+| Controller | CompaniesController |
+| Action | Classification |
+| HTTP | GET |
+| Route source | `[Route("companies")]` + `[Route("classification")]` (`[AllowAnonymous]`) |
+| View | Views/Companies/Classification.cshtml |
+| Parameters | — |
+| Notes | The classification review: a table of EVERY active company showing its raw FMP source label beside the resolved Sector / Industry / Sub-industry, so a human can catch a confident mis-fit (which is marked Resolved and never appears on `/companies/unclassified`). Rows whose normalized FMP label resolved to more than one distinct sub-industry across the book are flagged (ambiguous/colliding label the cache can't disambiguate); flagged rows sort first, then by sector then name. Renders `List<ClassificationRow>`. Client-side filters: All / Unclassified / Flagged. Each row offers a "✦ AI" re-resolve (POSTs to `/companies/{id}/reclassify`) and an EDIT link. Linked from the "⚑ CLASSIFICATION" link on the Companies index page (Views/Companies/Index.cshtml) — it replaced the old "⚑ UNCLASSIFIED" link, though `/companies/unclassified` still exists |
+
+---
+
+## /companies/unclassified
+
+| Field | Value |
+|---|---|
+| Controller | CompaniesController |
+| Action | Unclassified |
+| HTTP | GET |
+| Route source | `[Route("companies")]` + `[Route("unclassified")]` (`[AllowAnonymous]`) |
+| View | Views/Companies/Unclassified.cshtml |
+| Parameters | — |
+| Notes | The Unclassified report: lists every active company with no resolved GICS sub-industry, NoFit first (the genuine misses the backfill flagged) then Pending, sorted by name. Each row offers a "Resolve with AI" action that POSTs to `/companies/{id}/reclassify`. The Companies index page no longer links here directly (its "⚑ CLASSIFICATION" link now points at `/companies/classification`), but the route remains live |
+
+---
+
+## /companies/{id}/reclassify
+
+| Field | Value |
+|---|---|
+| Controller | CompaniesController |
+| Action | Reclassify |
+| HTTP | POST |
+| Route source | `[Route("companies")]` + `[Route("{id:long}/reclassify")]` (ValidateAntiForgeryToken) |
+| View | — (JSON `{ resolved, status, sector, industry, subIndustry }`) |
+| Parameters | id: long (route, constrained) |
+| Notes | On-demand AI re-resolve of one company's GICS sub-industry (the "Resolve with AI" button on the Unclassified page). Runs inline on the user's own keys (FMP label fetch + the cheap classifier); the classifier swallows a missing key and returns null, so a key-less account sees "couldn't place" rather than an error. Returns the fresh classification (AJAX, called from `/companies/unclassified`) so the row updates in place. Returns 404 when the company is not found |
 
 ---
 
