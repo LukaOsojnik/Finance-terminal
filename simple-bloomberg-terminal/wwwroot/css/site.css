@@ -345,11 +345,6 @@ a:hover { color: #fff; }
   font-size: 0.75rem;
 }
 
-/* Key/value tables (one label + one value per row, e.g. COMPANY DATA, COST LINE).
-   Unlike real numeric columns, a lone value shouldn't be flung to the far-right edge:
-   left-align every value so it sits next to its label, in line with the other rows. */
-.terminal-table.kv-table .num-cell { text-align: left; }
-
 /* ── Financial history matrix (metrics x periods) ── */
 .fin-history-toggle .btn.active { font-weight: 600; }
 .fin-matrix-scroll { overflow-x: auto; }

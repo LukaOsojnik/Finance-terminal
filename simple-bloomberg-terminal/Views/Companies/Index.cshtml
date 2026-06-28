@@ -28,16 +28,19 @@
     </div>
 </div>
 
-<table class="terminal-table">
+@* table-layout:fixed + explicit column widths: without it, auto-layout dumps all the
+   leftover width into the widest-content column (Name), leaving a big gap before the rest.
+   Fixed widths spread the columns evenly and wrap long names inside the Name cell. *@
+<table class="terminal-table" style="table-layout:fixed;">
     <thead>
         <tr>
-            <th>Name</th>
-            <th>Country</th>
-            <th>Sector</th>
-            <th>Industry</th>
-            <th style="text-align:right;">Revenue</th>
-            <th style="text-align:right;">Gross Margin</th>
-            <th></th>
+            <th style="width:26%;">Name</th>
+            <th style="width:12%;">Country</th>
+            <th style="width:14%;">Sector</th>
+            <th style="width:19%;">Industry</th>
+            <th style="width:11%; text-align:right;">Revenue</th>
+            <th style="width:12%; text-align:right;">Gross Margin</th>
+            <th style="width:6%;"></th>
         </tr>
     </thead>
     <tbody id="table-body">
