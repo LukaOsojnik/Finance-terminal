@@ -6,7 +6,7 @@ public class AdminUserRow
     public string Id { get; set; } = string.Empty;
     public string? Email { get; set; }
     public string? UserName { get; set; }
-    public string? ProfilePicturePath { get; set; }
+    public bool HasPicture { get; set; }
     public IList<string> Roles { get; set; } = new List<string>();
 }
 

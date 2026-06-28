@@ -17,3 +17,10 @@
 [21:24:51 INF] Microsoft.Hosting.Lifetime Hosting environment: Development
 [21:24:51 INF] Microsoft.Hosting.Lifetime Content root path: /Users/lukaosojnik/Documents/Coding/simple-bloomberg-terminal/simple-bloomberg-terminal
 [21:24:53 WRN] Microsoft.EntityFrameworkCore.Query Compiling a query which loads related collections for more than one collection navigation, either via 'Include' or through projection, but no 'QuerySplittingBehavior' has been configured. By default, Entity Framework will use 'QuerySplittingBehavior.SingleQuery', which can potentially result in slow query performance. See https://go.microsoft.com/fwlink/?linkid=2134277 for more information. To identify the query that's triggering this warning call 'ConfigureWarnings(w => w.Throw(RelationalEventId.MultipleCollectionIncludeWarning))'.
+[21:49:56 INF] Microsoft.Hosting.Lifetime Application is shutting down...
+[21:50:00 INF] Microsoft.Hosting.Lifetime Now listening on: http://localhost:5213
+[21:50:00 INF] Microsoft.Hosting.Lifetime Application started. Press Ctrl+C to shut down.
+[21:50:00 INF] Microsoft.Hosting.Lifetime Hosting environment: Development
+[21:50:00 INF] Microsoft.Hosting.Lifetime Content root path: /Users/lukaosojnik/Documents/Coding/simple-bloomberg-terminal/simple-bloomberg-terminal
+[21:50:03 WRN] Microsoft.EntityFrameworkCore.Query Compiling a query which loads related collections for more than one collection navigation, either via 'Include' or through projection, but no 'QuerySplittingBehavior' has been configured. By default, Entity Framework will use 'QuerySplittingBehavior.SingleQuery', which can potentially result in slow query performance. See https://go.microsoft.com/fwlink/?linkid=2134277 for more information. To identify the query that's triggering this warning call 'ConfigureWarnings(w => w.Throw(RelationalEventId.MultipleCollectionIncludeWarning))'.
+[21:51:51 INF] Microsoft.Hosting.Lifetime Application is shutting down...

@@ -9,7 +9,9 @@
     var email = User.Identity?.Name ?? "";
     var username = email.Contains('@') ? email[..email.IndexOf('@')] : email;
     var appUser = await UserManager.GetUserAsync(User);
-    var pfp = appUser?.ProfilePicturePath;
+    var pfp = appUser?.ProfilePictureData is not null
+        ? Url.Action("Picture", "Account", new { id = appUser.Id, v = appUser.UploadedAt?.Ticks })
+        : null;
 
     <li class="nav-item dropdown">
         <a class="nav-link dropdown-toggle nav-avatar" href="#" id="userMenu" role="button"

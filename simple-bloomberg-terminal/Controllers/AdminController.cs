@@ -30,16 +30,22 @@ public class AdminController : Controller
     [HttpGet]
     public async Task<IActionResult> Index()
     {
+        // Project HasPicture in the query (translates to IS NOT NULL) so we don't load every user's
+        // image bytes just to render the list. Roles are still fetched per user as before.
+        var users = _users.Users
+            .Select(u => new { u.Id, u.Email, u.UserName, HasPicture = u.ProfilePictureData != null })
+            .ToList();
+
         var rows = new List<AdminUserRow>();
-        foreach (var u in _users.Users.ToList())
+        foreach (var u in users)
         {
             rows.Add(new AdminUserRow
             {
                 Id = u.Id,
                 Email = u.Email,
                 UserName = u.UserName,
-                ProfilePicturePath = u.ProfilePicturePath,
-                Roles = await _users.GetRolesAsync(u)
+                HasPicture = u.HasPicture,
+                Roles = await _users.GetRolesAsync(new AppUser { Id = u.Id })
             });
         }
         return View(rows);

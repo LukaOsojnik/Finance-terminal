@@ -250,13 +250,13 @@ Extends ASP.NET Core Identity's `IdentityUser` (maps to **AspNetUsers**). Standa
 
 | Property | Type | Notes |
 |---|---|---|
-| ProfilePicturePath | string? | Web-relative path to the uploaded profile image on disk (e.g. `/uploads/profiles/{userId}/{guid}.png`); null = no picture |
+| ProfilePictureData | byte[]? | Raw image bytes of the uploaded profile picture, stored in the DB row (mapped to `longblob` in MySQL); null = no picture. Served back by `AccountController.Picture` |
 | OriginalFileName | string? | Original uploaded file name |
 | ContentType | string? | MIME content type of the upload |
 | SizeBytes | long? | File size in bytes |
 | UploadedAt | DateTime? | Upload timestamp |
 
-Stores a single profile-picture file's metadata + path; the image bytes live on disk under `wwwroot/uploads/profiles/{userId}/`, not in the database. Note: AppUser does not use the soft-delete `DeletedAt` pattern (Identity-managed).
+Stores a single profile-picture's bytes + metadata; the image bytes live in the DB row (as `longblob`), not on disk, so they survive container redeploys (ephemeral filesystems lose disk files). Note: AppUser does not use the soft-delete `DeletedAt` pattern (Identity-managed).
 
 ### UserApiKey
 | Property | Type | Notes |

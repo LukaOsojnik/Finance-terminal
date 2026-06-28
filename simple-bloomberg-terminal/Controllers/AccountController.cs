@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Net.Http.Headers;
 using simple_bloomberg_terminal.Models.Entities;
 using simple_bloomberg_terminal.Models.ViewModels;
 
@@ -31,6 +32,20 @@ public class AccountController : Controller
         return View(user);
     }
 
+    // Serves a user's profile-picture bytes from the DB so an <img> tag can render them. Any signed-in
+    // user can fetch any user's avatar by id (the admin list shows everyone's). The ETag (upload time)
+    // lets the browser cache it and get a 304 instead of re-downloading the bytes on every page.
+    [HttpGet]
+    public async Task<IActionResult> Picture(string id)
+    {
+        var user = await _users.FindByIdAsync(id);
+        if (user?.ProfilePictureData is null) return NotFound();
+
+        var etag = new EntityTagHeaderValue($"\"{user.UploadedAt?.Ticks ?? 0L}\"");
+        return File(user.ProfilePictureData, user.ContentType ?? "application/octet-stream",
+            lastModified: user.UploadedAt, entityTag: etag);
+    }
+
     // AJAX: current picture metadata, consumed by the Dropzone page to render the existing file.
     // Returns an empty payload (not 404) when there's no picture so the JS can just show the dropzone.
     [HttpGet]
@@ -38,11 +53,11 @@ public class AccountController : Controller
     {
         var user = await _users.GetUserAsync(User);
         if (user is null) return Challenge();
-        if (user.ProfilePicturePath is null) return Json(new { hasPicture = false });
+        if (user.ProfilePictureData is null) return Json(new { hasPicture = false });
         return Json(new
         {
             hasPicture = true,
-            path = user.ProfilePicturePath,
+            path = PictureUrl(user),
             name = user.OriginalFileName,
             contentType = user.ContentType,
             size = user.SizeBytes,
@@ -50,8 +65,8 @@ public class AccountController : Controller
         });
     }
 
-    // Dropzone posts one file under the field name "file". ProfilePictureService validates it, replaces
-    // any existing picture, and returns the stored web path; we record the metadata on AppUser.
+    // Dropzone posts one file under the field name "file". ProfilePictureService validates it; we read
+    // the bytes onto the AppUser row (replacing any existing picture) and return its serving URL.
     [HttpPost]
     [ValidateAntiForgeryToken]
     public async Task<IActionResult> UploadProfilePicture(IFormFile file)
@@ -59,17 +74,19 @@ public class AccountController : Controller
         var user = await _users.GetUserAsync(User);
         if (user is null) return Challenge();
 
-        var (ext, error) = _pictures.Validate(file);
+        var (_, error) = _pictures.Validate(file);
         if (error is not null) return BadRequest(error);
 
-        user.ProfilePicturePath = await _pictures.SaveAsync(user.Id, file, ext!, user.ProfilePicturePath);
+        using var ms = new MemoryStream();
+        await file.CopyToAsync(ms);
+        user.ProfilePictureData = ms.ToArray();
         user.OriginalFileName = file.FileName;
         user.ContentType = file.ContentType;
         user.SizeBytes = file.Length;
         user.UploadedAt = DateTime.UtcNow;
         await _users.UpdateAsync(user);
 
-        return Json(new { path = user.ProfilePicturePath, name = user.OriginalFileName, size = user.SizeBytes });
+        return Json(new { path = PictureUrl(user), name = user.OriginalFileName, size = user.SizeBytes });
     }
 
     [HttpPost]
@@ -79,8 +96,7 @@ public class AccountController : Controller
         var user = await _users.GetUserAsync(User);
         if (user is null) return Challenge();
 
-        _pictures.Delete(user.ProfilePicturePath);
-        user.ProfilePicturePath = null;
+        user.ProfilePictureData = null;
         user.OriginalFileName = null;
         user.ContentType = null;
         user.SizeBytes = null;
@@ -89,6 +105,11 @@ public class AccountController : Controller
 
         return Ok();
     }
+
+    // Serving URL for a user's picture, with an upload-time cache-buster so a replaced picture is
+    // re-fetched even though the URL path is otherwise stable.
+    private string PictureUrl(AppUser user) =>
+        Url.Action(nameof(Picture), "Account", new { id = user.Id, v = user.UploadedAt?.Ticks })!;
 
     // ── Bring-your-own API keys ───────────────────────────────────────────────────────────────────
     // The signed-in user's own DeepSeek / FMP / Perplexity keys, stored encrypted (Data Protection)

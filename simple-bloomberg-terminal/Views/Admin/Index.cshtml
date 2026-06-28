@@ -23,9 +23,9 @@
     {
         <tr>
             <td>
-                @if (u.ProfilePicturePath is not null)
+                @if (u.HasPicture)
                 {
-                    <img src="@u.ProfilePicturePath" alt="" style="width:32px;height:32px;object-fit:cover;border-radius:4px;"/>
+                    <img src="@Url.Action("Picture", "Account", new { id = u.Id })" alt="" style="width:32px;height:32px;object-fit:cover;border-radius:4px;"/>
                 }
             </td>
             <td>@u.Email</td>

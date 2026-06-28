@@ -12,14 +12,14 @@
         <div id="currentPicture">
             <partial name="_ProfilePicture" model="Model"/>
         </div>
-        <dl id="pictureMeta" class="mt-2 small" style="@(Model.ProfilePicturePath is null ? "display:none" : "")">
+        <dl id="pictureMeta" class="mt-2 small" style="@(Model.ProfilePictureData is null ? "display:none" : "")">
             <dt>File</dt><dd id="metaName">@Model.OriginalFileName</dd>
             <dt>Type</dt><dd id="metaType">@Model.ContentType</dd>
             <dt>Size</dt><dd id="metaSize">@(Model.SizeBytes is { } b ? $"{b / 1024.0:F1} KB" : "")</dd>
             <dt>Uploaded</dt><dd id="metaDate">@Model.UploadedAt?.ToString("u")</dd>
         </dl>
         <button id="deleteBtn" type="button" class="btn btn-sm btn-outline-danger mt-2"
-                style="@(Model.ProfilePicturePath is null ? "display:none" : "")">Delete picture</button>
+                style="@(Model.ProfilePictureData is null ? "display:none" : "")">Delete picture</button>
     </div>
     <div class="col-md-8">
         <h5>Upload a new picture</h5>

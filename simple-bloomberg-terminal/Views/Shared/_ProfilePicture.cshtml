@@ -1,8 +1,8 @@
 @model simple_bloomberg_terminal.Models.Entities.AppUser
 
-@if (Model.ProfilePicturePath is not null)
+@if (Model.ProfilePictureData is not null)
 {
-    <img src="@Model.ProfilePicturePath" alt="Profile picture"
+    <img src="@Url.Action("Picture", "Account", new { id = Model.Id, v = Model.UploadedAt?.Ticks })" alt="Profile picture"
          style="width:128px;height:128px;object-fit:cover;border-radius:8px;border:1px solid var(--border, #333);"/>
 }
 else
