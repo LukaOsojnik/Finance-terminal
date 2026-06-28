@@ -45,7 +45,7 @@ public sealed class FakeCompanyRepository : ICompanyRepository
     public void Update(Company entity) => throw new NotSupportedException();
     public void SoftDelete(long id) => throw new NotSupportedException();
     public void ReplaceFinancials(long companyId, IReadOnlyList<CompanyFinancial> rows) => throw new NotSupportedException();
-    public HashSet<long> CompanyIdsWithFmpFinancials() => throw new NotSupportedException();
+    public HashSet<long> CompanyIdsWithFinancials() => throw new NotSupportedException();
     public IReadOnlyDictionary<string, long> CikToIdMap() => throw new NotSupportedException();
     public IReadOnlyDictionary<long, double?> MarketCapsByIds(IEnumerable<long> ids) => throw new NotSupportedException();
     public IReadOnlyDictionary<long, simple_bloomberg_terminal.Models.Enums.Sector> SectorsByIds(IEnumerable<long> ids) => throw new NotSupportedException();

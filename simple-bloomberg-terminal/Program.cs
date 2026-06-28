@@ -276,7 +276,8 @@ app.MapRazorPages();
 using (var scope = app.Services.CreateScope())
 {
     var sp = scope.ServiceProvider;
-    await sp.GetRequiredService<AppDbContext>().Database.MigrateAsync();
+    if (!app.Environment.IsEnvironment("Testing"))
+        await sp.GetRequiredService<AppDbContext>().Database.MigrateAsync();
     var roleManager = sp.GetRequiredService<RoleManager<IdentityRole>>();
     foreach (var role in new[] { "Admin", "Manager", "User" })
     {
