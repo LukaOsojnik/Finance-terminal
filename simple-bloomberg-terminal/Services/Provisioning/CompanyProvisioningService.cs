@@ -55,7 +55,7 @@ public interface ICompanyProvisioningService
     // Private-company prefill / re-discovery: a web-searched profile -> create model.
     Task<CompanyDraft> BuildPrivateAsync(CompanyProfileResult result, string fallbackName);
 
-    // Backfill #1 — real financial HISTORY from FMP (Yahoo fallback) for companies that don't have FMP
+    // Backfill #1 — real financial HISTORY from FMP (Yahoo fallback) for companies that don't have ANY
     // financials yet, refreshing their profile fields along the way. FMP-bound: stops cleanly on the daily
     // 429 so a re-run tomorrow resumes. Throws HttpRequestException only if the SEC ticker map is unreachable.
     Task<BackfillResult> BackfillFinancialsAsync(IProgress<string>? progress = null, CancellationToken ct = default);
@@ -227,9 +227,9 @@ public class CompanyProvisioningService(
     {
         var tickerMap = await stock.GetCikTickerMap();   // HttpRequestException bubbles -> controller 503
 
-        var withFmpFinancials = companies.CompanyIdsWithFmpFinancials();
+        var withFinancials = companies.CompanyIdsWithFinancials();
         var eligible = companies.GetAll()
-            .Where(c => !withFmpFinancials.Contains(c.Id))
+            .Where(c => !withFinancials.Contains(c.Id))
             .Select(c => (Company: c, Ticker: ResolveTickerForCik(c.Cik, tickerMap)))
             .Where(x => x.Ticker != null)
             .ToList();

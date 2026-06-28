@@ -216,8 +216,8 @@ public class CompanyRepository(AppDbContext db) : ICompanyRepository
             .ToDictionary(x => x.Id, x => x.Sector);
     }
 
-    public HashSet<long> CompanyIdsWithFmpFinancials() =>
-        db.CompanyFinancials.Where(f => f.DeletedAt == null && f.Source == Models.Enums.DataSource.FMP)
+    public HashSet<long> CompanyIdsWithFinancials() =>
+        db.CompanyFinancials.Where(f => f.DeletedAt == null)
             .Select(f => f.CompanyId).Distinct().ToHashSet();
 
     public void SoftDelete(long id)

@@ -29,8 +29,8 @@ Thumbs.db
 appsettings.Development.json
 *.env
 
-# Client-side libraries (restore via LibMan)
-**/wwwroot/lib
+# Client-side libraries — committed so Railway/Nixpacks deploys have them
+# (no libman.json exists to restore them at build time)
 
 # sec2md converted-markdown dumps (inspection artifacts)
 filings/

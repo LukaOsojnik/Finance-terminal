@@ -1,4 +1,5 @@
 using System.Net;
+using Microsoft.Extensions.Logging;
 using simple_bloomberg_terminal.Models.Entities;
 using simple_bloomberg_terminal.Models.Enums;
 
@@ -9,11 +10,14 @@ public class CompanyFinancialsService : ICompanyFinancialsService
 {
     private readonly IFmpApiClient _fmp;
     private readonly IYahooFinanceClient _yahoo;
+    private readonly ILogger<CompanyFinancialsService> _log;
 
-    public CompanyFinancialsService(IFmpApiClient fmp, IYahooFinanceClient yahoo)
+    public CompanyFinancialsService(IFmpApiClient fmp, IYahooFinanceClient yahoo,
+        ILogger<CompanyFinancialsService> log)
     {
         _fmp = fmp;
         _yahoo = yahoo;
+        _log = log;
     }
 
     // The free tier caps statement `limit` at 5, so request 5 for both granularities.
@@ -34,10 +38,13 @@ public class CompanyFinancialsService : ICompanyFinancialsService
         {
             try { rows.AddRange(await FetchFmpPeriodAsync(companyId, symbol, period, PeriodLimit, captured)); }
             catch (HttpRequestException ex) when (ex.StatusCode != HttpStatusCode.TooManyRequests)
-            { /* this period gated/unreachable (e.g. 402) — keep whatever else we have */ }
+            { /* this period gated/unreachable (e.g. 402) — keep whatever else we have */
+                _log.LogInformation("FMP {Period} unavailable for {Symbol}: {Reason}", period, symbol, Describe(ex.StatusCode));
+            }
         }
         if (rows.Count > 0) return rows;
 
+        _log.LogInformation("FMP returned no rows for {Symbol}; falling back to Yahoo annual income.", symbol);
         return await FetchYahooFallbackAsync(companyId, symbol, captured);
     }
 
@@ -139,6 +146,17 @@ public class CompanyFinancialsService : ICompanyFinancialsService
         try { return await fetch(); }
         catch (HttpRequestException ex) when (ex.StatusCode != HttpStatusCode.TooManyRequests) { return null; }
     }
+
+    // Turn an FMP failure status into a short, human-readable reason for the log line (NOT the raw
+    // number) so a backfill run reads "premium-gated" / "key invalid" instead of "402" / "401".
+    private static string Describe(HttpStatusCode? status) => status switch
+    {
+        HttpStatusCode.PaymentRequired => "premium-gated (symbol not in this FMP plan)",
+        HttpStatusCode.Unauthorized => "FMP key invalid or expired",
+        HttpStatusCode.Forbidden => "FMP access forbidden",
+        null => "no response (network/timeout)",
+        _ => $"FMP request failed ({status})"
+    };
 
     private static double? Ratio(double? num, double? den) =>
         num is { } n && den is { } d && d != 0 ? n / d : null;

@@ -41,10 +41,11 @@ public interface ICompanyRepository
     // ReplaceFinancials). Derived API data, so old rows are hard-deleted; a no-op if rows is empty.
     void ReplaceVolumeHistory(long companyId, IReadOnlyList<CompanyVolumeHistory> rows);
 
-    // Ids of active companies that already have FMP-sourced financials — the backfill's "done" marker.
-    // Companies with only YAHOO rows (a quota-degraded fallback) stay eligible so a later run upgrades
-    // them to full FMP data once the daily quota resets.
-    HashSet<long> CompanyIdsWithFmpFinancials();
+    // Ids of active companies that already have financials of ANY source (FMP or the YAHOO fallback) —
+    // the backfill's "done" marker. Source-agnostic on purpose: FMP income is gated on the free plan, so
+    // most rows land as YAHOO; keying "done" on FMP only would leave every company eligible forever and
+    // re-burn the daily quota each run without ever converging.
+    HashSet<long> CompanyIdsWithFinancials();
 
     // Map of normalized 10-digit CIK -> company id for every active company that has a CIK. Lets the
     // index importer resolve constituents to existing companies in one pass (first row per CIK wins).

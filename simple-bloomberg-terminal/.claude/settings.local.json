@@ -50,7 +50,14 @@
       "Bash(curl -s -c cookies.txt http://localhost:5213/Identity/Account/Register)",
       "Bash(mysql *)",
       "Bash(pkill -f \"dotnet.*simple-bloomberg-terminal\")",
-      "PowerShell(dotnet test *)"
+      "PowerShell(dotnet test *)",
+      "Bash(docker exec *)",
+      "Bash(xxd /Users/lukaosojnik/Documents/Coding/simple-bloomberg-terminal/simple-bloomberg-terminal/dump.sql)",
+      "Bash(iconv -f UTF-16LE -t UTF-8 /Users/lukaosojnik/Documents/Coding/simple-bloomberg-terminal/simple-bloomberg-terminal/dump.sql)",
+      "Read(//tmp/**)",
+      "Bash(dotnet user-secrets *)",
+      "Bash(docker exec mysql-server *)",
+      "Bash(grep -n \"\\(function\\\\|=> {$\\\\|^// ──\\\\|querySelectorAll\\\\|forEach\\(\" wwwroot/js/site.js)"
     ]
   },
   "outputStyle": "Learning"
