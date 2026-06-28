@@ -15,7 +15,6 @@ config/
 
 # Environment / secrets
 appsettings.Development.json
-appsettings.json
 
 # NuGet
 *.nupkg
