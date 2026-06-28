@@ -1,5 +1,6 @@
 using System.Globalization;
 using Microsoft.AspNetCore.DataProtection;
+using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Localization;
 using Microsoft.EntityFrameworkCore;
@@ -102,6 +103,17 @@ if (!string.IsNullOrWhiteSpace(googleClientId) && !string.IsNullOrWhiteSpace(goo
             options.ClientSecret = googleClientSecret;
         });
 }
+
+// Railway (and most PaaS) terminate TLS at a reverse proxy and forward to the app over http.
+// Honour X-Forwarded-Proto so Request.Scheme becomes https before auth runs; otherwise the Google
+// OAuth redirect_uri is built as http:// and Google rejects it (redirect_uri_mismatch). The proxy
+// IP is not known ahead of time on Railway, so the default loopback-only trust list is cleared.
+builder.Services.Configure<ForwardedHeadersOptions>(options =>
+{
+    options.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
+    options.KnownNetworks.Clear();
+    options.KnownProxies.Clear();
+});
 
 builder.Services.AddRazorPages();
 
@@ -256,6 +268,10 @@ builder.Services.AddScoped<ICompanyFinancialsService, CompanyFinancialsService>(
 builder.Services.AddScoped<ITickerProfileEnricher, TickerProfileEnricher>();
 
 var app = builder.Build();
+
+// Must run before any middleware that reads the request scheme/host (HTTPS redirect, auth, OAuth
+// redirect_uri generation) so they see the original https scheme rather than the proxy's http hop.
+app.UseForwardedHeaders();
 
 if (!app.Environment.IsDevelopment())
 {
