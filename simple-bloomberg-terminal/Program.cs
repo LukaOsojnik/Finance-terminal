@@ -95,7 +95,8 @@ builder.Services.AddRazorPages();
 // auth cookie; the keyed clients read it instead of a global config key. HttpContextAccessor lets
 // the scoped provider see the signed-in user; AddDataProtection is idempotent (also used by
 // antiforgery) and makes the key-ring explicit.
-builder.Services.AddDataProtection();
+builder.Services.AddDataProtection()
+    .PersistKeysToDbContext<AppDbContext>();
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddScoped<IUserApiKeyRepository, UserApiKeyRepository>();
 builder.Services.AddScoped<IUserApiKeyProvider, UserApiKeyProvider>();
@@ -275,6 +276,7 @@ app.MapRazorPages();
 using (var scope = app.Services.CreateScope())
 {
     var sp = scope.ServiceProvider;
+    await sp.GetRequiredService<AppDbContext>().Database.MigrateAsync();
     var roleManager = sp.GetRequiredService<RoleManager<IdentityRole>>();
     foreach (var role in new[] { "Admin", "Manager", "User" })
     {

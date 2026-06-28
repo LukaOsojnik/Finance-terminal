@@ -1,12 +1,15 @@
+using Microsoft.AspNetCore.DataProtection.EntityFrameworkCore;
 using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore;
 using simple_bloomberg_terminal.Models.Entities;
 
 namespace simple_bloomberg_terminal.Data;
 
-public class AppDbContext : IdentityDbContext<AppUser>
+public class AppDbContext : IdentityDbContext<AppUser>, IDataProtectionKeyContext
 {
     public AppDbContext(DbContextOptions<AppDbContext> options) : base(options) { }
+
+    public DbSet<DataProtectionKey> DataProtectionKeys { get; set; }
 
     public DbSet<Country> Countries { get; set; }
     public DbSet<Company> Companies { get; set; }
