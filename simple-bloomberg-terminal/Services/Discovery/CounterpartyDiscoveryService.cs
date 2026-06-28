@@ -6,6 +6,7 @@ using System.Text.Json;
 using System.Threading.Channels;
 using System.Text.Json.Serialization;
 using System.Text.RegularExpressions;
+using Microsoft.Extensions.Logging;
 using simple_bloomberg_terminal.Models.ViewModels;
 using simple_bloomberg_terminal.Repositories;
 
@@ -36,13 +37,15 @@ public class CounterpartyDiscoveryService : ICounterpartyDiscovery
     private readonly HttpClient _http;
     private readonly ICompanyRepository _companies;
     private readonly IUserApiKeyProvider _keys;
+    private readonly ILogger<CounterpartyDiscoveryService> _logger;
 
     public CounterpartyDiscoveryService(HttpClient http, ICompanyRepository companies,
-        IUserApiKeyProvider keys)
+        IUserApiKeyProvider keys, ILogger<CounterpartyDiscoveryService> logger)
     {
         _http = http;
         _companies = companies;
         _keys = keys;
+        _logger = logger;
     }
 
     // The user's Perplexity key, or throw the "add your key" signal the front-end turns into a popup.
@@ -120,7 +123,7 @@ public class CounterpartyDiscoveryService : ICounterpartyDiscovery
             string? error = null;
             await gate.WaitAsync(ct);
             try { (items, sources) = await SearchAsync(q, supplier, valued, ct); }
-            catch (Exception ex) { error = ex is HttpRequestException h ? $"search failed ({(int?)h.StatusCode}{h.StatusCode})" : ex.GetType().Name; }
+            catch (Exception ex) { error = ex is HttpRequestException h ? $"search failed ({(int?)h.StatusCode}{h.StatusCode})" : ex.GetType().Name; _logger.LogWarning(ex, "Counterparty discovery query failed: {Query}", q); }
             finally { gate.Release(); }
             var fresh = items.Where(i => seen.TryAdd(i.Name, 0)).ToList();
             await channel.Writer.WriteAsync(new DiscoveryEvent("result", Query: q, Items: fresh, Sources: sources, Error: error), ct);
@@ -226,6 +229,8 @@ public class CounterpartyDiscoveryService : ICounterpartyDiscovery
             Headers = { Authorization = new AuthenticationHeaderValue("Bearer", await KeyAsync(ct)) }
         };
         var resp = await _http.SendAsync(httpReq, ct);
+        if (!resp.IsSuccessStatusCode)
+            _logger.LogWarning("Perplexity counterparty call failed: {Status}", (int)resp.StatusCode);
         resp.EnsureSuccessStatusCode();
 
         using var env = JsonDocument.Parse(await resp.Content.ReadAsStringAsync(ct));

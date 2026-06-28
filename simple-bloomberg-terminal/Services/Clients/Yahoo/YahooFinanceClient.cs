@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Http.Json;
+using Microsoft.Extensions.Logging;
 
 namespace simple_bloomberg_terminal.Services.Clients.Yahoo;
 
@@ -15,11 +16,13 @@ public class YahooFinanceClient : IYahooFinanceClient
     private const string CrumbUrl = "https://query1.finance.yahoo.com/v1/test/getcrumb";
 
     private readonly HttpClient _http;
+    private readonly ILogger<YahooFinanceClient> _logger;
     private string? _crumb;
 
-    public YahooFinanceClient(HttpClient http)
+    public YahooFinanceClient(HttpClient http, ILogger<YahooFinanceClient> logger)
     {
         _http = http;
+        _logger = logger;
     }
 
     public async Task<YahooFinancials?> GetFinancialsAsync(string symbol)
@@ -72,6 +75,7 @@ public class YahooFinanceClient : IYahooFinanceClient
         }
         catch (Exception ex) when (ex is HttpRequestException or System.Text.Json.JsonException or TaskCanceledException)
         {
+            _logger.LogWarning(ex, "Yahoo weekly volume fetch failed for {Symbol}", symbol);
             return null;
         }
     }
@@ -92,7 +96,7 @@ public class YahooFinanceClient : IYahooFinanceClient
                     $"/v10/finance/quoteSummary/{Uri.EscapeDataString(symbol)}?modules={modules}&crumb={Uri.EscapeDataString(crumb)}");
 
                 // Stale crumb -> clear it and re-handshake once.
-                if (resp.StatusCode == HttpStatusCode.Unauthorized) { _crumb = null; continue; }
+                if (resp.StatusCode == HttpStatusCode.Unauthorized) { _logger.LogDebug("Yahoo stale crumb for {Symbol}, retrying", symbol); _crumb = null; continue; }
                 if (!resp.IsSuccessStatusCode) return null;
 
                 return await resp.Content.ReadFromJsonAsync<T>();
@@ -101,6 +105,7 @@ public class YahooFinanceClient : IYahooFinanceClient
         }
         catch (Exception ex) when (ex is HttpRequestException or System.Text.Json.JsonException or TaskCanceledException)
         {
+            _logger.LogWarning(ex, "Yahoo quoteSummary failed for {Symbol}/{Modules}", symbol, modules);
             return null;
         }
     }

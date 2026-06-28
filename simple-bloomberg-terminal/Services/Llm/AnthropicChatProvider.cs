@@ -2,6 +2,7 @@ using System.Net.Http.Json;
 using System.Runtime.CompilerServices;
 using System.Text;
 using System.Text.Json;
+using Microsoft.Extensions.Logging;
 
 namespace simple_bloomberg_terminal.Services.Llm;
 
@@ -19,13 +20,15 @@ public sealed class AnthropicChatProvider : IChatProvider
 
     private readonly HttpClient _http;
     private readonly IUserApiKeyProvider _keys;
+    private readonly ILogger<AnthropicChatProvider> _logger;
 
     public ChatProviderId Id => ChatProviderId.Anthropic;
 
-    public AnthropicChatProvider(HttpClient http, IUserApiKeyProvider keys)
+    public AnthropicChatProvider(HttpClient http, IUserApiKeyProvider keys, ILogger<AnthropicChatProvider> logger)
     {
         _http = http;
         _keys = keys;
+        _logger = logger;
     }
 
     private Task<string> KeyAsync(CancellationToken ct) =>
@@ -72,6 +75,8 @@ public sealed class AnthropicChatProvider : IChatProvider
 
         using var httpReq = Request(body, await KeyAsync(ct));
         using var resp = await _http.SendAsync(httpReq, HttpCompletionOption.ResponseHeadersRead, ct);
+        if (!resp.IsSuccessStatusCode)
+            _logger.LogWarning("Anthropic stream {Model} failed: {Status}", model, (int)resp.StatusCode);
         resp.EnsureSuccessStatusCode();
 
         await using var stream = await resp.Content.ReadAsStreamAsync(ct);
@@ -91,7 +96,7 @@ public sealed class AnthropicChatProvider : IChatProvider
                 if (!d.RootElement.TryGetProperty("delta", out delta)) continue;
                 delta = delta.Clone();
             }
-            catch (JsonException) { continue; }
+            catch (JsonException ex) { _logger.LogDebug(ex, "Anthropic SSE parse error on line: {Data}", data); continue; }
 
             if (!delta.TryGetProperty("type", out var t) || t.GetString() is not { } kind) continue;
             if (kind == "thinking_delta" && delta.TryGetProperty("thinking", out var th) &&
@@ -107,6 +112,8 @@ public sealed class AnthropicChatProvider : IChatProvider
     {
         using var httpReq = Request(body, await KeyAsync(ct));
         var resp = await _http.SendAsync(httpReq, ct);
+        if (!resp.IsSuccessStatusCode)
+            _logger.LogWarning("Anthropic complete failed: {Status}", (int)resp.StatusCode);
         resp.EnsureSuccessStatusCode();
         return JsonDocument.Parse(await resp.Content.ReadAsStringAsync(ct));
     }

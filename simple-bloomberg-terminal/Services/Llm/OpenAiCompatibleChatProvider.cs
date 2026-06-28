@@ -2,6 +2,7 @@ using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Runtime.CompilerServices;
 using System.Text.Json;
+using Microsoft.Extensions.Logging;
 
 namespace simple_bloomberg_terminal.Services.Llm;
 
@@ -20,13 +21,14 @@ public sealed class OpenAiCompatibleChatProvider : IChatProvider
     private readonly Func<UserApiKeys, string?> _pickKey;
     private readonly Func<MissingApiKeyException> _ifMissing;
     private readonly string _maxTokensField;
+    private readonly ILogger<OpenAiCompatibleChatProvider> _logger;
 
     public ChatProviderId Id { get; }
 
     public OpenAiCompatibleChatProvider(
         HttpClient http, IUserApiKeyProvider keys, ChatProviderId id,
         Func<UserApiKeys, string?> pickKey, Func<MissingApiKeyException> ifMissing,
-        string maxTokensField)
+        string maxTokensField, ILogger<OpenAiCompatibleChatProvider> logger)
     {
         _http = http;
         _keys = keys;
@@ -34,6 +36,7 @@ public sealed class OpenAiCompatibleChatProvider : IChatProvider
         _pickKey = pickKey;
         _ifMissing = ifMissing;
         _maxTokensField = maxTokensField;
+        _logger = logger;
     }
 
     private Task<string> KeyAsync(CancellationToken ct) => _keys.RequireAsync(_pickKey, _ifMissing, ct);
@@ -60,6 +63,8 @@ public sealed class OpenAiCompatibleChatProvider : IChatProvider
             Headers = { Authorization = new AuthenticationHeaderValue("Bearer", await KeyAsync(ct)) }
         };
         var resp = await _http.SendAsync(httpReq, ct);
+        if (!resp.IsSuccessStatusCode)
+            _logger.LogWarning("{Provider} complete {Model} failed: {Status}", Id, model, (int)resp.StatusCode);
         resp.EnsureSuccessStatusCode();
         var parsed = await resp.Content.ReadFromJsonAsync<DeepSeekResponse>(ct);
 
@@ -84,6 +89,8 @@ public sealed class OpenAiCompatibleChatProvider : IChatProvider
             Headers = { Authorization = new AuthenticationHeaderValue("Bearer", await KeyAsync(ct)) }
         };
         using var resp = await _http.SendAsync(httpReq, HttpCompletionOption.ResponseHeadersRead, ct);
+        if (!resp.IsSuccessStatusCode)
+            _logger.LogWarning("{Provider} stream {Model} failed: {Status}", Id, model, (int)resp.StatusCode);
         resp.EnsureSuccessStatusCode();
 
         await using var stream = await resp.Content.ReadAsStreamAsync(ct);
@@ -103,6 +110,7 @@ public sealed class OpenAiCompatibleChatProvider : IChatProvider
             }
             catch (Exception ex) when (ex is JsonException or KeyNotFoundException or IndexOutOfRangeException)
             {
+                _logger.LogDebug(ex, "{Provider} SSE parse error on line: {Data}", Id, data);
                 continue;
             }
 

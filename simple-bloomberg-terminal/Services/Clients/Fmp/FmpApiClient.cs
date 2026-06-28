@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Http.Json;
+using Microsoft.Extensions.Logging;
 
 namespace simple_bloomberg_terminal.Services.Clients.Fmp;
 
@@ -14,11 +15,13 @@ public class FmpApiClient : IFmpApiClient
 {
     private readonly HttpClient _http;
     private readonly IUserApiKeyProvider _keys;
+    private readonly ILogger<FmpApiClient> _logger;
 
-    public FmpApiClient(HttpClient http, IUserApiKeyProvider keys)
+    public FmpApiClient(HttpClient http, IUserApiKeyProvider keys, ILogger<FmpApiClient> logger)
     {
         _http = http;
         _keys = keys;
+        _logger = logger;
     }
 
     // The user's FMP key, or throw the "add your key" signal the front-end turns into a popup.
@@ -64,6 +67,8 @@ public class FmpApiClient : IFmpApiClient
     {
         var resp = await _http.GetAsync(url);
         if (resp.StatusCode == HttpStatusCode.NotFound) return null;
+        if (!resp.IsSuccessStatusCode)
+            _logger.LogWarning("FMP request failed: {Status}", (int)resp.StatusCode);
         resp.EnsureSuccessStatusCode();
         return await resp.Content.ReadFromJsonAsync<List<T>>();
     }

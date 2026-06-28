@@ -3,12 +3,27 @@ using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Localization;
 using Microsoft.EntityFrameworkCore;
+using Serilog;
 using simple_bloomberg_terminal.Data;
 using simple_bloomberg_terminal.IoCore;
 using simple_bloomberg_terminal.Models.Entities;
 using simple_bloomberg_terminal.Repositories;
 
+Log.Logger = new LoggerConfiguration()
+    .MinimumLevel.Information()
+    .MinimumLevel.Override("Microsoft.AspNetCore", Serilog.Events.LogEventLevel.Warning)
+    .MinimumLevel.Override("Microsoft.EntityFrameworkCore", Serilog.Events.LogEventLevel.Warning)
+    .Enrich.FromLogContext()
+    .WriteTo.Console(outputTemplate: "[{Timestamp:HH:mm:ss} {Level:u3}] {SourceContext} {Message:lj}{NewLine}{Exception}")
+    .WriteTo.File(
+        path: "logs/app-.log",
+        rollingInterval: RollingInterval.Day,
+        retainedFileCountLimit: 7,
+        outputTemplate: "[{Timestamp:HH:mm:ss} {Level:u3}] {SourceContext} {Message:lj}{NewLine}{Exception}")
+    .CreateLogger();
+
 var builder = WebApplication.CreateBuilder(args);
+builder.Host.UseSerilog();
 // MissingApiKeyExceptionFilter converts a keyed client's "no user key" exception into a 424 the
 // front-end turns into an "add your key" popup. Registered globally so every AJAX action is covered.
 builder.Services.AddControllersWithViews(o => o.Filters.Add<MissingApiKeyExceptionFilter>());
@@ -158,16 +173,19 @@ builder.Services.AddHttpClient("OpenAi", c => ConfigureHttp(c, "OpenAi"));
 builder.Services.AddScoped<IChatProvider>(sp => new OpenAiCompatibleChatProvider(
     sp.GetRequiredService<IHttpClientFactory>().CreateClient("Kimi"),
     sp.GetRequiredService<IUserApiKeyProvider>(), ChatProviderId.Kimi,
-    k => k.Kimi, MissingApiKeyException.Kimi, "max_tokens"));
+    k => k.Kimi, MissingApiKeyException.Kimi, "max_tokens",
+    sp.GetRequiredService<ILogger<OpenAiCompatibleChatProvider>>()));
 builder.Services.AddScoped<IChatProvider>(sp => new OpenAiCompatibleChatProvider(
     sp.GetRequiredService<IHttpClientFactory>().CreateClient("OpenAi"),
     sp.GetRequiredService<IUserApiKeyProvider>(), ChatProviderId.OpenAi,
-    k => k.OpenAi, MissingApiKeyException.OpenAi, "max_completion_tokens"));
+    k => k.OpenAi, MissingApiKeyException.OpenAi, "max_completion_tokens",
+    sp.GetRequiredService<ILogger<OpenAiCompatibleChatProvider>>()));
 //   Anthropic — the one non-OpenAI-compatible provider (Messages API): its own transport.
 builder.Services.AddHttpClient("Anthropic", c => ConfigureHttp(c, "Anthropic"));
 builder.Services.AddScoped<IChatProvider>(sp => new AnthropicChatProvider(
     sp.GetRequiredService<IHttpClientFactory>().CreateClient("Anthropic"),
-    sp.GetRequiredService<IUserApiKeyProvider>()));
+    sp.GetRequiredService<IUserApiKeyProvider>(),
+    sp.GetRequiredService<ILogger<AnthropicChatProvider>>()));
 builder.Services.AddScoped<IChatLlm, ChatLlmRouter>();
 // sec2md sidecar (Python): converts a filing to clean markdown before the extractor's heading triage.
 builder.Services.AddHttpClient<ISec2MdClient, Sec2MdClient>(c => ConfigureHttp(c, "Sec2Md"));

@@ -1,5 +1,6 @@
 ﻿using System.Net;
 using System.Net.Http.Json;
+using Microsoft.Extensions.Logging;
 
 namespace simple_bloomberg_terminal.Services.Clients.Edgar;
 
@@ -13,16 +14,20 @@ public class StockApiClient : IStockApiClient
     private const string TickerMapUrl = "https://www.sec.gov/files/company_tickers.json";
 
     private readonly HttpClient _http;
+    private readonly ILogger<StockApiClient> _logger;
 
-    public StockApiClient(HttpClient http)
+    public StockApiClient(HttpClient http, ILogger<StockApiClient> logger)
     {
         _http = http;
+        _logger = logger;
     }
 
     public async Task<EdgarCompanyFacts?> GetCompanyFacts(string cik10)
     {
         var resp = await _http.GetAsync($"/api/xbrl/companyfacts/CIK{cik10}.json");
         if (resp.StatusCode == HttpStatusCode.NotFound) return null;
+        if (!resp.IsSuccessStatusCode)
+            _logger.LogWarning("EDGAR companyfacts {Cik} failed: {Status}", cik10, (int)resp.StatusCode);
         resp.EnsureSuccessStatusCode();
         return await resp.Content.ReadFromJsonAsync<EdgarCompanyFacts>();
     }
@@ -31,6 +36,8 @@ public class StockApiClient : IStockApiClient
     {
         var resp = await _http.GetAsync($"/submissions/CIK{cik10}.json");
         if (resp.StatusCode == HttpStatusCode.NotFound) return null;
+        if (!resp.IsSuccessStatusCode)
+            _logger.LogWarning("EDGAR submissions {Cik} failed: {Status}", cik10, (int)resp.StatusCode);
         resp.EnsureSuccessStatusCode();
         return await resp.Content.ReadFromJsonAsync<EdgarSubmissions>();
     }
@@ -63,6 +70,8 @@ public class StockApiClient : IStockApiClient
     {
         var resp = await _http.GetAsync($"/api/xbrl/companyfacts/CIK{cik10}.json");
         if (resp.StatusCode == HttpStatusCode.NotFound) return null;
+        if (!resp.IsSuccessStatusCode)
+            _logger.LogWarning("EDGAR companyfacts JSON {Cik} failed: {Status}", cik10, (int)resp.StatusCode);
         resp.EnsureSuccessStatusCode();
         return await resp.Content.ReadAsStringAsync();
     }
@@ -73,6 +82,9 @@ public class StockApiClient : IStockApiClient
         var url = $"https://www.sec.gov/Archives/edgar/data/{cik}/{accessionNoDashes}/{primaryDocument}";
         var resp = await _http.GetAsync(url);
         if (resp.StatusCode == HttpStatusCode.NotFound) return null;
+        if (!resp.IsSuccessStatusCode)
+            _logger.LogWarning("EDGAR filing document {Cik}/{Accession}/{Doc} failed: {Status}",
+                cik, accessionNoDashes, primaryDocument, (int)resp.StatusCode);
         resp.EnsureSuccessStatusCode();
         return await resp.Content.ReadAsStringAsync();
     }

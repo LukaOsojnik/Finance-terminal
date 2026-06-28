@@ -1,4 +1,5 @@
 using System.Net;
+using Microsoft.Extensions.Logging;
 using simple_bloomberg_terminal.Models.Entities;
 using simple_bloomberg_terminal.Models.Enums;
 using simple_bloomberg_terminal.Repositories;
@@ -11,7 +12,8 @@ public class IndexImportService(
     IStockApiClient sec,
     IStockIndexRepository indices,
     ICompanyRepository companies,
-    ICompanyProvisioningService provisioning) : IIndexImportService
+    ICompanyProvisioningService provisioning,
+    ILogger<IndexImportService> logger) : IIndexImportService
 {
     public async Task<IndexImportResult> ImportAsync(IndexImportRequest req, IProgress<string>? progress = null)
     {
@@ -23,8 +25,8 @@ public class IndexImportService(
         if (!string.IsNullOrWhiteSpace(req.EtfTicker))
         {
             try { return await ImportFromSpdrAsync(req, progress); }
-            catch (HttpRequestException) when (!string.IsNullOrWhiteSpace(req.WikiPage)) { }
-            catch (InvalidOperationException) when (!string.IsNullOrWhiteSpace(req.WikiPage)) { }
+            catch (HttpRequestException ex) when (!string.IsNullOrWhiteSpace(req.WikiPage)) { logger.LogWarning(ex, "SPDR fetch failed for {Ticker}, falling back to Wikipedia", req.EtfTicker); }
+            catch (InvalidOperationException ex) when (!string.IsNullOrWhiteSpace(req.WikiPage)) { logger.LogWarning(ex, "SPDR returned no holdings for {Ticker}, falling back to Wikipedia", req.EtfTicker); }
         }
 
         return await ImportFromWikipediaAsync(req, progress);
@@ -149,9 +151,9 @@ public class IndexImportService(
             {
                 if (await provisioning.CreateFromProfileAsync(t) is { } company) created[t] = company.Id;
             }
-            catch (MissingApiKeyException) { return (created, true); }   // no FMP key -> continuable
-            catch (HttpRequestException ex) when (ex.StatusCode == HttpStatusCode.TooManyRequests) { return (created, true); }  // daily cap -> continuable
-            catch (HttpRequestException) { }            // this ticker failed; try the rest
+            catch (MissingApiKeyException) { logger.LogWarning("Index import stopped early: no FMP API key ({Done}/{Total} provisioned)", created.Count, todo.Count); return (created, true); }
+            catch (HttpRequestException ex) when (ex.StatusCode == HttpStatusCode.TooManyRequests) { logger.LogWarning("Index import stopped early: FMP daily quota hit ({Done}/{Total} provisioned)", created.Count, todo.Count); return (created, true); }
+            catch (HttpRequestException ex) { logger.LogWarning(ex, "Index import: FMP fetch failed for {Ticker}, skipping", t); }
         }
         return (created, false);
     }

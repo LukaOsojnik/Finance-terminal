@@ -1,6 +1,7 @@
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
+using Microsoft.Extensions.Logging;
 
 namespace simple_bloomberg_terminal.Services.Discovery;
 
@@ -15,11 +16,13 @@ public class CompanyProfileDiscoveryService : ICompanyProfileDiscovery
 {
     private readonly HttpClient _http;
     private readonly IUserApiKeyProvider _keys;
+    private readonly ILogger<CompanyProfileDiscoveryService> _logger;
 
-    public CompanyProfileDiscoveryService(HttpClient http, IUserApiKeyProvider keys)
+    public CompanyProfileDiscoveryService(HttpClient http, IUserApiKeyProvider keys, ILogger<CompanyProfileDiscoveryService> logger)
     {
         _http = http;
         _keys = keys;
+        _logger = logger;
     }
 
     // The user's Perplexity key, or throw the "add your key" signal the front-end turns into a popup.
@@ -69,6 +72,8 @@ public class CompanyProfileDiscoveryService : ICompanyProfileDiscovery
             Headers = { Authorization = new AuthenticationHeaderValue("Bearer", await KeyAsync(ct)) }
         };
         var resp = await _http.SendAsync(httpReq, ct);
+        if (!resp.IsSuccessStatusCode)
+            _logger.LogWarning("Perplexity profile discovery for '{Company}' failed: {Status}", companyName, (int)resp.StatusCode);
         resp.EnsureSuccessStatusCode();
 
         using var env = JsonDocument.Parse(await resp.Content.ReadAsStringAsync(ct));
@@ -83,7 +88,10 @@ public class CompanyProfileDiscoveryService : ICompanyProfileDiscovery
             ? cit.EnumerateArray().Where(x => x.ValueKind == JsonValueKind.String).Select(x => x.GetString()!).ToList()
             : [];
 
-        return Parse(answer, sources);
+        var result = Parse(answer, sources);
+        if (result is null)
+            _logger.LogWarning("Perplexity profile discovery for '{Company}' returned unparseable response", companyName);
+        return result;
     }
 
     // Slice the JSON object out of sonar's answer (tolerant of fences/prose). Returns null if

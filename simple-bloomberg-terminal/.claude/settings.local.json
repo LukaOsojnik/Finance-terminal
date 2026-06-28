@@ -57,7 +57,8 @@
       "Read(//tmp/**)",
       "Bash(dotnet user-secrets *)",
       "Bash(docker exec mysql-server *)",
-      "Bash(grep -n \"\\(function\\\\|=> {$\\\\|^// ──\\\\|querySelectorAll\\\\|forEach\\(\" wwwroot/js/site.js)"
+      "Bash(grep -n \"\\(function\\\\|=> {$\\\\|^// ──\\\\|querySelectorAll\\\\|forEach\\(\" wwwroot/js/site.js)",
+      "Read(//Users/lukaosojnik/Documents/Coding/simple-bloomberg-terminal/simple-bloomberg-terminal.Tests/**)"
     ]
   },
   "outputStyle": "Learning"

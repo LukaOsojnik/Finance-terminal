@@ -1,5 +1,6 @@
 using System.Net.Http.Json;
 using System.Text.Json.Serialization;
+using Microsoft.Extensions.Logging;
 
 namespace simple_bloomberg_terminal.Services.Clients.Edgar;
 
@@ -13,11 +14,13 @@ public class Sec2MdClient : ISec2MdClient
 {
     private readonly HttpClient _http;
     private readonly string _dumpDir;   // filings/ under the content root — converted markdown is saved here
+    private readonly ILogger<Sec2MdClient> _logger;
 
-    public Sec2MdClient(HttpClient http, IWebHostEnvironment env)
+    public Sec2MdClient(HttpClient http, IWebHostEnvironment env, ILogger<Sec2MdClient> logger)
     {
         _http = http;
         _dumpDir = Path.Combine(env.ContentRootPath, "filings");
+        _logger = logger;
     }
 
     public async Task<string?> ToMarkdownAsync(
@@ -29,7 +32,11 @@ public class Sec2MdClient : ISec2MdClient
         try
         {
             var resp = await _http.PostAsJsonAsync("/convert", new ConvertRequest(url, filingType), ct);
-            if (!resp.IsSuccessStatusCode) return null;
+            if (!resp.IsSuccessStatusCode)
+            {
+                _logger.LogWarning("sec2md convert failed for {Url}: {Status}", url, (int)resp.StatusCode);
+                return null;
+            }
             var body = await resp.Content.ReadFromJsonAsync<ConvertResponse>(ct);
             if (string.IsNullOrWhiteSpace(body?.Markdown)) return null;
 
@@ -38,6 +45,7 @@ public class Sec2MdClient : ISec2MdClient
         }
         catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
         {
+            _logger.LogWarning(ex, "sec2md sidecar unreachable for {Cik}/{Accession}", cik, accessionNoDashes);
             return null;   // sidecar unreachable / timed out → caller falls back to raw HTML
         }
     }
