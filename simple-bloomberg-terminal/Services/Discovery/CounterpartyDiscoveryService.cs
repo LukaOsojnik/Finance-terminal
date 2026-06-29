@@ -7,6 +7,7 @@ using System.Threading.Channels;
 using System.Text.Json.Serialization;
 using System.Text.RegularExpressions;
 using Microsoft.Extensions.Logging;
+using simple_bloomberg_terminal.Models.Entities;
 using simple_bloomberg_terminal.Models.ViewModels;
 using simple_bloomberg_terminal.Repositories;
 
@@ -109,6 +110,12 @@ public class CounterpartyDiscoveryService : ICounterpartyDiscovery
         var seen = new ConcurrentDictionary<string, byte>(StringComparer.OrdinalIgnoreCase);
         var channel = Channel.CreateUnbounded<DiscoveryEvent>();
 
+        // Snapshot all companies into memory BEFORE the parallel fan-out. The scoped ICompanyRepository
+        // wraps a single EF Core DbContext, which is not thread-safe. Without a snapshot, every parallel
+        // task would call _companies.MatchByName concurrently on the same DbContext, throwing
+        // InvalidOperationException. This snapshot is a plain List — safe to read from any thread.
+        var companySnapshot = _companies.GetAll().ToList();
+
         // Cap how many searches hit Perplexity at once: a burst of 6 parallel calls can trip its rate
         // limit (429), which would fail every query instantly. This keeps the fan-out but bounded.
         using var gate = new SemaphoreSlim(MaxConcurrent);
@@ -122,7 +129,7 @@ public class CounterpartyDiscoveryService : ICounterpartyDiscovery
             IReadOnlyList<string> sources = [];
             string? error = null;
             await gate.WaitAsync(ct);
-            try { (items, sources) = await SearchAsync(q, supplier, valued, ct); }
+            try { (items, sources) = await SearchAsync(q, supplier, valued, companySnapshot, ct); }
             catch (Exception ex) { error = ex is HttpRequestException h ? $"search failed ({(int?)h.StatusCode}{h.StatusCode})" : ex.GetType().Name; _logger.LogWarning(ex, "Counterparty discovery query failed: {Query}", q); }
             finally { gate.Release(); }
             var fresh = items.Where(i => seen.TryAdd(i.Name, 0)).ToList();
@@ -187,7 +194,7 @@ public class CounterpartyDiscoveryService : ICounterpartyDiscovery
     // surfaced (parsed + matched against existing companies) AND the web pages it fetched (citation URLs,
     // for the live "fetched" list). "high" web context for primary sources.
     private async Task<(IReadOnlyList<CounterpartySuggestion> items, IReadOnlyList<string> sources)> SearchAsync(
-        string query, bool supplier, bool valued, CancellationToken ct)
+        string query, bool supplier, bool valued, IReadOnlyList<Company> companySnapshot, CancellationToken ct)
     {
         var who = supplier ? "SUPPLIERS (companies it BUYS from)" : "CUSTOMERS (companies that BUY from it)";
         var classRule = supplier ? "exactly one of COGS, OPEX" : "always 'CUSTOMER'";
@@ -205,7 +212,7 @@ public class CounterpartyDiscoveryService : ICounterpartyDiscovery
         // Company-wide queries can list many companies; the cap must clear the whole JSON or it gets cut
         // mid-array (finish_reason=length) — Parse's salvage recovers a partial cut.
         var (answer, citations) = await CallAsync(system, query, "high", maxTokens: 4000, ct);
-        return (Parse(answer, supplier, citations), citations);
+        return (Parse(answer, supplier, citations, companySnapshot), citations);
     }
 
     // One Perplexity /chat/completions turn. Parses the envelope by hand (not the typed DeepSeekResponse):
@@ -265,7 +272,9 @@ public class CounterpartyDiscoveryService : ICounterpartyDiscovery
     // Pull counterparties out of the model's JSON, tolerant of code fences/prose around it (sonar
     // doesn't guarantee a bare object). Side is fixed by the call; each name is matched against
     // existing companies so the page can offer "link" instead of "create + link".
-    private IReadOnlyList<CounterpartySuggestion> Parse(string answer, bool supplier, IReadOnlyList<string> citations)
+    // companySnapshot is a pre-loaded list (captured before the parallel fan-out) so this method
+    // never touches the DbContext — which would throw InvalidOperationException from concurrent tasks.
+    private IReadOnlyList<CounterpartySuggestion> Parse(string answer, bool supplier, IReadOnlyList<string> citations, IReadOnlyList<Company> companySnapshot)
     {
         // Salvage a truncated response (finish_reason=length): the array was cut mid-stream so the
         // outer structure never closed — closing it with `]}` recovers every complete object.
@@ -285,7 +294,7 @@ public class CounterpartyDiscoveryService : ICounterpartyDiscovery
             var classification = LlmJson.Str(el, "classification") ?? (supplier ? "COGS" : "CUSTOMER");
 
             // Fuzzy match so "Microsoft Corporation" maps to an existing "Microsoft".
-            var existing = _companies.MatchByName(name);
+            var existing = MatchByName(companySnapshot, name);
 
             list.Add(new CounterpartySuggestion(
                 Name: name!,
@@ -348,4 +357,15 @@ public class CounterpartyDiscoveryService : ICounterpartyDiscovery
 
     private static string? Cite(int oneBased, IReadOnlyList<string> citations) =>
         oneBased >= 1 && oneBased <= citations.Count ? citations[oneBased - 1] : null;
+
+    // In-memory equivalent of CompanyRepository.MatchByName — uses the same normalization so
+    // "NVIDIA Corporation" still finds DB "NVIDIA". Operates on a pre-loaded snapshot, never
+    // touches the DbContext, so it is safe to call from concurrent tasks.
+    private static Company? MatchByName(IReadOnlyList<Company> snapshot, string? name)
+    {
+        if (string.IsNullOrWhiteSpace(name)) return null;
+        var norm = CompanyRepository.NormalizeName(name);
+        if (norm.Length == 0) return null;
+        return snapshot.FirstOrDefault(c => CompanyRepository.NormalizeName(c.Name) == norm);
+    }
 }

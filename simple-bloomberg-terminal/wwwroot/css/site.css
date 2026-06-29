@@ -2913,7 +2913,7 @@ textarea.form-control { resize: vertical; min-height: 3rem; line-height: 1.6; }
   top: calc(100% + 0.3rem);
   left: 0;
   right: 0;
-  z-index: 1031;          /* above the fixed footer (1030) so the bottom of the list isn't hidden behind it */
+  z-index: 30;
   background: var(--bg-card);
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-sm);

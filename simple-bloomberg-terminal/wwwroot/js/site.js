@@ -1667,13 +1667,24 @@ document.addEventListener('submit', async e => {
 
         let timer, hits = [], activeIdx = -1;
 
+        // Cap the panel to the gap between its own top and the fixed footer, so the
+        // box always fits on screen — its bottom never slides under the footer or off
+        // the viewport, wherever the input sits (nav bar high up, home hero lower down).
+        const fit = () => {
+            const top = panel.getBoundingClientRect().top;   // measured while visible
+            const footerH = document.getElementById('main-footer')?.offsetHeight ?? 0;
+            const avail = window.innerHeight - top - footerH - 12;   // 12px breathing room
+            panel.style.maxHeight = Math.max(120, avail) + 'px';
+        };
+        const show = () => { panel.hidden = false; fit(); };
+
         const render = groups => {
             // Flatten to a single ordered list so Up/Down arrows cross group borders.
             hits = groups.flatMap(g => g.hits);
             activeIdx = -1;
             if (!hits.length) {
                 panel.innerHTML = `<div class="gsearch-empty">No matches</div>`;
-                panel.hidden = false;
+                show();
                 return;
             }
             let i = 0;
@@ -1689,7 +1700,7 @@ document.addEventListener('submit', async e => {
                             </span>
                         </a>`).join('')}
                 </div>`).join('');
-            panel.hidden = false;
+            show();
         };
 
         const links = () => panel.querySelectorAll('.gsearch-hit');
@@ -1719,9 +1730,11 @@ document.addEventListener('submit', async e => {
             else if (e.key === 'Enter' && activeIdx >= 0 && hits[activeIdx]) { location.href = hits[activeIdx].href; e.preventDefault(); }
             else if (e.key === 'Escape') { panel.hidden = true; input.blur(); }
         });
-        input.addEventListener('focus', function () { if (panel.innerHTML && this.value.trim()) panel.hidden = false; });
+        input.addEventListener('focus', function () { if (panel.innerHTML && this.value.trim()) show(); });
         // Delay so a click on a result registers before the panel hides.
         input.addEventListener('blur', () => setTimeout(() => { panel.hidden = true; }, 150));
+        // Re-fit if the viewport changes (resize / mobile address-bar) while open.
+        window.addEventListener('resize', () => { if (!panel.hidden) fit(); });
     }
 
     wire(document.getElementById('navSearchInput'), document.getElementById('navSearchResults'));
