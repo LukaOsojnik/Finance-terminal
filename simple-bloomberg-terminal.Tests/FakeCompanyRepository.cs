@@ -36,6 +36,9 @@ public sealed class FakeCompanyRepository : ICompanyRepository
     public IReadOnlyList<(string Name, string Cik)> BackfillUsCiksByName(IEnumerable<(string Title, string Cik)> secEntries) => throw new NotSupportedException();
     public IReadOnlyList<CompanyVolumeHistory> GetVolumeHistory(long companyId) => throw new NotSupportedException();
     public void ReplaceVolumeHistory(long companyId, IReadOnlyList<CompanyVolumeHistory> rows) => throw new NotSupportedException();
+    public IReadOnlyList<long> CompanyIdsWithStaleVolume(DateOnly cutoff) => throw new NotSupportedException();
+    public DateOnly? GetLatestVolumeWeek(long companyId) => throw new NotSupportedException();
+    public void AppendVolumeHistory(long companyId, IReadOnlyList<CompanyVolumeHistory> rows) => throw new NotSupportedException();
     public IEnumerable<Company> GetAll() => throw new NotSupportedException();
     public Company? GetWithGraphRelations(long id) => throw new NotSupportedException();
     public Company? GetWithGraphRelationsByCik(string cik) => throw new NotSupportedException();

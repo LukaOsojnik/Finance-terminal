@@ -1,5 +1,6 @@
 using System.Text.Json;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Logging.Abstractions;
 using simple_bloomberg_terminal.Models.Enums;
 using simple_bloomberg_terminal.Models.Entities;
 using simple_bloomberg_terminal.Models.ViewModels;
@@ -25,7 +26,8 @@ public class CounterpartyDiscoveryTests
         return new CounterpartyDiscoveryService(
             new HttpClient(handler) { BaseAddress = new Uri("https://api.perplexity.ai") },
             new FakeCompanyRepository(owner, microsoft),
-            new FakeApiKeyProvider(new UserApiKeys(null, null, "pplx-key")));
+            new FakeApiKeyProvider(new UserApiKeys(null, null, "pplx-key")),
+            NullLogger<CounterpartyDiscoveryService>.Instance);
     }
 
     private static async Task<List<DiscoveryEvent>> Run(
@@ -179,7 +181,8 @@ public class CounterpartyDiscoveryTests
         var svc = new CounterpartyDiscoveryService(
             new HttpClient(ScriptedHttpHandler.Json(Envelope("""{"queries":[]}"""))) { BaseAddress = new Uri("https://api.perplexity.ai") },
             new FakeCompanyRepository(new Company("Apple", 1, Sector.INFORMATION_TECHNOLOGY) { Id = OwnerId }),
-            new FakeApiKeyProvider(UserApiKeys.Empty));
+            new FakeApiKeyProvider(UserApiKeys.Empty),
+            NullLogger<CounterpartyDiscoveryService>.Instance);
 
         await Assert.ThrowsAsync<MissingApiKeyException>(async () =>
         {
