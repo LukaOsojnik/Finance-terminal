@@ -9,6 +9,12 @@ public record CompanyDto(
     string? Cik,
     Sector Sector,
     GicsIndustry? Industry,
+    // Readable GICS classification names (null = unclassified at that tier). Projected from the
+    // entity's enums in MappingProfile so API consumers (the MCP server) get names, not ordinals.
+    // SubIndustry is the 163-tier GicsSubIndustry, not exposed by the numeric `Industry` above.
+    string? SectorName,
+    string? IndustryName,
+    string? SubIndustry,
     double? RevenueTotal,
     double? GrossMargin,
     DateOnly? AsOf,

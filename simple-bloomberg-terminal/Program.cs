@@ -1,10 +1,13 @@
 using System.Globalization;
+using Microsoft.AspNetCore.Authentication;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Localization;
 using Microsoft.EntityFrameworkCore;
 using Serilog;
+using simple_bloomberg_terminal.Auth;
 using simple_bloomberg_terminal.Data;
 using simple_bloomberg_terminal.IoCore;
 using simple_bloomberg_terminal.Models.Entities;
@@ -102,6 +105,25 @@ if (!string.IsNullOrWhiteSpace(googleClientId) && !string.IsNullOrWhiteSpace(goo
             options.ClientId = googleClientId;
             options.ClientSecret = googleClientSecret;
         });
+}
+
+// Read-only MCP server auth: a service-to-service API-key scheme alongside the Identity cookie. Only
+// wired when a key is configured (Railway env Mcp__ApiKey), mirroring the Google block's "boot without
+// it" pattern. The default authorization policy then accepts EITHER the cookie OR the API key, so plain
+// [Authorize] GETs work for the MCP service — while [Authorize(Roles=...)] writes stay closed to it,
+// since the API-key principal holds no role. See Auth/ApiKeyAuthenticationHandler.
+var mcpApiKey = builder.Configuration["Mcp:ApiKey"];
+if (!string.IsNullOrWhiteSpace(mcpApiKey))
+{
+    builder.Services.AddAuthentication()
+        .AddScheme<AuthenticationSchemeOptions, ApiKeyAuthenticationHandler>(
+            ApiKeyAuthenticationHandler.SchemeName, null);
+    builder.Services.AddAuthorizationBuilder()
+        .SetDefaultPolicy(new AuthorizationPolicyBuilder()
+            .RequireAuthenticatedUser()
+            .AddAuthenticationSchemes(
+                IdentityConstants.ApplicationScheme, ApiKeyAuthenticationHandler.SchemeName)
+            .Build());
 }
 
 // Railway (and most PaaS) terminate TLS at a reverse proxy and forward to the app over http.

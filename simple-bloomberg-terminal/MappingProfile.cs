@@ -23,8 +23,16 @@ public class MappingProfile : Profile
         CreateMap<Country, CountryDto>();
         CreateMap<CountryRequestDto, Country>();
 
-        // Company (nested Country + source collections resolve via their maps)
-        CreateMap<Company, CompanyDto>();
+        // Company (nested Country + source collections resolve via their maps). The three *Name
+        // params carry the GICS classification as readable enum names (null when that tier is
+        // unclassified) so API consumers don't have to mirror the 11/74/163-value enums.
+        CreateMap<Company, CompanyDto>()
+            .ForCtorParam(nameof(CompanyDto.SectorName),
+                o => o.MapFrom(s => s.Sector.HasValue ? s.Sector.Value.ToString() : null))
+            .ForCtorParam(nameof(CompanyDto.IndustryName),
+                o => o.MapFrom(s => s.Industry.HasValue ? s.Industry.Value.ToString() : null))
+            .ForCtorParam(nameof(CompanyDto.SubIndustry),
+                o => o.MapFrom(s => s.GicsSubIndustry.HasValue ? s.GicsSubIndustry.Value.ToString() : null));
         CreateMap<CompanyRequestDto, Company>();
 
         // TradeBloc (nested Countries -> RelatedRefDto). Join membership is applied by

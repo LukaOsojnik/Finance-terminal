@@ -1436,6 +1436,21 @@
 
 ---
 
+## api/companies/{id}/volume
+
+| Field | Value |
+|---|---|
+| Controller | CompaniesController (Controllers/Api/) |
+| Action | GetVolume |
+| HTTP | GET |
+| Route source | `[ApiController]` + `[Route("api/[controller]")]` + `[HttpGet("{id:long}/volume")]` |
+| View | — (JSON array of `{ weekStart, volume }`) |
+| Parameters | id: long (route, constrained) |
+| Auth | `[Authorize]` class-level (cookie or the MCP API-key scheme) |
+| Notes | Read-only stored weekly trading-volume series (no SEC/Yahoo call — just persisted rows via `GetVolumeHistory`). Added for the read-only MCP server's `get_stock_volume` tool; the ingest path that fills it stays a separate Admin/Manager POST on the MVC `CompaniesController` (`/companies/{id}/ingest-volume`). Returns 404 when the company is not found |
+
+---
+
 ## api/CompanyRisks
 
 | Field | Value |

@@ -36,6 +36,18 @@ public class CompaniesController : ControllerBase
         return entity is null ? NotFound() : Ok(_mapper.Map<CompanyDto>(entity));
     }
 
+    // Read-only stored weekly trading-volume series for a company (no SEC/Yahoo call — just what's
+    // persisted). Added for the MCP server's volume tool; the ingest path that fills it stays a
+    // separate Admin/Manager POST on the MVC controller.
+    [HttpGet("{id:long}/volume")]
+    public IActionResult GetVolume(long id)
+    {
+        if (_repo.GetById(id) is null) return NotFound();
+        var series = _repo.GetVolumeHistory(id)
+            .Select(v => new { weekStart = v.WeekStart.ToString("yyyy-MM-dd"), volume = v.Volume });
+        return Ok(series);
+    }
+
     [HttpPost]
     [Authorize(Roles = "Admin,Manager")]
     public ActionResult<CompanyDto> Create(CompanyRequestDto dto)
