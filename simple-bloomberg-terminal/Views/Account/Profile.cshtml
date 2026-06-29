@@ -1,6 +1,8 @@
 @model simple_bloomberg_terminal.Models.Entities.AppUser
+@inject Microsoft.Extensions.Configuration.IConfiguration Configuration
 @{
     ViewData["Title"] = "Profile";
+    var maxFilesizeMb = Configuration.GetValue<long>("ProfilePicture:MaxBytes") / (1024 * 1024);
 }
 
 <h2>Profile</h2>
@@ -41,7 +43,7 @@
         const dz = new Dropzone("#pictureDropzone", {
             paramName: "file",
             maxFiles: 1,
-            maxFilesize: 10, // MB
+            maxFilesize: @maxFilesizeMb, // MB, from ProfilePicture:MaxBytes in appsettings.json
             acceptedFiles: "image/jpeg,image/png,image/gif,image/webp",
             addRemoveLinks: false,
             dictDefaultMessage: "Drop an image here or click to upload",
