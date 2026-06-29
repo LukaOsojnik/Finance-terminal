@@ -2945,3 +2945,9 @@ textarea.form-control { resize: vertical; min-height: 3rem; line-height: 1.6; }
 [data-theme="light"] .modal-box,
 [data-theme="light"] .scan-notify-panel,
 [data-theme="light"] .scan-notify-chip { box-shadow: 0 8px 28px rgba(20,40,70,0.14); }
+/* delete controls are admin/manager-only server-side; hide them entirely when logged out so anonymous
+   browsers never see a button that only 403s. data-auth is stamped on <body> by _Layout; every delete
+   form carries .js-confirm (full-page) or .js-row-delete (inline AJAX). !important because the forms set
+   an inline `style="display:inline"` that would otherwise win over a stylesheet rule. */
+body[data-auth="0"] .js-confirm,
+body[data-auth="0"] .js-row-delete { display: none !important; }

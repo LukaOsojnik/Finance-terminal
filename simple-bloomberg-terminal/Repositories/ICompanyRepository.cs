@@ -41,6 +41,19 @@ public interface ICompanyRepository
     // ReplaceFinancials). Derived API data, so old rows are hard-deleted; a no-op if rows is empty.
     void ReplaceVolumeHistory(long companyId, IReadOnlyList<CompanyVolumeHistory> rows);
 
+    // Ids of active companies that ALREADY have volume rows whose newest stored week is on/before the
+    // cutoff (i.e. 7+ days stale). The weekly refresh job's work list — companies with no volume are
+    // skipped (the job only tops up series someone already cared to ingest), as are up-to-date ones.
+    IReadOnlyList<long> CompanyIdsWithStaleVolume(DateOnly cutoff);
+
+    // Newest stored WeekStart for a company, or null if it has no volume rows. Lets the refresh append
+    // only the weeks that come after it.
+    DateOnly? GetLatestVolumeWeek(long companyId);
+
+    // Append freshly-fetched volume rows without touching existing ones (caller has already filtered to
+    // weeks not yet stored). A no-op if rows is empty. Unlike ReplaceVolumeHistory this never deletes.
+    void AppendVolumeHistory(long companyId, IReadOnlyList<CompanyVolumeHistory> rows);
+
     // Ids of active companies that already have financials of ANY source (FMP or the YAHOO fallback) —
     // the backfill's "done" marker. Source-agnostic on purpose: FMP income is gated on the free plan, so
     // most rows land as YAHOO; keying "done" on FMP only would leave every company eligible forever and

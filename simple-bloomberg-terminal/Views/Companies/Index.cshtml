@@ -17,10 +17,15 @@
 <div class="d-flex" style="margin-bottom:1rem; gap:0.75rem; align-items:center;">
     <input type="text" class="form-control search-input" placeholder="Search name / cik / country..." data-search-url="@Url.Action("Search")" style="max-width:420px;"/>
     <a asp-route="CompaniesCreate" class="btn btn-primary">+ NEW</a>
-    <button type="button" id="backfill-financials-btn" class="btn btn-secondary" data-backfill-url="@Url.Action("BackfillFinancials")" title="Fetch real profile + financial history from FMP/Yahoo for companies that don't have it yet">⟳ BACKFILL FINANCIALS</button>
-    <button type="button" id="backfill-industries-btn" class="btn btn-secondary" data-backfill-url="@Url.Action("BackfillIndustries")" title="Resolve the GICS sub-industry (cheap LLM) for companies still missing one">⟳ RESOLVE INDUSTRIES</button>
-    <button type="button" id="backfill-ciks-btn" class="btn btn-secondary" data-backfill-url="@Url.Action("BackfillCiks")" title="Assign a SEC CIK to US companies missing one (FMP returns null for some US filers), matched by company name">⟳ BACKFILL CIKS</button>
-    <a asp-action="Classification" class="btn btn-secondary" title="Review every company's source label vs resolved GICS sub-industry; spot mis-fits, filter unclassified/flagged, fix with AI or by hand">⚑ CLASSIFICATION</a>
+    @* Backfill / resolve / classification actions are admin-only — rendered for no one else, so the
+       markup never reaches a non-admin (server-side gate, unlike the CSS-hidden delete buttons). *@
+    @if (User.IsInRole("Admin"))
+    {
+        <button type="button" id="backfill-financials-btn" class="btn btn-secondary" data-backfill-url="@Url.Action("BackfillFinancials")" title="Fetch real profile + financial history from FMP/Yahoo for companies that don't have it yet">⟳ BACKFILL FINANCIALS</button>
+        <button type="button" id="backfill-industries-btn" class="btn btn-secondary" data-backfill-url="@Url.Action("BackfillIndustries")" title="Resolve the GICS sub-industry (cheap LLM) for companies still missing one">⟳ RESOLVE INDUSTRIES</button>
+        <button type="button" id="backfill-ciks-btn" class="btn btn-secondary" data-backfill-url="@Url.Action("BackfillCiks")" title="Assign a SEC CIK to US companies missing one (FMP returns null for some US filers), matched by company name">⟳ BACKFILL CIKS</button>
+        <a asp-action="Classification" class="btn btn-secondary" title="Review every company's source label vs resolved GICS sub-industry; spot mis-fits, filter unclassified/flagged, fix with AI or by hand">⚑ CLASSIFICATION</a>
+    }
     <div class="type-filter" style="margin-left:auto; display:flex; gap:0.4rem;">
         <button type="button" class="btn btn-sm btn-primary" data-type-filter="all">ALL</button>
         <button type="button" class="btn btn-sm btn-secondary" data-type-filter="PUBLIC">PUBLIC</button>

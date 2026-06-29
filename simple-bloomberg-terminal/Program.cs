@@ -216,6 +216,9 @@ builder.Services.AddScoped<IIndustryClassifier, IndustryClassifier>();
 // Owns the FMP->enrich->financials->industry/country pipeline that turns a ticker (or a web-searched
 // name) into a company — shared by the New Company form, bulk backfill, and counterparty linking.
 builder.Services.AddScoped<ICompanyProvisioningService, CompanyProvisioningService>();
+// Weekly background job: tops up stored volume series (companies that already have volume rows whose
+// newest week is 7+ days old) by appending only the weeks Yahoo has that we don't.
+builder.Services.AddHostedService<WeeklyVolumeRefreshService>();
 // Caches a filing's cleaned section text so each chat turn doesn't re-download the document.
 builder.Services.AddMemoryCache();
 // Tracks detached auto-scan jobs (started on the extraction page, run in the background) so the

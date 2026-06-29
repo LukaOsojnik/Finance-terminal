@@ -76,6 +76,11 @@ public interface ICompanyProvisioningService
     // a Yahoo failure yields NoData. Drives the Details page "INGEST VOLUME" button.
     Task<VolumeIngestResult> IngestWeeklyVolumeAsync(long companyId);
 
+    // Incremental sibling of IngestWeeklyVolumeAsync used by the weekly refresh job: re-fetches Yahoo's
+    // max-range series but stores ONLY the weeks newer than the company's latest stored bar, leaving the
+    // existing rows untouched. RowCount is how many new weeks were appended (0 when already current).
+    Task<VolumeIngestResult> AppendNewWeeklyVolumeAsync(long companyId);
+
     // Reuse (fuzzy name match) or create the counterparty company behind a confirmed link.
     Task<long> GetOrCreateCounterpartyAsync(LinkCounterpartyRequest req, Company owner);
 
@@ -469,6 +474,30 @@ public class CompanyProvisioningService(
             .Select(b => new CompanyVolumeHistory(companyId, b.WeekStart, b.Volume) { CapturedAt = captured })
             .ToList();
         companies.ReplaceVolumeHistory(companyId, rows);
+        return new VolumeIngestResult(VolumeIngestStatus.Ok, rows.Count);
+    }
+
+    public async Task<VolumeIngestResult> AppendNewWeeklyVolumeAsync(long companyId)
+    {
+        var company = companies.GetById(companyId);
+        if (company is null) return new VolumeIngestResult(VolumeIngestStatus.CompanyNotFound, 0);
+
+        var ticker = ResolveTickerForCik(company.Cik, await stock.GetCikTickerMap());
+        if (ticker is null) return new VolumeIngestResult(VolumeIngestStatus.NoTicker, 0);
+
+        var bars = await yahoo.GetWeeklyVolumeHistoryAsync(ticker);
+        if (bars is not { Count: > 0 }) return new VolumeIngestResult(VolumeIngestStatus.NoData, 0);
+
+        // Keep only the weeks after our newest stored bar — every week up to and including it already
+        // exists, so we skip them and append from there to today. (lastWeek is non-null in practice: the
+        // job only feeds us companies that already have rows, but guard anyway.)
+        var lastWeek = companies.GetLatestVolumeWeek(companyId);
+        var captured = DateTime.UtcNow;
+        var rows = bars
+            .Where(b => lastWeek is null || b.WeekStart > lastWeek.Value)
+            .Select(b => new CompanyVolumeHistory(companyId, b.WeekStart, b.Volume) { CapturedAt = captured })
+            .ToList();
+        companies.AppendVolumeHistory(companyId, rows);
         return new VolumeIngestResult(VolumeIngestStatus.Ok, rows.Count);
     }
 

@@ -182,6 +182,27 @@ public class CompanyRepository(AppDbContext db) : ICompanyRepository
         db.SaveChanges();
     }
 
+    public IReadOnlyList<long> CompanyIdsWithStaleVolume(DateOnly cutoff) =>
+        db.Companies
+            .Where(c => c.DeletedAt == null
+                        && c.VolumeHistory.Any()
+                        && c.VolumeHistory.Max(v => v.WeekStart) <= cutoff)
+            .Select(c => c.Id)
+            .ToList();
+
+    public DateOnly? GetLatestVolumeWeek(long companyId) =>
+        db.CompanyVolumeHistories
+            .Where(v => v.CompanyId == companyId)
+            .Select(v => (DateOnly?)v.WeekStart)
+            .Max();
+
+    public void AppendVolumeHistory(long companyId, IReadOnlyList<CompanyVolumeHistory> rows)
+    {
+        if (rows.Count == 0) return;
+        db.CompanyVolumeHistories.AddRange(rows);
+        db.SaveChanges();
+    }
+
     public IReadOnlyDictionary<string, long> CikToIdMap()
     {
         var map = new Dictionary<string, long>();
