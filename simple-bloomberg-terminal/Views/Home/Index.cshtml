@@ -8,6 +8,13 @@
     <p class="home-hero-sub">Real-time data &bull; Economic events &bull; Company analytics</p>
 </div>
 
+<div class="home-search" role="search">
+    <span class="home-search-prompt">&gt;</span>
+    <input type="text" id="homeSearchInput" class="home-search-input" autocomplete="off"
+           placeholder="Search companies, countries, events…" aria-label="Global search"/>
+    <div id="homeSearchResults" class="gsearch-results" hidden></div>
+</div>
+
 <div class="nav-cards">
     <a asp-controller="Countries" asp-action="Index" class="nav-card-link">
         <div class="nav-card">

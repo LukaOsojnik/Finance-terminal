@@ -2863,6 +2863,165 @@ textarea.form-control { resize: vertical; min-height: 3rem; line-height: 1.6; }
 .alert-info    { background: #0a1a2a;          border-color: var(--accent-dim); color: var(--accent); }
 
 /* ═════════════════════════════════════════════════════════════
+   GLOBAL SEARCH (nav command bar + home hero) — shared dropdown
+═════════════════════════════════════════════════════════════ */
+.nav-search {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  flex: 1 1 auto;
+  max-width: 420px;
+  margin: 0 1rem;
+  padding: 0.25rem 0.6rem;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  transition: border-color var(--transition);
+}
+.nav-search:focus-within { border-color: var(--accent-dim); }
+
+.nav-search-prompt { color: var(--accent); font-family: var(--font-mono); font-weight: 600; }
+
+.nav-search-input {
+  flex: 1 1 auto;
+  min-width: 0;
+  background: transparent;
+  border: 0;
+  outline: none;
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+}
+.nav-search-input::placeholder { color: var(--muted); }
+
+.nav-search-key {
+  font-family: var(--font-mono);
+  font-size: 0.65rem;
+  color: var(--text-secondary);
+  background: var(--bg-card);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  padding: 0 0.35rem;
+  line-height: 1.4;
+}
+.nav-search:focus-within .nav-search-key { display: none; }
+
+/* Shared results dropdown (used by both nav + home inputs) */
+.gsearch-results {
+  position: absolute;
+  top: calc(100% + 0.3rem);
+  left: 0;
+  right: 0;
+  z-index: 30;
+  background: var(--bg-card);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  max-height: 60vh;
+  overflow-y: auto;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+}
+
+.gsearch-group { border-bottom: 1px solid var(--border-subtle); }
+.gsearch-group:last-child { border-bottom: none; }
+
+.gsearch-group-title {
+  padding: 0.4rem 0.75rem 0.25rem;
+  font-family: var(--font-display);
+  font-size: 0.65rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+}
+
+.gsearch-hit {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.4rem 0.75rem;
+  text-decoration: none;
+  color: var(--text-primary);
+}
+.gsearch-hit:hover,
+.gsearch-hit.active { background: var(--bg-row-hover); }
+
+.gsearch-kind {
+  flex: 0 0 auto;
+  min-width: 2.6rem;
+  text-align: center;
+  padding: 0.1rem 0.4rem;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  background: var(--bg-surface);
+  font-family: var(--font-mono);
+  font-size: 0.6rem;
+  letter-spacing: 0.1em;
+  color: var(--text-secondary);
+}
+.gsearch-hit[data-kind="EVT"]  .gsearch-kind { border-color: var(--accent-dim); color: var(--accent); }
+.gsearch-hit[data-kind="CTRY"] .gsearch-kind { border-color: var(--green-dim);  color: var(--green);  }
+.gsearch-hit[data-kind="CO"]   .gsearch-kind { border-color: #d4a00033;         color: #d4a000;        }
+
+.gsearch-text { display: flex; flex-direction: column; min-width: 0; }
+.gsearch-label {
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.gsearch-hit:hover .gsearch-label,
+.gsearch-hit.active .gsearch-label { color: var(--accent); }
+.gsearch-sub {
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  color: var(--text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.gsearch-empty {
+  padding: 0.6rem 0.75rem;
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  color: var(--muted);
+}
+
+/* Home hero variant — same dropdown, bigger input */
+.home-search {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  max-width: 640px;
+  margin: 0 auto 2.5rem;
+  padding: 0.7rem 1rem;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  transition: border-color var(--transition);
+}
+.home-search:focus-within { border-color: var(--accent-dim); }
+.home-search-prompt { color: var(--accent); font-family: var(--font-mono); font-weight: 600; font-size: 1.1rem; }
+.home-search-input {
+  flex: 1 1 auto;
+  min-width: 0;
+  background: transparent;
+  border: 0;
+  outline: none;
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+  font-size: 0.95rem;
+}
+.home-search-input::placeholder { color: var(--muted); }
+
+/* Nav search is tight on small screens — drop it below the md breakpoint. */
+@media (max-width: 768px) {
+  .nav-search { display: none; }
+}
+
+/* ═════════════════════════════════════════════════════════════
    THEME TOGGLE (navbar) + LIGHT MODE
 ═════════════════════════════════════════════════════════════ */
 .theme-toggle {

@@ -158,6 +158,7 @@ builder.Services.AddScoped<ProfilePictureService>();
 builder.Services.AddScoped<ICountryRepository, CountryRepository>();
 builder.Services.AddScoped<ICompanyRepository, CompanyRepository>();
 builder.Services.AddScoped<IEventRepository, EventRepository>();
+builder.Services.AddScoped<ISearchService, SearchService>();
 builder.Services.AddScoped<ICountryDetailsRepository, CountryDetailsRepository>();
 builder.Services.AddScoped<ITradeBlocRepository, TradeBlocRepository>();
 builder.Services.AddScoped<ICountryAdvantageRepository, CountryAdvantageRepository>();

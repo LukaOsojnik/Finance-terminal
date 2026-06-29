@@ -31,6 +31,13 @@
             <a class="terminal-brand" asp-area="" asp-controller="Home" asp-action="Index">
                 <span class="brand-bracket">[</span>BBT<span class="brand-bracket">]</span>
             </a>
+            <div class="nav-search" role="search">
+                <span class="nav-search-prompt">&gt;</span>
+                <input type="text" id="navSearchInput" class="nav-search-input" autocomplete="off"
+                       placeholder="Search companies, countries, events…" aria-label="Global search"/>
+                <kbd class="nav-search-key">/</kbd>
+                <div id="navSearchResults" class="gsearch-results" hidden></div>
+            </div>
             <button class="navbar-toggler" type="button" data-bs-toggle="collapse"
                     data-bs-target=".navbar-collapse" aria-controls="navbarSupportedContent"
                     aria-expanded="false" aria-label="Toggle navigation">

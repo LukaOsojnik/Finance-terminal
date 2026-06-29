@@ -1650,3 +1650,93 @@ document.addEventListener('submit', async e => {
     });
 })();
 
+
+// ── Global Search (command bar) ──
+// One endpoint (/api/search) feeds two inputs: the always-present nav-bar bar and
+// the home hero. Results arrive pre-grouped by entity type (Companies, Countries,
+// Events) so there's no cross-type ranking — each group renders as its own section.
+(function () {
+    const escapeHtml = s => String(s ?? '').replace(/[&<>"']/g, c =>
+        ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+
+    function wire(input, panel) {
+        // The nav input lives in a data-turbo-permanent header, so it survives Turbo
+        // navigations while site.js re-runs — guard against binding listeners twice.
+        if (!input || !panel || input.dataset.gsearchWired) return;
+        input.dataset.gsearchWired = '1';
+
+        let timer, hits = [], activeIdx = -1;
+
+        const render = groups => {
+            // Flatten to a single ordered list so Up/Down arrows cross group borders.
+            hits = groups.flatMap(g => g.hits);
+            activeIdx = -1;
+            if (!hits.length) {
+                panel.innerHTML = `<div class="gsearch-empty">No matches</div>`;
+                panel.hidden = false;
+                return;
+            }
+            let i = 0;
+            panel.innerHTML = groups.map(g => `
+                <div class="gsearch-group">
+                    <div class="gsearch-group-title">${escapeHtml(g.title)}</div>
+                    ${g.hits.map(h => `
+                        <a class="gsearch-hit" href="${escapeHtml(h.href)}" data-kind="${escapeHtml(h.kind)}" data-idx="${i++}">
+                            <span class="gsearch-kind">${escapeHtml(h.kind)}</span>
+                            <span class="gsearch-text">
+                                <span class="gsearch-label">${escapeHtml(h.label)}</span>
+                                ${h.sublabel ? `<span class="gsearch-sub">${escapeHtml(h.sublabel)}</span>` : ''}
+                            </span>
+                        </a>`).join('')}
+                </div>`).join('');
+            panel.hidden = false;
+        };
+
+        const links = () => panel.querySelectorAll('.gsearch-hit');
+        const highlight = idx => {
+            const ls = links();
+            ls.forEach(a => a.classList.remove('active'));
+            if (idx >= 0 && ls[idx]) { ls[idx].classList.add('active'); ls[idx].scrollIntoView({ block: 'nearest' }); }
+            activeIdx = idx;
+        };
+
+        input.addEventListener('input', function () {
+            clearTimeout(timer);
+            const q = this.value.trim();
+            if (!q) { panel.hidden = true; panel.innerHTML = ''; hits = []; return; }
+            timer = setTimeout(() => {
+                fetch('/api/search?q=' + encodeURIComponent(q))
+                    .then(r => r.ok ? r.json() : Promise.reject(r.status))
+                    .then(render)
+                    .catch(() => { panel.hidden = true; });
+            }, 200);
+        });
+        input.addEventListener('keydown', e => {
+            if (panel.hidden) return;
+            const n = hits.length;
+            if (e.key === 'ArrowDown' && n) { highlight((activeIdx + 1) % n); e.preventDefault(); }
+            else if (e.key === 'ArrowUp' && n) { highlight((activeIdx - 1 + n) % n); e.preventDefault(); }
+            else if (e.key === 'Enter' && activeIdx >= 0 && hits[activeIdx]) { location.href = hits[activeIdx].href; e.preventDefault(); }
+            else if (e.key === 'Escape') { panel.hidden = true; input.blur(); }
+        });
+        input.addEventListener('focus', function () { if (panel.innerHTML && this.value.trim()) panel.hidden = false; });
+        // Delay so a click on a result registers before the panel hides.
+        input.addEventListener('blur', () => setTimeout(() => { panel.hidden = true; }, 150));
+    }
+
+    wire(document.getElementById('navSearchInput'), document.getElementById('navSearchResults'));
+    wire(document.getElementById('homeSearchInput'), document.getElementById('homeSearchResults'));
+
+    // "/" focuses search from anywhere — prefer the home hero if present, else the nav bar.
+    // Attached once to document; site.js re-runs on each Turbo navigation, so guard the bind.
+    if (!window.__gsearchHotkey) {
+        window.__gsearchHotkey = true;
+        document.addEventListener('keydown', e => {
+            if (e.key !== '/' || e.metaKey || e.ctrlKey || e.altKey) return;
+            const t = e.target;
+            if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return;
+            const target = document.getElementById('homeSearchInput') || document.getElementById('navSearchInput');
+            if (target) { e.preventDefault(); target.focus(); }
+        });
+    }
+})();

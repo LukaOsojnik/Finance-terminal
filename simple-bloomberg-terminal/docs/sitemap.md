@@ -1352,6 +1352,20 @@
 
 ---
 
+## api/search
+
+| Field | Value |
+|---|---|
+| Controller | SearchController |
+| Action | Index |
+| HTTP | GET |
+| Route source | `[Route("api/search")]` + `[HttpGet]` (`[AllowAnonymous]`) |
+| View | — (JSON: grouped global-search results — Companies, Countries, Events) |
+| Parameters | q: string? (query string) |
+| Notes | Global search backing the nav-bar command bar and the home hero search input. Returns hits grouped by Kind (Companies / Countries / Events) from `ISearchService.Search`. JSON only, no Razor view |
+
+---
+
 ## api/graph/company
 
 | Field | Value |

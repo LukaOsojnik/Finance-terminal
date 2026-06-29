@@ -16,3 +16,4 @@ global using simple_bloomberg_terminal.Services.Classification;
 global using simple_bloomberg_terminal.Services.Financials;
 global using simple_bloomberg_terminal.Services.Impact;
 global using simple_bloomberg_terminal.Services.Media;
+global using simple_bloomberg_terminal.Services.Search;
