@@ -26,19 +26,23 @@ public class FilingExtractionService : IFilingExtractionService
 {
     private readonly ICompanyRepository _companies;
     private readonly IStockApiClient _client;
-    private readonly ISec2MdClient _sec2md;
+    private readonly IFilingReportReader _reports;
     private readonly IChatLlm _llm;
     private readonly IMemoryCache _cache;
 
     private const int MaxParallel = 6;   // concurrent worker calls in the map phase
 
+    // Below this many headings, an Item's outline is treated as undetected rather than short — see
+    // the `thin` handling in ScanAutoAsync. Real MD&A outlines run to dozens of sub-headings.
+    private const int MinHeadingsPerItem = 5;
+
     public FilingExtractionService(
-        ICompanyRepository companies, IStockApiClient client, ISec2MdClient sec2md,
+        ICompanyRepository companies, IStockApiClient client, IFilingReportReader reports,
         IChatLlm llm, IMemoryCache cache)
     {
         _companies = companies;
         _client = client;
-        _sec2md = sec2md;
+        _reports = reports;
         _llm = llm;
         _cache = cache;
     }
@@ -54,6 +58,14 @@ public class FilingExtractionService : IFilingExtractionService
     // The worker system prompt, tailored to the node being built. Revenue and cost share a shape
     // (name + classification + money + counterparty); risk swaps money/counterparty for a free-text
     // note and a scope bucket. All three return the same {"sources":[...]} envelope so Parse is shared.
+    //
+    // 'proof' is the FIRST key of every source, and deliberately so. A model writes a JSON object
+    // left to right, so with proof last it commits to a figure and only then reaches for a quote to
+    // justify it — post-hoc rationalising, structurally unable to correct the answer. Quoting first
+    // forces it to locate the row label, the units and the column header BEFORE it can emit a number,
+    // which is the same work as reading the column correctly. It is also the only evidence the Pro
+    // chat agent ever sees: FormatDigest hands it these strings instead of re-reading the filing, so
+    // a thin proof leaves it nothing to disagree with.
     private static string SystemFor(ExtractionNode node) => node switch
     {
         ExtractionNode.COST =>
@@ -66,13 +78,16 @@ public class FilingExtractionService : IFilingExtractionService
             "label), classification (exactly one of COGS, OPEX, TOTAL_COSTS), value (cost in absolute " +
             "US dollars — scale any 'in thousands/millions' to the full number; null if not stated), " +
             "percentage (share of total cost or revenue 0-100, null if not stated), related_company (a " +
-            "named supplier/counterparty if the row is about one, else null). For every field you " +
-            "fill, include in 'proof' the VERBATIM substring of this excerpt that backs it (null for " +
-            "fields you left null). Reply with JSON only, no prose, no code fences: " +
-            "{\"sources\":[{\"name\":\"\",\"classification\":\"\",\"value\":null,\"percentage\":null," +
-            "\"related_company\":null,\"proof\":{\"name\":\"\",\"value\":null,\"percentage\":null," +
-            "\"classification\":null,\"related_company\":null}}]}. If the excerpt names no cost " +
-            "source, reply {\"sources\":[]}.",
+            "named supplier/counterparty if the row is about one, else null). Write 'proof' FIRST, " +
+            "before the fields it backs: for every field you intend to fill, quote the VERBATIM " +
+            "substring of this excerpt that backs it (null for fields you will leave null), then fill " +
+            "the field to match what you quoted. A figure read from a table must be quoted with enough " +
+            "context to identify it — its row label, its units, and its column header. Reply with JSON " +
+            "only, no prose, no code fences: " +
+            "{\"sources\":[{\"proof\":{\"name\":\"\",\"value\":null,\"percentage\":null," +
+            "\"classification\":null,\"related_company\":null},\"name\":\"\",\"classification\":\"\"," +
+            "\"value\":null,\"percentage\":null,\"related_company\":null}]}. If the excerpt names no " +
+            "cost source, reply {\"sources\":[]}.",
 
         ExtractionNode.RISK =>
             "You extract RISKS a single US public company discloses, from one excerpt of its SEC " +
@@ -80,30 +95,53 @@ public class FilingExtractionService : IFilingExtractionService
             "in THIS excerpt — do not guess or carry over outside knowledge. For each risk provide: " +
             "name (a short label for the risk), classification (its scope, exactly one of " +
             "MACROECONOMIC, INDUSTRY, BUSINESS, LEGAL_REGULATORY, FINANCIAL, GENERAL), note (one or " +
-            "two sentences summarising the risk in plain language). For every field you fill, include " +
-            "in 'proof' the VERBATIM substring of this excerpt that backs it (null for fields you left " +
-            "null). Reply with JSON only, no prose, no code fences: " +
-            "{\"sources\":[{\"name\":\"\",\"classification\":\"\",\"note\":null," +
-            "\"proof\":{\"name\":\"\",\"classification\":null,\"note\":null}}]}. If the excerpt names " +
+            "two sentences summarising the risk in plain language). Write 'proof' FIRST, before the " +
+            "fields it backs: for every field you intend to fill, quote the VERBATIM substring of this " +
+            "excerpt that backs it (null for fields you will leave null), then fill the field to match " +
+            "what you quoted. Reply with JSON only, no prose, no code fences: " +
+            "{\"sources\":[{\"proof\":{\"name\":\"\",\"classification\":null,\"note\":null}," +
+            "\"name\":\"\",\"classification\":\"\",\"note\":null}]}. If the excerpt names " +
             "no risk, reply {\"sources\":[]}.",
 
+        // The "A NAMED COUNTERPARTY IS ITSELF A SOURCE" block is what makes routing Items 1/1A pay
+        // off. Without it every field in this prompt points at a figure, and SourceType offers no
+        // bucket for a partner — so a worker reading AMD's Item 1A dropped "We are finalizing an
+        // investment and partnership agreement with OpenAI" on the floor: no dollar amount, no
+        // segment label, nothing it was licensed to return. The counterparty is modelled by
+        // related_company (RevenueSource.RelatedCompanyId, nullable), not by a new SourceType value.
+        //
+        // The exclusion list is load-bearing in the other direction. Risk factors name companies
+        // constantly — competitors, plaintiffs, vendors — and without it Item 1A would return every
+        // proper noun on the page.
         _ =>
             "You extract revenue sources for a single US public company from one excerpt of its SEC " +
             "filing. Return ONLY the sources clearly evidenced in THIS excerpt — do not guess or carry " +
             "over outside knowledge. Focus on the revenue LABEL and its breakdown — segment, product, " +
             "region or major customer; the exact company-total dollar figures are sourced separately " +
             "from tagged XBRL, so prioritise getting the name/segment/customer and proof right over " +
-            "transcribing big totals. For each source provide: name (the segment / product / region / " +
+            "transcribing big totals. A NAMED COUNTERPARTY IS ITSELF A SOURCE, even when the excerpt " +
+            "states no figure for it: return customers, commercial partners, joint-venture and " +
+            "equity-method counterparties, distributors and resellers — set name AND related_company " +
+            "to that company, classification to CUSTOMER, and leave value and percentage null. Return " +
+            "it even when the relationship is described as pending, proposed, being finalised or not " +
+            "yet signed; quote the hedging words verbatim in proof so the reviewer sees them. Do NOT " +
+            "return a company named only as a competitor, a litigation adversary, a supplier or " +
+            "vendor, or an acquisition target — those are not revenue counterparties. For each source " +
+            "provide: name (the segment / product / region / " +
             "major-customer label), classification (exactly one of CUSTOMER, SEGMENT, REGION, PRODUCT), " +
             "value (revenue in absolute US dollars — scale any 'in thousands/millions' to the full " +
             "number; null if not stated), percentage (share of total revenue 0-100, null if not stated), " +
-            "related_company (a named counterparty/customer if the row is about one, else null). For " +
-            "every field you fill, include in 'proof' the VERBATIM substring of this excerpt that backs " +
-            "it (null for fields you left null). Reply with JSON only, no prose, no code fences: " +
-            "{\"sources\":[{\"name\":\"\",\"classification\":\"\",\"value\":null,\"percentage\":null," +
-            "\"related_company\":null,\"proof\":{\"name\":\"\",\"value\":null,\"percentage\":null," +
-            "\"classification\":null,\"related_company\":null}}]}. If the excerpt names no revenue " +
-            "source, reply {\"sources\":[]}.",
+            "related_company (a named counterparty/customer if the row is about one, else null). Write " +
+            "'proof' FIRST, before the fields it backs: for every field you intend to fill, quote the " +
+            "VERBATIM substring of this excerpt that backs it (null for fields you will leave null), " +
+            "then fill the field to match what you quoted. A figure read from a table must be quoted " +
+            "with enough context to identify it — its row label, its units, and its column header; a " +
+            "percentage must be quoted with the words that say what it is a share OF. Reply with JSON " +
+            "only, no prose, no code fences: " +
+            "{\"sources\":[{\"proof\":{\"name\":\"\",\"value\":null,\"percentage\":null," +
+            "\"classification\":null,\"related_company\":null},\"name\":\"\",\"classification\":\"\"," +
+            "\"value\":null,\"percentage\":null,\"related_company\":null}]}. If the excerpt names no " +
+            "revenue source, reply {\"sources\":[]}.",
     };
 
     public async Task<IReadOnlyList<ExtractionSuggestion>> ExtractAsync(
@@ -112,7 +150,8 @@ public class FilingExtractionService : IFilingExtractionService
     {
         var raw = await FetchRawAsync(companyId, accession, doc, filingType, ct);
         if (raw is null) return [];
-        return await ScanChunksAsync(FilingSections.Build(raw, FilingSections.ItemsFor(node)), node, null, ct);
+        return await ScanChunksAsync(
+            FilingSections.Build(raw, FilingSections.ItemsFor(node, filingType)), node, null, ct);
     }
 
     // The chat's grounding digest: cached per filing; built by the auto-scan on a miss (heading triage
@@ -143,7 +182,7 @@ public class FilingExtractionService : IFilingExtractionService
         Action<ScanProgress>? onProgress = null, CancellationToken ct = default)
     {
         var headings = await GetOrParseHeadingsAsync(companyId, accession, doc, node, filingType, ct);
-        var items = FilingSections.ItemsFor(node);
+        var items = FilingSections.ItemsFor(node, filingType);
 
         // Heading triage drives the narrative items (e.g. Item 7 MD&A), where bold headings line up
         // with topic boundaries. Item 8 (financial statements) is handled separately, below.
@@ -159,23 +198,43 @@ public class FilingExtractionService : IFilingExtractionService
         // revenue table lands under a tax note) and the per-heading cap truncates them.
         // Pack consecutive same-Item headings into one worker call up to the chunk budget: a tiny heading
         // body no longer wastes a whole LLM call — several small titles ride together, fewer calls.
+        // Items whose heading outline is too thin to be a real outline. Bold-detection assumes filers
+        // mark sub-headings with font-weight; Intel styles them by size and colour instead, so its
+        // 3.3 MB 10-K surfaces 4 headings where AMD's surfaces 86 — the heading path would hand the
+        // workers two thin chunks and silently miss the MD&A segment tables. Read those Items
+        // sequentially instead: the same treatment Item 8 gets, for the same reason.
+        var thin = items
+            .Where(i => i != "8" && headings.Count(h => h.Section == $"Item {i}") < MinHeadingsPerItem)
+            .ToHashSet();
+
         var pickedHeadings = pickedSet
             .OrderBy(i => i)
-            .Where(i => headings[i].Section != "Item 8")
             .Select(i => headings[i])
+            .Where(h => h.Section != "Item 8" && !thin.Contains(h.Section["Item ".Length..]))
             .ToList();
         var chunks = PackHeadings(pickedHeadings);
 
-        // Item 8: sequential, document-order chunks of the whole section, so every table reaches a
-        // worker intact and in place (no mis-attribution, no per-heading truncation). Markdown is cached
-        // by FetchRawAsync, so this doesn't re-convert the filing.
-        if (items.Contains("8") && await FetchRawAsync(companyId, accession, doc, filingType, ct) is { } raw)
-            chunks.AddRange(FilingSections.BuildSection(raw, "8"));
+        // Item 8: the SEC's rendered statement reports, one clean table per file. Falls back to
+        // sequential document-order chunks of the section when the filing has no report index, so
+        // every table still reaches a worker intact and in place.
+        if (items.Contains("8"))
+        {
+            var reportChunks = await ReportChunksAsync(companyId, accession, node, ct);
+            if (reportChunks.Count > 0)
+                chunks.AddRange(reportChunks);
+            else if (await FetchRawAsync(companyId, accession, doc, filingType, ct) is { } raw)
+                chunks.AddRange(FilingSections.BuildSection(raw, "8"));
+        }
 
-        // The page's triage report: every heading offered + whether scanned. Item 8 is now read in full
-        // sequentially, so its headings are all marked scanned.
+        if (thin.Count > 0 && await FetchRawAsync(companyId, accession, doc, filingType, ct) is { } thinRaw)
+            foreach (var item in thin)
+                chunks.AddRange(FilingSections.BuildSection(thinRaw, item));
+
+        // The page's triage report: every heading offered + whether scanned. Item 8 and the thin Items
+        // are read in full sequentially, so their headings are all marked scanned.
         var report = headings
-            .Select((h, i) => new ScannedHeading(h.Section, h.Title, h.Section == "Item 8" || pickedSet.Contains(i)))
+            .Select((h, i) => new ScannedHeading(h.Section, h.Title,
+                h.Section == "Item 8" || thin.Contains(h.Section["Item ".Length..]) || pickedSet.Contains(i)))
             .ToList();
 
         // Announce the plan once (before any worker runs) so the widget can lay out the section tree;
@@ -201,8 +260,14 @@ public class FilingExtractionService : IFilingExtractionService
 
         try
         {
+            // Same reasoning-token trap as ScanChunkAsync: the visible answer is a short list of ids,
+            // but on a reasoning fast model this ceiling is max_completion_tokens and covers the
+            // reasoning too — and triage reasons over the WHOLE heading list, which runs to 86 titles
+            // on AMD. 800 was not a budget for that, and the failure was invisible: an empty parse
+            // falls through to "read them all" below, quietly turning triage off and scanning every
+            // heading. That reads as a slow, expensive scan, never as an error.
             var answer = await _llm.CompleteAsync(
-                TriageSystemFor(node), $"Headings:\n{list}", maxTokens: 800, jsonObject: true, fast: true, ct: ct);
+                TriageSystemFor(node), $"Headings:\n{list}", maxTokens: 8000, jsonObject: true, fast: true, ct: ct);
             var ids = ParseIds(answer, headings.Count);
             if (ids.Count > 0) return ids;
         }
@@ -218,7 +283,26 @@ public class FilingExtractionService : IFilingExtractionService
         {
             ExtractionNode.COST => "cost, expense, COGS, operating-expense or major-supplier figures",
             ExtractionNode.RISK => "disclosed risk factors or market-risk exposures",
-            _                   => "revenue figures or segment / product / region / major-customer revenue breakdowns",
+            // Named after the disclosures that actually carry the breakdowns, so triage recognises them
+            // by their own heading wording rather than only by the word "revenue": segment and
+            // geographic revenue (ASC 280), disaggregation of revenue and remaining performance
+            // obligations (ASC 606), major-customer concentration (ASC 275-10-50), equity-method
+            // investments and JV partners (ASC 323), plus the Item 1 / 8-K narrative of customers,
+            // distribution channels, backlog and named contract wins.
+            //
+            // The trailing risk-factor clause is what makes Item 1A affordable. Its headings are 20-40
+            // pages of largely generic risk, of which only the concentration ones bear on revenue, and
+            // unlike Item 7 it is NOT force-included below — triage is the only thing filtering it. So
+            // the qualifier ("that name a specific customer…") is doing real work: without it triage
+            // reads a section title like "Risks Related to Our Business" as on-topic and takes the lot.
+            _                   => "revenue figures or revenue breakdowns — by segment, product, " +
+                                   "region or major customer; disaggregation of revenue, remaining " +
+                                   "performance obligations, customer concentration, equity-method " +
+                                   "investments and joint-venture partners; the narrative on " +
+                                   "customers, distribution channels, backlog and named contracts; " +
+                                   "and risk factors that name a specific customer, contract, " +
+                                   "backlog or revenue concentration — but NOT generic risk " +
+                                   "boilerplate that names no counterparty and gives no figure",
         };
         return "You triage sub-section headings from one US public company's SEC filing. You are given a " +
                "numbered list of headings as 'id: [Item] Title'. Choose the ids of the headings whose " +
@@ -250,31 +334,65 @@ public class FilingExtractionService : IFilingExtractionService
         if (_cache.TryGetValue(HeadingsKey(accession, doc, node), out List<FilingHeading>? cached) && cached is not null)
             return cached;
         var raw = await FetchRawAsync(companyId, accession, doc, filingType, ct);
-        var headings = raw is null ? [] : FilingSections.BuildHeadings(raw, FilingSections.ItemsFor(node));
+        var headings = raw is null
+            ? []
+            : FilingSections.BuildHeadings(raw, FilingSections.ItemsFor(node, filingType));
         _cache.Set(HeadingsKey(accession, doc, node), headings, CacheFor);
         return headings;
     }
 
     private static string RawKey(string accession, string doc) => $"filing-raw:{accession}:{doc}";
 
-    // Fetch the filing as clean markdown via the sec2md sidecar (so headings/triage read semantic
-    // titles); fall back to the raw SEC HTML when the sidecar is down — FilingSections reads both.
-    // Cached per filing so a single scan (headings + sequential Item 8) converts the document once.
+    // Fetch the filing document straight from EDGAR as HTML. FilingSections parses that directly now —
+    // the Python sec2md sidecar that used to sit here converted the filing to markdown, which cost us
+    // every table's column structure on the way in (see docs/sec-extraction.md). Cached per filing so
+    // one scan (headings + Item 8) fetches the document once.
     private async Task<string?> FetchRawAsync(
         long companyId, string accession, string doc, string? filingType, CancellationToken ct)
     {
         if (_cache.TryGetValue(RawKey(accession, doc), out string? cached)) return cached;
+        if (CompanyCik(companyId) is not { } cik) return null;
 
-        var company = _companies.GetById(companyId);
-        if (company is null || string.IsNullOrWhiteSpace(company.Cik)) return null;
-        var cik = Cik.Trim(company.Cik);
-        var acc = accession.Replace("-", "");
-
-        var md = await _sec2md.ToMarkdownAsync(cik, acc, doc, filingType, ct);
-        var result = !string.IsNullOrWhiteSpace(md) ? md : await _client.GetFilingDocument(cik, acc, doc);
+        var result = await _client.GetFilingDocument(cik, accession.Replace("-", ""), doc);
         if (string.IsNullOrWhiteSpace(result)) return null;
         _cache.Set(RawKey(accession, doc), result, CacheFor);
         return result;
+    }
+
+    // The company's EDGAR CIK in the trimmed form the Archives paths use, or null when it has none.
+    private string? CompanyCik(long companyId)
+    {
+        var company = _companies.GetById(companyId);
+        return company is null || string.IsNullOrWhiteSpace(company.Cik) ? null : Cik.Trim(company.Cik);
+    }
+
+    private static string ReportsKey(string accession, ExtractionNode node) =>
+        $"filing-reports:{node}:{accession}";
+
+    // Item 8 comes from the SEC's own rendered reports (R*.htm) rather than from the filing document:
+    // they are the financial statements already reconstructed as well-formed tables, one per file,
+    // with units in the title and the us-gaap concept on every label cell. Best-effort — a filing with
+    // no FilingSummary.xml (pre-2009) yields nothing and the caller falls back to the document.
+    private async Task<List<FilingChunk>> ReportChunksAsync(
+        long companyId, string accession, ExtractionNode node, CancellationToken ct)
+    {
+        if (_cache.TryGetValue(ReportsKey(accession, node), out List<FilingChunk>? cached) && cached is not null)
+            return cached;
+        if (CompanyCik(companyId) is not { } cik) return [];
+
+        List<FilingChunk> chunks;
+        try
+        {
+            var reports = await _reports.ReportsAsync(
+                cik, accession.Replace("-", ""), e => FilingSections.SelectReport(e, node), ct);
+            chunks = FilingSections.BuildReports(reports);
+        }
+        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
+        {
+            chunks = [];
+        }
+        _cache.Set(ReportsKey(accession, node), chunks, CacheFor);
+        return chunks;
     }
 
     // Pack consecutive picked headings that share an Item into one worker call, up to the chunk budget.
@@ -308,7 +426,7 @@ public class FilingExtractionService : IFilingExtractionService
         return chunks;
     }
 
-    // Map/reduce over a given set of chunks: parallel Flash workers, then dedupe by name (first wins).
+    // Map/reduce over a given set of chunks: parallel Flash workers, then combine by name.
     private async Task<List<ExtractionSuggestion>> ScanChunksAsync(
         IReadOnlyList<FilingChunk> chunks, ExtractionNode node, Action<ScanProgress>? onProgress, CancellationToken ct)
     {
@@ -318,9 +436,47 @@ public class FilingExtractionService : IFilingExtractionService
         var byName = new Dictionary<string, ExtractionSuggestion>(StringComparer.OrdinalIgnoreCase);
         foreach (var list in perChunk)
             foreach (var s in list)
-                if (!string.IsNullOrWhiteSpace(s.Name) && !byName.ContainsKey(s.Name))
-                    byName[s.Name] = s;
+            {
+                if (string.IsNullOrWhiteSpace(s.Name)) continue;
+                byName[s.Name] = byName.TryGetValue(s.Name, out var seen) ? Combine(seen, s) : s;
+            }
         return byName.Values.ToList();
+    }
+
+    /// <summary>
+    /// Two chunks naming the same source are two partial views of it, not a duplicate to discard.
+    /// Document order runs the wrong way for "first wins": a filing's Overview NAMES the segments and
+    /// the section below it carries their figures, so keeping the first sighting whole threw away
+    /// every number the filing actually stated — 3M's Item 7 overview alone was enough to shadow
+    /// $11,384M and 45.6% for Safety and Industrial.
+    ///
+    /// Each field is taken with its own proof, so a figure never inherits the evidence for a figure
+    /// that was not adopted. <paramref name="a"/>'s Section is kept: it is where the source was first
+    /// evidenced, and every field carries verbatim proof of its own provenance regardless.
+    /// </summary>
+    private static ExtractionSuggestion Combine(ExtractionSuggestion a, ExtractionSuggestion b)
+    {
+        var (cls, clsProof) = a.Classification is not null
+            ? (a.Classification, a.Proof.Classification) : (b.Classification, b.Proof.Classification);
+        var (value, valueProof) = a.Value is not null
+            ? (a.Value, a.Proof.Value) : (b.Value, b.Proof.Value);
+        var (pct, pctProof) = a.Percentage is not null
+            ? (a.Percentage, a.Proof.Percentage) : (b.Percentage, b.Proof.Percentage);
+        var (related, relatedProof) = !string.IsNullOrWhiteSpace(a.RelatedCompany)
+            ? (a.RelatedCompany, a.Proof.RelatedCompany) : (b.RelatedCompany, b.Proof.RelatedCompany);
+        var (note, noteProof) = !string.IsNullOrWhiteSpace(a.Note)
+            ? (a.Note, a.Proof.Note) : (b.Note, b.Proof.Note);
+
+        return a with
+        {
+            Classification = cls,
+            Value = value,
+            Percentage = pct,
+            RelatedCompany = related,
+            Note = note,
+            Proof = new ExtractionProof(
+                a.Proof.Name ?? b.Proof.Name, valueProof, pctProof, clsProof, relatedProof, noteProof),
+        };
     }
 
     // Compact, model-readable digest of the workers' candidates (names/values + verbatim proof), so
@@ -377,10 +533,32 @@ public class FilingExtractionService : IFilingExtractionService
         try
         {
             // A packed chunk can carry many sources, and each echoes its backing text verbatim in
-            // 'proof', so 1500 truncated dense sections mid-array. 4000 fits the typical chunk; the
-            // salvage in Parse still recovers complete sources if a worst-case chunk overruns even this.
-            var answer = await _llm.CompleteAsync(system, prompt, maxTokens: 4000, jsonObject: true, fast: true, ct: ct);
+            // 'proof', so 1500 truncated dense sections mid-array.
+            //
+            // The ceiling is deliberately far above what the visible JSON needs, because on a
+            // REASONING fast model (OpenAI's tier here is gpt-5-mini) this cap is sent as
+            // max_completion_tokens, which covers the model's reasoning tokens AND the reply. At 4000
+            // reasoning consumed nearly the whole budget and the reply died 15 tokens in, mid-proof:
+            //   {"sources":[{"proof":{"name":"sales in EMEA","value":null
+            // Raising it is close to free — it is a ceiling, not a spend, and unused tokens are never
+            // billed — whereas setting it too low silently returns zero findings.
+            var answer = await _llm.CompleteAsync(system, prompt, maxTokens: 16000, jsonObject: true, fast: true, ct: ct);
             var found = Parse(answer, chunk.Section).ToList();
+
+            // A reply that does not parse as JSON AT ALL is a failed call, not an honest "no sources
+            // in this excerpt" — and the two are indistinguishable downstream, since both end as an
+            // empty list. Providers here never surface finish_reason (DeepSeekResponse does not
+            // deserialise it), so malformed output is the only truncation signal we get. Report it as
+            // an error, with the raw reply, rather than letting the widget log a tidy "0 matches".
+            using (var probe = LlmJson.ParseObject(answer))
+                if (probe is null && found.Count == 0)
+                {
+                    onProgress?.Invoke(new ScanProgress(ScanChunkPhase.Error, index, 0, null, transcript,
+                        "Reply was not valid JSON — most likely truncated by the token ceiling " +
+                        $"(finish_reason=length). Raw reply:\n{answer}"));
+                    return found;
+                }
+
             onProgress?.Invoke(new ScanProgress(ScanChunkPhase.Done, index, found.Count, null, transcript, answer));
             return found;
         }

@@ -24,7 +24,15 @@
       "Bash(dotnet build *)",
       "Bash(~/.dotnet/tools/dotnet-ef.exe database *)",
       "Bash('/c/Program Files/MySQL/MySQL Server 8.0/bin/mysql.exe' -h127.0.0.1 -P3306 -uluka -pKrokodil123! myappdb -e 'SELECT Id,Name,Sector,FmpIndustry,GicsSubIndustry,Industry,ClassifyStatus FROM Companies WHERE Name IN \\('\\\\''Public Storage'\\\\'','\\\\''Robinhood Markets, Inc.'\\\\'','\\\\''Raymond James Financial, Inc.'\\\\'','\\\\''Qnity Electronics, Inc.'\\\\'','\\\\''Rockwell Automation, Inc.'\\\\''\\);')",
-      "Bash(python -)"
+      "Bash(python -)",
+      "PowerShell($p = \"$env:APPDATA\\\\Microsoft\\\\UserSecrets\\\\8cd52d4a-8def-44c4-9b6b-ce1ecdb9877e\\\\secrets.json\"; if \\(Test-Path $p\\) { \"EXISTS: $p\"; \\(Get-Content $p -Raw | ConvertFrom-Json\\).PSObject.Properties.Name } else { \"MISSING: $p\" })",
+      "PowerShell(docker exec mysql-server *)",
+      "PowerShell(dotnet user-secrets set *)",
+      "PowerShell(Get-Content *)",
+      "Bash(docker exec *)",
+      "PowerShell($f='C:\\\\Users\\\\luka.osojnik\\\\Documents\\\\Coding\\\\simple-bloomberg-terminal\\\\simple-bloomberg-terminal.Tests\\\\FilingTableTests.cs'; \\(Get-Content $f | Measure-Object -Line\\).Lines)",
+      "PowerShell($out='C:\\\\Users\\\\LUKA~1.OSO\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\C--Users-luka-osojnik-Documents-Coding-simple-bloomberg-terminal\\\\b07f70e2-966b-4048-902c-9894d9adaf8d\\\\scratchpad\\\\testbin'; dotnet test \"$out\\\\simple-bloomberg-terminal.Tests.dll\" --nologo --filter \"FullyQualifiedName~FilingTableTests|FullyQualifiedName~ExtractionTests\" 2>&1 | Select-String -Pattern \"Passed!|Failed!|  Failed |Assert\" | Select-Object -Last 25)",
+      "PowerShell($out='C:\\\\Users\\\\LUKA~1.OSO\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\C--Users-luka-osojnik-Documents-Coding-simple-bloomberg-terminal\\\\b07f70e2-966b-4048-902c-9894d9adaf8d\\\\scratchpad\\\\testbin'; dotnet test \"$out\\\\simple-bloomberg-terminal.Tests.dll\" --nologo --filter \"FullyQualifiedName~Build_GivesTheLastItem\" 2>&1 | Select-Object -Last 20)"
     ]
   },
   "outputStyle": "Learning"

@@ -222,10 +222,11 @@ builder.Services.AddScoped<IChatProvider>(sp => new AnthropicChatProvider(
     sp.GetRequiredService<IUserApiKeyProvider>(),
     sp.GetRequiredService<ILogger<AnthropicChatProvider>>()));
 builder.Services.AddScoped<IChatLlm, ChatLlmRouter>();
-// sec2md sidecar (Python): converts a filing to clean markdown before the extractor's heading triage.
-builder.Services.AddHttpClient<ISec2MdClient, Sec2MdClient>(c => ConfigureHttp(c, "Sec2Md"));
 builder.Services.AddScoped<IFilingExtractionService, FilingExtractionService>();
 builder.Services.AddScoped<IXbrlInstanceReader, XbrlInstanceReader>();
+// Reads the SEC's own rendered statement reports (R*.htm) for a filing — the Item 8 table source.
+// Plain scoped service: it borrows the EDGAR transport through IStockApiClient rather than owning one.
+builder.Services.AddScoped<IFilingReportReader, FilingReportReader>();
 builder.Services.AddScoped<IExtractionChatService, ExtractionChatService>();
 // Perplexity sonar: typed HttpClient that web-searches a company's named suppliers/customers — the
 // counterparties SEC filings don't disclose. Feeds the "Discover related companies" action.

@@ -86,6 +86,17 @@ public class ExtractionController : Controller
     private static ExtractionNode ParseNode(string? node) =>
         Enum.TryParse<ExtractionNode>(node, true, out var n) ? n : ExtractionNode.REVENUE;
 
+    // The AI actions below all run through IChatLlm, which routes on the user's stored
+    // ParsingProvider — so the key to verify up front is THAT provider's, not DeepSeek's. Checking
+    // DeepSeek unconditionally blocked anyone who had picked Kimi/OpenAI/Anthropic from ever starting
+    // a scan, however valid their own key was. Throwing here (before a ScanJob is registered) is what
+    // turns a missing key into the add-your-key popup instead of a job that dies in the background.
+    private static void RequireParsingKey(UserApiKeys keys)
+    {
+        if (string.IsNullOrWhiteSpace(keys.KeyFor(keys.ParsingProvider)))
+            throw MissingApiKeyException.ForParsingProvider(keys.ParsingProvider);
+    }
+
     // Contribution gate: a Manager/Admin's writes go live (Approved); everyone else's are held as
     // Pending contributions stamped with the contributor, for a Manager to review. (UpsertRowByNode
     // is the single chokepoint every web-searched/LLM-parsed revenue/cost/risk row flows through.)
@@ -347,10 +358,10 @@ public class ExtractionController : Controller
         if (string.IsNullOrWhiteSpace(accession) || string.IsNullOrWhiteSpace(doc))
             return BadRequest("accession and doc are required.");
 
-        // The scan + summary run on DeepSeek. Verify the user's key now (throw -> 424 popup) and
-        // snapshot the keys so the detached background scope can use them (it has no HttpContext).
+        // The scan + summary run on the user's chosen parsing provider. Verify that key now (throw ->
+        // 424 popup) and snapshot the keys so the detached background scope can use them (no HttpContext).
         var keys = await _keys.GetAsync();
-        if (string.IsNullOrWhiteSpace(keys.DeepSeek)) throw MissingApiKeyException.DeepSeek();
+        RequireParsingKey(keys);
 
         var parsedNode = ParseNode(node);
         var job = new ScanJob
@@ -366,7 +377,7 @@ public class ExtractionController : Controller
         // Prefill the section boxes from the node's known SEC Items so the widget shows the layout
         // immediately (spinning) while triage/fetch run. The Planned event replaces these with the
         // real per-Item chunk rows once the scan has decided what to read.
-        foreach (var item in FilingSections.ItemsFor(parsedNode))
+        foreach (var item in FilingSections.ItemsFor(parsedNode, form))
             job.Sections.Add(new ScanSection { Item = $"Item {item}" });
         _jobs.Add(job);
 
@@ -442,10 +453,10 @@ public class ExtractionController : Controller
             return BadRequest("accession and doc are required.");
         if (req is null || string.IsNullOrWhiteSpace(req.Seed)) return BadRequest("seed is required.");
 
-        // Runs on DeepSeek. Verify the user's key now (throw -> 424 popup) and snapshot it for the
-        // detached scope (no HttpContext there).
+        // Runs on the user's chosen parsing provider. Verify that key now (throw -> 424 popup) and
+        // snapshot it for the detached scope (no HttpContext there).
         var keys = await _keys.GetAsync();
-        if (string.IsNullOrWhiteSpace(keys.DeepSeek)) throw MissingApiKeyException.DeepSeek();
+        RequireParsingKey(keys);
 
         var parsedNode = ParseNode(node);
         var seed = req.Seed;
@@ -667,10 +678,10 @@ public class ExtractionController : Controller
         if (job.Status != ScanJobStatus.Done) return BadRequest("Scan hasn't finished.");
         if (job.Replying) return Conflict("A reply is already in progress.");
 
-        // The reply streams via DeepSeek. Verify the user's key now (throw -> 424 popup) and snapshot
-        // the keys so the detached background scope can use them (it has no HttpContext).
+        // The reply streams via the user's chosen parsing provider. Verify that key now (throw -> 424
+        // popup) and snapshot the keys so the detached background scope can use them (no HttpContext).
         var keys = await _keys.GetAsync();
-        if (string.IsNullOrWhiteSpace(keys.DeepSeek)) throw MissingApiKeyException.DeepSeek();
+        RequireParsingKey(keys);
 
         var node = ParseNode(job.Node);
         var history = req?.Messages ?? [];

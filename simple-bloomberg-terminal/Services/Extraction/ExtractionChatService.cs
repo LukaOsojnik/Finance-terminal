@@ -11,19 +11,17 @@ public class ExtractionChatService : IExtractionChatService
 {
     private readonly ICompanyRepository _companies;
     private readonly IStockApiClient _client;
-    private readonly ISec2MdClient _sec2md;
     private readonly IFilingExtractionService _scan;
     private readonly IXbrlInstanceReader _instance;
     private readonly IChatLlm _llm;
     private readonly IMemoryCache _cache;
 
     public ExtractionChatService(
-        ICompanyRepository companies, IStockApiClient client, ISec2MdClient sec2md,
+        ICompanyRepository companies, IStockApiClient client,
         IFilingExtractionService scan, IXbrlInstanceReader instance, IChatLlm llm, IMemoryCache cache)
     {
         _companies = companies;
         _client = client;
-        _sec2md = sec2md;
         _scan = scan;
         _instance = instance;
         _llm = llm;
@@ -385,19 +383,17 @@ public class ExtractionChatService : IExtractionChatService
     }
 
     // Used only when the scan yields nothing: the cleaned node-target Item excerpts, budgeted per
-    // section (Items 7/8 for revenue & cost, Items 1A/7A for risk). Prefers sec2md markdown, falling
-    // back to raw SEC HTML when the sidecar is down (FilingSections reads both).
+    // section (Items 1/1A/7/8 for revenue and 1/7/8 for cost on a 10-K, Items 1.01/2.02/8.01 for
+    // revenue on an 8-K, Items 1A/7A for risk), read straight from the filing's EDGAR HTML —
+    // FilingSections keeps the tables intact on the way through.
     private async Task<string> RawFallbackAsync(
         long companyId, string accession, string doc, ExtractionNode node, string? filingType, CancellationToken ct)
     {
         var company = _companies.GetById(companyId);
         if (company is null || string.IsNullOrWhiteSpace(company.Cik)) return "";
-        var cik = Cik.Trim(company.Cik);
-        var acc = accession.Replace("-", "");
-        var raw = await _sec2md.ToMarkdownAsync(cik, acc, doc, filingType, ct)
-                  ?? await _client.GetFilingDocument(cik, acc, doc);
+        var raw = await _client.GetFilingDocument(Cik.Trim(company.Cik), accession.Replace("-", ""), doc);
         if (raw is null) return "";
-        var items = FilingSections.ItemsFor(node);
+        var items = FilingSections.ItemsFor(node, filingType);
         var context = BuildContext(raw, items);
         return string.IsNullOrEmpty(context)
             ? ""

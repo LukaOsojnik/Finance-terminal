@@ -16,13 +16,17 @@ public class UserApiKeyProvider : IUserApiKeyProvider
     private readonly IHttpContextAccessor _http;
     private readonly IUserApiKeyRepository _repo;
     private readonly IDataProtector _protector;
+    private readonly ILogger<UserApiKeyProvider> _logger;
     private UserApiKeys? _cached;
 
-    public UserApiKeyProvider(IHttpContextAccessor http, IUserApiKeyRepository repo, IDataProtectionProvider dp)
+    public UserApiKeyProvider(
+        IHttpContextAccessor http, IUserApiKeyRepository repo, IDataProtectionProvider dp,
+        ILogger<UserApiKeyProvider> logger)
     {
         _http = http;
         _repo = repo;
         _protector = dp.CreateProtector(Purpose);
+        _logger = logger;
     }
 
     public void Set(UserApiKeys keys) => _cached = keys;
@@ -85,10 +89,21 @@ public class UserApiKeyProvider : IUserApiKeyProvider
 
     // Ciphertext -> plaintext. A protector/key-ring change (or tampered value) throws
     // CryptographicException — treat that as "no usable key" rather than crashing the request.
+    //
+    // Logged, because returning null makes an undecryptable key indistinguishable from one the user
+    // never entered: the feature just reports "API key missing" and the add-your-key popup appears,
+    // however many times they re-save it. The usual cause is the key ring moving out from under the
+    // stored values (e.g. the switch to PersistKeysToDbContext leaving the old keys on disk).
     private string? Decrypt(string? cipher)
     {
         if (string.IsNullOrEmpty(cipher)) return null;
         try { return _protector.Unprotect(cipher); }
-        catch (CryptographicException) { return null; }
+        catch (CryptographicException ex)
+        {
+            _logger.LogWarning(ex,
+                "Stored API key could not be decrypted — the Data Protection key ring no longer holds " +
+                "the key it was encrypted with. The key will be reported as missing until it is re-saved.");
+            return null;
+        }
     }
 }
