@@ -36,6 +36,11 @@ public class FilingExtractionService : IFilingExtractionService
     // the `thin` handling in ScanAutoAsync. Real MD&A outlines run to dozens of sub-headings.
     private const int MinHeadingsPerItem = 5;
 
+    // A thin Item gets at least this many chunks even when the other feeds have already spent the
+    // scan's ceiling. Reading a whole Item in six ranked chunks is thin coverage, but it is coverage;
+    // dropping to zero would silently remove an entire routed Item from the scan.
+    private const int MinChunksPerThinItem = 6;
+
     public FilingExtractionService(
         ICompanyRepository companies, IStockApiClient client, IFilingReportReader reports,
         IChatLlm llm, IMemoryCache cache)
@@ -223,12 +228,25 @@ public class FilingExtractionService : IFilingExtractionService
             if (reportChunks.Count > 0)
                 chunks.AddRange(reportChunks);
             else if (await FetchRawAsync(companyId, accession, doc, filingType, ct) is { } raw)
-                chunks.AddRange(FilingSections.BuildSection(raw, "8"));
+                chunks.AddRange(FilingSections.BuildSection(raw, "8", node));
         }
 
         if (thin.Count > 0 && await FetchRawAsync(companyId, accession, doc, filingType, ct) is { } thinRaw)
+        // The thin Items absorb whatever the other two feeds left of the scan's ceiling. They go last
+        // for a reason: Item 8 carries the audited tables and the triaged headings were chosen on
+        // purpose, whereas this feed is a blind sequential read of a section whose outline we failed
+        // to parse. When something has to give, it should give here.
+        //
+        // Before this, the three feeds each sized themselves independently and nothing reconciled
+        // them: three thin Items meant 3 × BuildSection's 40 = 120 untriaged calls on top of Item 8,
+        // i.e. the filings with the worst targeting also cost the most. The floor keeps a thin Item
+        // from being squeezed to nothing when the ceiling is already spent.
             foreach (var item in thin)
-                chunks.AddRange(FilingSections.BuildSection(thinRaw, item));
+        {
+            var remaining = Math.Max(0, FilingSections.MaxScanChunks - chunks.Count);
+            var perItem = Math.Max(MinChunksPerThinItem, remaining / thin.Count);
+                chunks.AddRange(FilingSections.BuildSection(thinRaw, item, node, perItem));
+        }
 
         // The page's triage report: every heading offered + whether scanned. Item 8 and the thin Items
         // are read in full sequentially, so their headings are all marked scanned.

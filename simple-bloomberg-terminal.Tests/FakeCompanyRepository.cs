@@ -32,6 +32,10 @@ public sealed class FakeCompanyRepository : ICompanyRepository
             Cik.Normalize(c.Cik) == norm);
     }
 
+    // The discovery service enumerates every known company to prime its name-matching, so this one is
+    // on the path under test. Soft-deleted rows are filtered out to match the real repository.
+    public IEnumerable<Company> GetAll() => _companies.Where(c => c.DeletedAt == null);
+
     // Unused by the discovery path under test.
     public IReadOnlyList<(string Name, string Cik)> BackfillUsCiksByName(IEnumerable<(string Title, string Cik)> secEntries) => throw new NotSupportedException();
     public IReadOnlyList<CompanyVolumeHistory> GetVolumeHistory(long companyId) => throw new NotSupportedException();
@@ -39,7 +43,6 @@ public sealed class FakeCompanyRepository : ICompanyRepository
     public IReadOnlyList<long> CompanyIdsWithStaleVolume(DateOnly cutoff) => throw new NotSupportedException();
     public DateOnly? GetLatestVolumeWeek(long companyId) => throw new NotSupportedException();
     public void AppendVolumeHistory(long companyId, IReadOnlyList<CompanyVolumeHistory> rows) => throw new NotSupportedException();
-    public IEnumerable<Company> GetAll() => throw new NotSupportedException();
     public Company? GetWithGraphRelations(long id) => throw new NotSupportedException();
     public Company? GetWithGraphRelationsByCik(string cik) => throw new NotSupportedException();
     public IEnumerable<Company> Search(string? term) => throw new NotSupportedException();
