@@ -36,7 +36,6 @@ public class CustomWebApplicationFactory : WebApplicationFactory<Program>
     public const long CompanyFinancialId = 1;   // on Apple
     public const long CompanyRiskId = 1;         // on Apple
     public const long FilingId = 1;              // on Apple
-    public const long SourceFieldReviewId = 1;   // on Apple
     public const long ScenarioId = 1;
     public const long ScenarioShockId = 1;       // on the seeded Scenario
     public const long CompanyAppleId = 1;        // alias: deletable company == Apple
@@ -144,7 +143,13 @@ public class CustomWebApplicationFactory : WebApplicationFactory<Program>
         db.SaveChanges();
 
         // One row each for the financial-extraction + scenario API controllers (their tests).
-        var risk = new CompanyRisk(RiskScope.FINANCIAL, "FX exposure", apple.Id) { Note = "USD strength" };
+        // The risk carries the collapsed proof pair (where in the document + the verbatim quote).
+        var risk = new CompanyRisk(RiskScope.FINANCIAL, "FX exposure", apple.Id)
+        {
+            Note = "USD strength",
+            Reference = "us-gaap/Revenues/2023",
+            Evidence = "Total net sales 383,285"
+        };
         db.CompanyFinancials.Add(new CompanyFinancial(apple.Id, 2023, FiscalPeriod.FY)
             { Revenue = 383_000_000_000, NetIncome = 97_000_000_000, Source = DataSource.FMP, CapturedAt = DateTime.UtcNow });
         db.CompanyRisks.Add(risk);
@@ -157,22 +162,10 @@ public class CustomWebApplicationFactory : WebApplicationFactory<Program>
             PrimaryDocUrl = "https://www.sec.gov/aapl-20230930.htm"
         });
 
-        // Scenario + risk must be saved before dependent rows so their FKs resolve.
+        // Scenario must be saved before dependent rows so their FKs resolve.
         var scenario = new Scenario { Name = "Rate hike", Description = "Capital cost push" };
         db.Scenarios.Add(scenario);
         db.SaveChanges();
-
-        // CK_SourceFieldReview_OneSource: exactly one source FK must be set -> tie to the risk.
-        db.SourceFieldReviews.Add(new SourceFieldReview
-        {
-            CompanyId = apple.Id,
-            Relation = RelationKind.RISK,
-            CompanyRiskId = risk.Id,
-            Field = ReviewableField.VALUE,
-            Endpoint = "company-facts",
-            ReferencePointer = "us-gaap/Revenues/2023",
-            ReferenceSnapshot = "Total net sales 383,285"
-        });
 
         db.ScenarioShocks.Add(new ScenarioShock
         {

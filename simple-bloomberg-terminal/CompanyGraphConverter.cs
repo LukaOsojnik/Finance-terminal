@@ -19,26 +19,17 @@ public class CompanyGraphConverter : ITypeConverter<Company, GraphResponse>
         var nodes = new List<GraphNode>();
         var edges = new List<GraphEdge>();
 
-        // A source connects to the EDGAR filings that prove it — proof is per field, so a source
-        // may cite several filings via its reviews. These are no longer drawn as graph nodes;
-        // instead each source's distinct proof filings are collected here and carried on its leaf
-        // node, so the click popup can list them without cluttering the canvas. Dedup per source.
-        static IReadOnlyList<GraphFiling> CollectFilings(IEnumerable<SourceFieldReview> reviews)
+        // A source cites the one EDGAR filing that proves it. Filings are no longer drawn as graph
+        // nodes; the source's filing is carried on its leaf node instead, so the click popup can
+        // show it without cluttering the canvas.
+        static IReadOnlyList<GraphFiling> CollectFilings(Filing? filing)
         {
-            var seen = new HashSet<long>();
-            var filings = new List<GraphFiling>();
-            foreach (var f in reviews
-                         .Where(rv => rv.DeletedAt == null && rv.Filing != null && rv.Filing.DeletedAt == null)
-                         .Select(rv => rv.Filing!))
-            {
-                if (!seen.Add(f.Id)) continue;
-                var date = f.FilingDate?.ToString("yyyy-MM-dd");
-                filings.Add(new GraphFiling(
-                    Label: f.Form ?? "Filing",
-                    Detail: $"{f.AccessionNumber}{(date is null ? "" : " · " + date)}"
-                ));
-            }
-            return filings;
+            if (filing is null || filing.DeletedAt != null) return [];
+            var date = filing.FilingDate?.ToString("yyyy-MM-dd");
+            return [new GraphFiling(
+                Label: filing.Form ?? "Filing",
+                Detail: $"{filing.AccessionNumber}{(date is null ? "" : " · " + date)}"
+            )];
         }
 
         var centerId = $"company:{company.Id}";
@@ -73,7 +64,7 @@ public class CompanyGraphConverter : ITypeConverter<Company, GraphResponse>
                     Title: $"{r.SourceType} · ${(r.Value ?? 0) / 1e9:F2}B",
                     ValueUsd: r.Value,
                     RelatedCompanyId: navId,
-                    Filings: CollectFilings(r.Reviews),
+                    Filings: CollectFilings(r.Filing),
                     MarketCapUsd: linked ? r.RelatedCompany!.MarketCap : null
                 ));
                 edges.Add(new GraphEdge(hubId, nodeId, r.Value.HasValue ? $"${r.Value.Value / 1e9:F1}B" : null, "revenue"));
@@ -97,7 +88,7 @@ public class CompanyGraphConverter : ITypeConverter<Company, GraphResponse>
                     Title: $"{c.CostBase} · ${(c.Value ?? 0) / 1e9:F2}B",
                     ValueUsd: c.Value,
                     RelatedCompanyId: navId,
-                    Filings: CollectFilings(c.Reviews),
+                    Filings: CollectFilings(c.Filing),
                     MarketCapUsd: linked ? c.RelatedCompany!.MarketCap : null
                 ));
                 edges.Add(new GraphEdge(hubId, nodeId, c.Value.HasValue ? $"${c.Value.Value / 1e9:F1}B" : null, "cost"));

@@ -369,7 +369,7 @@ public sealed record Provenance
     public required ConfidenceTier Confidence { get; init; }
     public required double ConfidenceScore { get; init; }   // 0..1
     public string? Evidence { get; init; }                   // accession / R-file / URL — the pointer
-    public string? Reference { get; init; }                  // verbatim filing passage the record was pulled from — the traceable source text (per-record, vs SourceFieldReview's per-field proof)
+    public string? Reference { get; init; }                  // verbatim filing passage the record was pulled from — the traceable source text (one per record)
     public required string CollectedByAgent { get; init; }
     public required DateTimeOffset CollectedAt { get; init; }
     public DateOnly? PeriodFrom { get; init; }

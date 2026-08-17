@@ -41,18 +41,11 @@ public class ContributionRow
     public long? SupersedesId { get; set; }
     public string? SupersededName { get; set; }
 
-    // Frozen proof excerpts (+ filing links) the contributor cited, so the Manager can verify before
-    // approving. Pulled from the row's SourceFieldReview cells.
-    public List<ContributionProof> Proofs { get; set; } = [];
-}
-
-// A single per-field proof snapshot shown under a pending row.
-public class ContributionProof
-{
-    public string Field { get; set; } = "";
-    public string Snapshot { get; set; } = "";
-    public string? Pointer { get; set; }
-    public string Endpoint { get; set; } = "";
+    // The row's frozen proof, so the Manager can verify before approving: where in the document it
+    // came from, the verbatim quote, and a link to the source filing (or the web page, when the row
+    // came from discovery and Reference is a URL).
+    public string? Reference { get; set; }
+    public string? Evidence { get; set; }
     public string? FilingLabel { get; set; }
     public string? FilingUrl { get; set; }
 }

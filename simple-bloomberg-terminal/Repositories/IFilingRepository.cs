@@ -22,9 +22,8 @@ public interface IFilingRepository
 
     /// <summary>
     /// Soft-delete a cost/revenue source and the whole filing cluster connected to it: the source
-    /// itself, its proof reviews, the filing it links to, and every other source that links to
-    /// that same filing (with their reviews). When the source has no filing, only the source and
-    /// its own reviews are removed. One transaction.
+    /// itself, the filing it cites, and every other source citing that same filing. When the source
+    /// cites no filing, only the source is removed. One transaction.
     /// </summary>
-    void SoftDeleteSourceCluster(RelationKind relation, long sourceId);
+    void SoftDeleteSourceCluster(ExtractionNode node, long sourceId);
 }

@@ -88,12 +88,12 @@ public class CostSourcesController : Controller
         return RedirectToAction(nameof(Index));
     }
 
-    // Cascade: removes this source + its proof reviews + its filing + every other source on that
-    // filing. returnUrl lets the company profile send the user back to itself after deleting.
+    // Cascade: removes this source + its source filing + every other source on that filing.
+    // returnUrl lets the company profile send the user back to itself after deleting.
     [HttpPost, Route("{id:long}/delete", Name = "CostSourceDelete"), ValidateAntiForgeryToken]
     public IActionResult Delete(long id, string? returnUrl)
     {
-        _filings.SoftDeleteSourceCluster(RelationKind.COST, id);
+        _filings.SoftDeleteSourceCluster(ExtractionNode.COST, id);
         if (Url.IsLocalUrl(returnUrl)) return Redirect(returnUrl);
         return RedirectToAction(nameof(Index));
     }

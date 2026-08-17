@@ -20,10 +20,18 @@ public class CostSource : IContribution
     public double? Value { get; set; }
     public double? Percentage { get; set; }
 
-    // Per-record source passage: the verbatim filing excerpt (SEC Item or note + source text) the
-    // whole cost row was drawn from, set by the extraction agent. Distinct from the per-field proof
-    // rows in <see cref="Reviews"/> — those back one field each; this cites the record overall.
+    // WHERE in the document this row came from: the SEC Item / note / subheading (e.g.
+    // "Item 7. Management's Discussion and Analysis"), set by the extraction agent.
     public string? Reference { get; set; }
+
+    // The exact verbatim substring from the filing backing this row — findable by a literal search
+    // in the document. One quote per row (the proof used to be split per field; the model only ever
+    // produced one).
+    public string? Evidence { get; set; }
+
+    // The filing the Reference/Evidence were taken from (null when they came from Company Facts or
+    // a web source rather than a filing document).
+    public long? FilingId { get; set; }
 
     public DataSource? DataSource { get; set; }
     public long CompanyId { get; set; }
@@ -46,6 +54,6 @@ public class CostSource : IContribution
     [ForeignKey("ContributedByUserId")]
     public virtual AppUser? ContributedBy { get; set; }
 
-    // Per-field proof rows; their distinct filings are the source's proof filings.
-    public virtual ICollection<SourceFieldReview> Reviews { get; set; } = [];
+    [ForeignKey("FilingId")]
+    public virtual Filing? Filing { get; set; }
 }

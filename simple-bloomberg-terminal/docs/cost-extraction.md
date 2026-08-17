@@ -50,7 +50,7 @@ one per Item-section chunk                     GetCompanyFacts → tagged
 
 Key split: **the Pro agent fuses and fills; a code helper verifies the arithmetic.** Sum checks and "revenue − profit ≥ 0" are math — an LLM will fudge them, so they stay in code.
 
-**Every record carries a `Reference`.** The Pro agent must put, per emitted cost record, the verbatim passage from the filing it pulled the figure/label from — the SEC Item or note plus the source text — so each row is traceable to where it came from. This is a *per-record* source passage, distinct from the existing *per-field* `proof` substrings (`SourceFieldReview`): `proof` backs one field, `Reference` is the record's overall citation.
+**Every record carries a `Reference` + `Evidence` pair.** Per emitted cost record the Pro agent must state *where* in the filing it read the figure/label (`Reference` — the SEC Item, note or subheading) and quote the *exact* passage (`Evidence` — verbatim, findable by a literal search in the document). Both land on the `CostSource` row itself, along with the filing they came from, so each row is traceable to where it came from. One proof per row: since a filing extraction already yields N rows, there is nothing to split per field.
 
 ---
 

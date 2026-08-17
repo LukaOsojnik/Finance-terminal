@@ -1136,12 +1136,10 @@ document.addEventListener('submit', async e => {
             relatedCompany: j.related_company || j.relatedCompany || null,
             relatedCompanyTicker: j.related_company_ticker || j.relatedCompanyTicker || null,
             reference: j.reference ?? null,
-            proof: {
-                name: j.proof?.name ?? null, value: j.proof?.value ?? null,
-                percentage: j.proof?.percentage ?? null, classification: j.proof?.classification ?? null,
-                relatedCompany: j.proof?.related_company ?? j.proof?.relatedCompany ?? null,
-                note: j.proof?.note ?? null
-            }
+            // One quote per record. The old nested `proof` object is still read as a fallback, because
+            // save blocks are parsed out of the STORED conversation — a chat held before the schema
+            // changed still has proof-shaped blocks in localStorage, and they should keep saving.
+            evidence: j.evidence ?? j.proof?.value ?? j.proof?.name ?? null
         };
     }
 

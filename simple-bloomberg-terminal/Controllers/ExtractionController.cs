@@ -15,8 +15,8 @@ namespace simple_bloomberg_terminal.Controllers;
 /// <summary>
 /// Phase-1 extraction UI (revenue only, for now): a split screen whose right pane is the JSON
 /// returned by <c>POST /api/stock/refresh/{companyId}</c> and whose left cells bind to a
-/// <see cref="RevenueSource"/> row. "Use as reference" freezes the selected proof text into a
-/// <see cref="SourceFieldReview"/> (one per cell, <c>Mark=null</c> for the phase-2 reviewer).
+/// <see cref="RevenueSource"/> row. Saving freezes the row's proof onto the row itself: one
+/// Reference (where in the document), one Evidence (the verbatim quote), and the source Filing.
 /// </summary>
 [Route("extraction")]
 // Any authenticated user — the keyed features run on the USER's own API keys (bring-your-own), so a
@@ -28,7 +28,6 @@ public class ExtractionController : Controller
     private readonly IRevenueSourceRepository _revenue;
     private readonly ICostSourceRepository _cost;
     private readonly ICompanyRiskRepository _risks;
-    private readonly ISourceFieldReviewRepository _reviews;
     private readonly ICompanyRepository _companies;
     private readonly IFilingRepository _filings;
     private readonly IFilingExtractionService _extractor;
@@ -44,7 +43,6 @@ public class ExtractionController : Controller
         IRevenueSourceRepository revenue,
         ICostSourceRepository cost,
         ICompanyRiskRepository risks,
-        ISourceFieldReviewRepository reviews,
         ICompanyRepository companies,
         IFilingRepository filings,
         IFilingExtractionService extractor,
@@ -59,7 +57,6 @@ public class ExtractionController : Controller
         _revenue = revenue;
         _cost = cost;
         _risks = risks;
-        _reviews = reviews;
         _companies = companies;
         _filings = filings;
         _extractor = extractor;
@@ -142,58 +139,52 @@ public class ExtractionController : Controller
         return View(vm);
     }
 
-    // Existing references for a source row, so the page can show each cell's pointer on load.
+    // The proof already on a source row, so the page can show it when it binds the row.
     [HttpGet, Route("references/{sourceId:long}")]
     public IActionResult References(long sourceId, [FromQuery] string? node)
     {
-        var n = ParseNode(node);
-        var companyId = RowCompanyId(n, sourceId);
-        if (companyId is null) return NotFound();
-        var refs = _reviews.GetByCompany(companyId.Value)
-            .Where(r => MatchesRow(r, n, sourceId))
-            .Select(r => new
-            {
-                field = r.Field.ToString(),
-                snapshot = r.ReferenceSnapshot,
-                pointer = r.ReferencePointer,
-                endpoint = r.Endpoint,
-                mark = r.Mark,
-                rationale = r.Rationale,
-                filing = r.Filing == null ? null : $"{r.Filing.Form} {r.Filing.AccessionNumber}".Trim()
-            });
-        return Json(refs);
+        var proof = ParseNode(node) switch
+        {
+            ExtractionNode.COST => _cost.GetById(sourceId) is { } c ? Dto(c.Reference, c.Evidence, c.Filing) : null,
+            ExtractionNode.RISK => _risks.GetById(sourceId) is { } k ? Dto(k.Reference, k.Evidence, k.Filing) : null,
+            _                   => _revenue.GetById(sourceId) is { } r ? Dto(r.Reference, r.Evidence, r.Filing) : null,
+        };
+        if (proof is null) return NotFound();
+        return Json(proof);
+
+        static object Dto(string? reference, string? evidence, Filing? filing) => new
+        {
+            reference,
+            evidence,
+            filing = filing is null || filing.DeletedAt != null
+                ? null
+                : $"{filing.Form} {filing.AccessionNumber}".Trim()
+        };
     }
 
-    // "Use as reference": ensure the source row exists (FK ordering), then upsert the per-cell proof.
+    // Set this row's reference + evidence (and the filing they came from), creating the row when the
+    // page hasn't bound one yet.
     [HttpPost, Route("reference")]
     public IActionResult Reference([FromBody] ReferenceRequest req)
     {
         if (req is null || req.CompanyId <= 0) return BadRequest("CompanyId required.");
         if (string.IsNullOrWhiteSpace(req.Name)) return BadRequest("Name required.");
-        if (string.IsNullOrWhiteSpace(req.ReferenceSnapshot)) return BadRequest("Select proof text first.");
-        if (!Enum.TryParse<ReviewableField>(req.Field, out var field)) return BadRequest("Invalid field.");
+        if (string.IsNullOrWhiteSpace(req.Evidence)) return BadRequest("Select proof text first.");
         var node = ParseNode(req.Node);
 
         // Proof filing: upsert by accession when the proof came from a filing document; null from
-        // Company Facts. Attached per-field, so one source can cite different filings per cell.
+        // Company Facts (the row then carries the quote without a filing link).
         var filingId = ResolveFilingId(req.CompanyId, req.FilingAccessionNumber, req.FilingForm, req.FilingDate, req.FilingUrl);
 
-        // The source row is the source of truth for the values — upsert it first so a review FK can
-        // only ever point at a row that exists.
         var rowId = _writer.UpsertRow(node, req.CompanyId, req.RevenueSourceId, req.SourceType,
-            req.Name, req.Value, req.Percentage, req.Note, req.RelatedCompanyId, By);
+            req.Name, req.Value, req.Percentage, req.Note, req.RelatedCompanyId, By,
+            req.Reference, req.Evidence, filingId);
         if (rowId is null) return BadRequest("Could not save the row (check the classification value).");
 
-        var endpoint = string.IsNullOrWhiteSpace(req.Endpoint)
-            ? $"POST /api/stock/refresh/{req.CompanyId}"
-            : req.Endpoint;
-        var review = _writer.UpsertReview(node, req.CompanyId, rowId.Value, field, endpoint,
-            req.ReferencePointer, req.ReferenceSnapshot, req.ReferencedValue, filingId);
-        return Json(new ReferenceResult(rowId.Value, review.Id, field.ToString()));
+        return Json(new ReferenceResult(rowId.Value));
     }
 
-    // One button to save the whole form: upsert the row, then upsert a proof per field that carries
-    // one. Replaces the old per-cell "Use as reference" flow.
+    // One button to save the whole form: the row's values plus its single reference + evidence.
     [HttpPost, Route("save")]
     public IActionResult Save([FromBody] SaveRequest req)
     {
@@ -201,25 +192,17 @@ public class ExtractionController : Controller
         if (string.IsNullOrWhiteSpace(req.Name)) return BadRequest("Name required.");
         var node = ParseNode(req.Node);
 
+        var filingId = ResolveFilingId(req.CompanyId, req.FilingAccessionNumber, req.FilingForm, req.FilingDate, req.FilingUrl);
         var rowId = _writer.UpsertRow(node, req.CompanyId, req.RevenueSourceId, req.SourceType,
-            req.Name, req.Value, req.Percentage, req.Note, req.RelatedCompanyId, By);
+            req.Name, req.Value, req.Percentage, req.Note, req.RelatedCompanyId, By,
+            req.Reference, req.Evidence, filingId);
         if (rowId is null) return BadRequest("Could not save the row (check the classification value).");
 
-        var saved = 0;
-        foreach (var p in req.Proofs ?? [])
-        {
-            if (string.IsNullOrWhiteSpace(p.ReferenceSnapshot)) continue;
-            if (!Enum.TryParse<ReviewableField>(p.Field, out var field)) continue;
-            var filingId = ResolveFilingId(req.CompanyId, p.FilingAccessionNumber, p.FilingForm, p.FilingDate, p.FilingUrl);
-            var endpoint = string.IsNullOrWhiteSpace(p.Endpoint) ? "AI extraction" : p.Endpoint;
-            _writer.UpsertReview(node, req.CompanyId, rowId.Value, field, endpoint, p.ReferencePointer, p.ReferenceSnapshot, p.ReferencedValue, filingId);
-            saved++;
-        }
-        return Json(new { revenueSourceId = rowId.Value, proofs = saved });
+        return Json(new { revenueSourceId = rowId.Value, proof = !string.IsNullOrWhiteSpace(req.Evidence) });
     }
 
     // Batch save from the notification widget's chat: persist every ticked AI ```save``` block in one
-    // call. Each item upserts its source row + per-field proof; items naming a counterparty resolve
+    // call. Each item upserts its source row (proof included); items naming a counterparty resolve
     // (or create via the FMP/Yahoo pipeline) that company and get a reciprocal mirror row — so the
     // relationship is saved bidirectionally, the same way the discover→link flow does it.
     [HttpPost, Route("save-batch")]
@@ -229,6 +212,9 @@ public class ExtractionController : Controller
         var owner = _companies.GetById(req.CompanyId);
         if (owner is null) return NotFound();
         var node = ParseNode(req.Node);
+
+        // The filing every item in this batch was read from (upserted once by accession).
+        var filingId = ResolveFilingId(req.CompanyId, req.Accession, req.Form, null, null);
 
         var saved = 0;
         var links = 0;
@@ -253,23 +239,13 @@ public class ExtractionController : Controller
                 counterpartyId = await _provisioning.GetOrCreateCounterpartyAsync(linkReq, owner);
             }
 
+            // The block's Reference (where in the filing) and Evidence (the one verbatim quote) ride
+            // along onto the row itself, together with the filing they were read from.
             var rowId = _writer.UpsertRow(node, req.CompanyId, null, item.Classification, item.Name,
-                item.Value, item.Percentage, item.Note, counterpartyId, By, item.Reference);
+                item.Value, item.Percentage, item.Note, counterpartyId, By,
+                item.Reference, item.Evidence, filingId);
             if (rowId is null) continue;   // unparseable classification — skip this item
             saved++;
-
-            // Per-field proof: the verbatim filing excerpts the model carried in the save block.
-            var filingId = ResolveFilingId(req.CompanyId, req.Accession, req.Form, null, null);
-            if (item.Proof is { } p)
-            {
-                UpsertAiProof(node, req.CompanyId, rowId.Value, ReviewableField.NAME, p.Name, item.Name, filingId);
-                UpsertAiProof(node, req.CompanyId, rowId.Value, ReviewableField.VALUE, p.Value, item.Value?.ToString(CultureInfo.InvariantCulture), filingId);
-                UpsertAiProof(node, req.CompanyId, rowId.Value, ReviewableField.PERCENTAGE, p.Percentage, item.Percentage?.ToString(CultureInfo.InvariantCulture), filingId);
-                UpsertAiProof(node, req.CompanyId, rowId.Value, ReviewableField.CLASSIFICATION, p.Classification, item.Classification, filingId);
-                UpsertAiProof(node, req.CompanyId, rowId.Value, ReviewableField.RELATED_COMPANY, p.RelatedCompany, item.RelatedCompany, filingId);
-                if (node == ExtractionNode.RISK)
-                    UpsertAiProof(node, req.CompanyId, rowId.Value, ReviewableField.NOTE, p.Note, item.Note, filingId);
-            }
 
             if (hasCounterparty && counterpartyId is { } cid)
             {
@@ -280,32 +256,7 @@ public class ExtractionController : Controller
         return Json(new { saved, links });
     }
 
-    // Upsert one AI-suggested field proof, skipping fields the model left without a snapshot.
-    private void UpsertAiProof(ExtractionNode node, long companyId, long rowId, ReviewableField field,
-        string? snapshot, string? referencedValue, long? filingId)
-    {
-        if (string.IsNullOrWhiteSpace(snapshot)) return;
-        _writer.UpsertReview(node, companyId, rowId, field, "AI extraction", "ai-suggested",
-            snapshot, referencedValue, filingId);
-    }
-
-    // The company that owns a node's row (so References can scope the proof lookup without a row arg).
-    private long? RowCompanyId(ExtractionNode node, long rowId) => node switch
-    {
-        ExtractionNode.COST => _cost.GetById(rowId)?.CompanyId,
-        ExtractionNode.RISK => _risks.GetById(rowId)?.CompanyId,
-        _                   => _revenue.GetById(rowId)?.CompanyId,
-    };
-
-    // Does this review belong to the given node's row?
-    private static bool MatchesRow(SourceFieldReview r, ExtractionNode node, long rowId) => node switch
-    {
-        ExtractionNode.COST => r.CostSourceId == rowId,
-        ExtractionNode.RISK => r.CompanyRiskId == rowId,
-        _                   => r.RevenueSourceId == rowId,
-    };
-
-    // Mode B — AI reads one filing and proposes revenue rows + per-field proof for the human to
+    // Mode B — AI reads one filing and proposes revenue rows + their proof for the human to
     // confirm. Persists nothing; the page fills the form and the existing save path freezes proof.
     [HttpPost, Route("auto-extract/{companyId:long}")]
     public async Task<IActionResult> AutoExtract(long companyId, [FromQuery] string accession, [FromQuery] string doc, [FromQuery] string? node, [FromQuery] string? form)
@@ -807,17 +758,13 @@ public class ExtractionController : Controller
         var node = string.Equals(req.Side, "SUPPLIER", StringComparison.OrdinalIgnoreCase)
             ? ExtractionNode.COST
             : ExtractionNode.REVENUE;
+        // Sonar's citation URL is this row's Reference (where the claim came from) and its one-line
+        // note the Evidence, so the web source behind the relationship is recorded on the row (and
+        // shown on the company's Details page). No filing — this came from the web, not a filing.
         var rowId = _writer.UpsertRow(node, req.CompanyId, null, req.Classification, req.Name,
-            value: req.Value, percentage: null, note: null, relatedCompanyId: counterpartyId, By);
+            value: req.Value, percentage: null, note: null, relatedCompanyId: counterpartyId, By,
+            reference: req.SourceUrl, evidence: req.Note);
         if (rowId is null) return BadRequest("Could not create the link (check the classification value).");
-
-        // Save sonar's citation as proof on the new row's counterparty cell, so the web source the
-        // relationship came from is recorded (and shown on the company's Details page).
-        if (!string.IsNullOrWhiteSpace(req.SourceUrl))
-            _writer.UpsertReview(node, req.CompanyId, rowId.Value, ReviewableField.RELATED_COMPANY,
-                endpoint: "Perplexity sonar", pointer: req.SourceUrl,
-                snapshot: string.IsNullOrWhiteSpace(req.Note) ? req.SourceUrl : req.Note,
-                referencedValue: req.Name, filingId: null);
 
         // The relationship is symmetric but stored as two one-sided rows: owner gets a row pointing at
         // the counterparty (above); the counterparty needs the mirror row pointing back at owner, or its

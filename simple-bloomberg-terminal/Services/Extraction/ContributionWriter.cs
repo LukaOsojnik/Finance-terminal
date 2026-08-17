@@ -16,24 +16,21 @@ public readonly record struct Contributor(bool IsReviewer, string? UserId)
 
 /// <summary>
 /// Owns the contribution write + review state machine for the three reviewed source types (revenue,
-/// cost, risk): creating/editing a row (with the reviewer-gate + supersession rules), upserting its
-/// per-field proof, mirroring a counterparty link, and the approve/reject transitions. Lives here
+/// cost, risk): creating/editing a row (with the reviewer-gate + supersession rules) together with
+/// its proof, mirroring a counterparty link, and the approve/reject transitions. Lives here
 /// (not in the controllers) so every revenue/cost/risk write flows through one set of rules.
 /// </summary>
 public interface IContributionWriter
 {
     // Create or update the source row for the active node, returning its id. Null when the
     // classification can't be parsed, or an existing-row id pointed at no row.
-    // <paramref name="reference"/> is the per-record source passage stored on the saved row
-    // (CostSource/RevenueSource/CompanyRisk.Reference) — the verbatim filing excerpt the row came from.
+    // The proof rides along on the row: <paramref name="reference"/> is WHERE in the document it came
+    // from (SEC Item / note / subheading), <paramref name="evidence"/> the verbatim substring, and
+    // <paramref name="filingId"/> the filing both were taken from. Each is left untouched when null,
+    // so an edit that omits proof keeps the citation already on record.
     long? UpsertRow(ExtractionNode node, long companyId, long? rowId, string classification,
         string name, double? value, double? percentage, string? note, long? relatedCompanyId, Contributor by,
-        string? reference = null);
-
-    // One current proof per (row, field) — upsert, not blind insert. A new proof clears any prior
-    // phase-2 verdict (stale-pass guard).
-    SourceFieldReview UpsertReview(ExtractionNode node, long companyId, long rowId, ReviewableField field,
-        string endpoint, string pointer, string snapshot, string? referencedValue, long? filingId);
+        string? reference = null, string? evidence = null, long? filingId = null);
 
     // Create the mirror source on the counterparty pointing back at owner, unless one already exists.
     void EnsureReciprocal(ExtractionNode node, long counterpartyId, long ownerId, string ownerName,
@@ -44,21 +41,28 @@ public interface IContributionWriter
 }
 
 public class ContributionWriter(
-    IRevenueSourceRepository revenue, ICostSourceRepository cost, ICompanyRiskRepository risks,
-    ISourceFieldReviewRepository reviews)
+    IRevenueSourceRepository revenue, ICostSourceRepository cost, ICompanyRiskRepository risks)
     : IContributionWriter
 {
+    // The proof a write carries: where in the document, the verbatim quote, and the filing both came
+    // from. Bundled so the three per-node upserts don't each grow three more parameters.
+    private readonly record struct Proof(string? Reference, string? Evidence, long? FilingId);
+
     public long? UpsertRow(ExtractionNode node, long companyId, long? rowId, string classification,
         string name, double? value, double? percentage, string? note, long? relatedCompanyId, Contributor by,
-        string? reference = null) => node switch
+        string? reference = null, string? evidence = null, long? filingId = null)
     {
-        ExtractionNode.COST => UpsertCost(companyId, rowId, classification, name, value, percentage, relatedCompanyId, reference, by),
-        ExtractionNode.RISK => UpsertRisk(companyId, rowId, classification, name, note, reference, by),
-        _                   => UpsertRevenue(companyId, rowId, classification, name, value, percentage, relatedCompanyId, reference, by),
-    };
+        var proof = new Proof(reference, evidence, filingId);
+        return node switch
+        {
+            ExtractionNode.COST => UpsertCost(companyId, rowId, classification, name, value, percentage, relatedCompanyId, proof, by),
+            ExtractionNode.RISK => UpsertRisk(companyId, rowId, classification, name, note, proof, by),
+            _                   => UpsertRevenue(companyId, rowId, classification, name, value, percentage, relatedCompanyId, proof, by),
+        };
+    }
 
     private long? UpsertRevenue(long companyId, long? rowId, string classification, string name,
-        double? value, double? percentage, long? relatedCompanyId, string? reference, Contributor by)
+        double? value, double? percentage, long? relatedCompanyId, Proof proof, Contributor by)
     {
         if (!Enum.TryParse<SourceType>(classification, out var sourceType)) return null;
         if (rowId is { } id)
@@ -72,7 +76,7 @@ public class ContributionWriter(
                 var proposal = new RevenueSource(sourceType, name, companyId)
                 {
                     Value = value, Percentage = percentage, RelatedCompanyId = relatedCompanyId,
-                    Reference = reference,
+                    Reference = proof.Reference, Evidence = proof.Evidence, FilingId = proof.FilingId,
                     DataSource = DataSource.MANUAL,
                     Status = ContributionStatus.Pending,
                     ContributedByUserId = by.UserId,
@@ -86,14 +90,14 @@ public class ContributionWriter(
             existing.Value = value;
             existing.Percentage = percentage;
             existing.RelatedCompanyId = relatedCompanyId;
-            if (reference is not null) existing.Reference = reference;   // keep an existing citation when an edit omits one
+            ApplyProof(proof, r => existing.Reference = r, e => existing.Evidence = e, f => existing.FilingId = f);
             revenue.Update(existing);
             return existing.Id;
         }
         var row = new RevenueSource(sourceType, name, companyId)
         {
             Value = value, Percentage = percentage, RelatedCompanyId = relatedCompanyId,
-            Reference = reference,
+            Reference = proof.Reference, Evidence = proof.Evidence, FilingId = proof.FilingId,
             DataSource = DataSource.MANUAL,
             Status = by.NewStatus,
             ContributedByUserId = by.StampUserId
@@ -103,7 +107,7 @@ public class ContributionWriter(
     }
 
     private long? UpsertCost(long companyId, long? rowId, string classification, string name,
-        double? value, double? percentage, long? relatedCompanyId, string? reference, Contributor by)
+        double? value, double? percentage, long? relatedCompanyId, Proof proof, Contributor by)
     {
         if (!Enum.TryParse<CostBase>(classification, out var costBase)) return null;
         if (rowId is { } id)
@@ -116,7 +120,7 @@ public class ContributionWriter(
                 var proposal = new CostSource(costBase, name, companyId)
                 {
                     Value = value, Percentage = percentage, RelatedCompanyId = relatedCompanyId,
-                    Reference = reference,
+                    Reference = proof.Reference, Evidence = proof.Evidence, FilingId = proof.FilingId,
                     DataSource = DataSource.MANUAL,
                     Status = ContributionStatus.Pending,
                     ContributedByUserId = by.UserId,
@@ -130,14 +134,14 @@ public class ContributionWriter(
             existing.Value = value;
             existing.Percentage = percentage;
             existing.RelatedCompanyId = relatedCompanyId;
-            if (reference is not null) existing.Reference = reference;   // keep an existing citation when an edit omits one
+            ApplyProof(proof, r => existing.Reference = r, e => existing.Evidence = e, f => existing.FilingId = f);
             cost.Update(existing);
             return existing.Id;
         }
         var row = new CostSource(costBase, name, companyId)
         {
             Value = value, Percentage = percentage, RelatedCompanyId = relatedCompanyId,
-            Reference = reference,
+            Reference = proof.Reference, Evidence = proof.Evidence, FilingId = proof.FilingId,
             DataSource = DataSource.MANUAL,
             Status = by.NewStatus,
             ContributedByUserId = by.StampUserId
@@ -146,7 +150,7 @@ public class ContributionWriter(
         return row.Id;
     }
 
-    private long? UpsertRisk(long companyId, long? rowId, string classification, string name, string? note, string? reference, Contributor by)
+    private long? UpsertRisk(long companyId, long? rowId, string classification, string name, string? note, Proof proof, Contributor by)
     {
         if (!Enum.TryParse<RiskScope>(classification, out var scope)) return null;
         if (rowId is { } id)
@@ -158,7 +162,9 @@ public class ContributionWriter(
             {
                 var proposal = new CompanyRisk(scope, name, companyId)
                 {
-                    Note = note, Reference = reference, DataSource = DataSource.MANUAL,
+                    Note = note,
+                    Reference = proof.Reference, Evidence = proof.Evidence, FilingId = proof.FilingId,
+                    DataSource = DataSource.MANUAL,
                     Status = ContributionStatus.Pending,
                     ContributedByUserId = by.UserId,
                     SupersedesId = existing.Id
@@ -169,13 +175,15 @@ public class ContributionWriter(
             existing.Scope = scope;
             existing.Name = name;
             existing.Note = note;
-            if (reference is not null) existing.Reference = reference;   // keep an existing citation when an edit omits one
+            ApplyProof(proof, r => existing.Reference = r, e => existing.Evidence = e, f => existing.FilingId = f);
             risks.Update(existing);
             return existing.Id;
         }
         var row = new CompanyRisk(scope, name, companyId)
         {
-            Note = note, Reference = reference, DataSource = DataSource.MANUAL,
+            Note = note,
+            Reference = proof.Reference, Evidence = proof.Evidence, FilingId = proof.FilingId,
+            DataSource = DataSource.MANUAL,
             Status = by.NewStatus,
             ContributedByUserId = by.StampUserId
         };
@@ -183,56 +191,14 @@ public class ContributionWriter(
         return row.Id;
     }
 
-    // Does this review belong to the given node's row?
-    private static bool MatchesRow(SourceFieldReview r, ExtractionNode node, long rowId) => node switch
+    // Write each proof part onto the row it belongs to, skipping the ones the caller omitted — an
+    // edit that sends no citation keeps the one already on record.
+    private static void ApplyProof(Proof proof, Action<string> setReference, Action<string> setEvidence,
+        Action<long> setFilingId)
     {
-        ExtractionNode.COST => r.CostSourceId == rowId,
-        ExtractionNode.RISK => r.CompanyRiskId == rowId,
-        _                   => r.RevenueSourceId == rowId,
-    };
-
-    public SourceFieldReview UpsertReview(ExtractionNode node, long companyId, long rowId, ReviewableField field,
-        string endpoint, string pointer, string snapshot, string? referencedValue, long? filingId)
-    {
-        var review = reviews.GetByCompany(companyId)
-            .FirstOrDefault(r => MatchesRow(r, node, rowId) && r.Field == field);
-        if (review is null)
-        {
-            review = new SourceFieldReview
-            {
-                CompanyId = companyId,
-                Relation = node switch
-                {
-                    ExtractionNode.COST => RelationKind.COST,
-                    ExtractionNode.RISK => RelationKind.RISK,
-                    _                   => RelationKind.REVENUE,
-                },
-                RevenueSourceId = node == ExtractionNode.REVENUE ? rowId : null,
-                CostSourceId    = node == ExtractionNode.COST ? rowId : null,
-                CompanyRiskId   = node == ExtractionNode.RISK ? rowId : null,
-                Field = field,
-                Endpoint = endpoint,
-                ReferencePointer = pointer,
-                ReferenceSnapshot = snapshot,
-                ReferencedValue = referencedValue,
-                FilingId = filingId
-            };
-            reviews.Add(review);
-        }
-        else
-        {
-            review.Endpoint = endpoint;
-            review.ReferencePointer = pointer;
-            review.ReferenceSnapshot = snapshot;
-            review.ReferencedValue = referencedValue;
-            review.FilingId = filingId;
-            review.Mark = null;
-            review.Rationale = null;
-            review.ReviewedAt = null;
-            review.ReviewerModel = null;
-            reviews.Update(review);
-        }
-        return review;
+        if (proof.Reference is not null) setReference(proof.Reference);
+        if (proof.Evidence is not null) setEvidence(proof.Evidence);
+        if (proof.FilingId is { } filingId) setFilingId(filingId);
     }
 
     public void EnsureReciprocal(ExtractionNode node, long counterpartyId, long ownerId, string ownerName,

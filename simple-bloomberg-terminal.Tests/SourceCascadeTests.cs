@@ -7,10 +7,9 @@ using simple_bloomberg_terminal.Repositories;
 namespace simple_bloomberg_terminal.Tests;
 
 /// <summary>
-/// Cascade delete of a source. Proof (and thus the filing link) is per-field on SourceFieldReview,
-/// so a source's filings = the distinct filings across its reviews. Deleting a source removes it,
-/// its reviews, the filings its reviews cite, and every other source citing any of those filings
-/// (with their reviews). Exercised at the repository level via a factory scope.
+/// Cascade delete of a source. Each source row cites one filing (FilingId on the row), so deleting a
+/// source removes it, that filing, and every other source citing the same filing. Exercised at the
+/// repository level via a factory scope.
 /// </summary>
 public class SourceCascadeTests : ApiTestBase
 {
@@ -18,12 +17,6 @@ public class SourceCascadeTests : ApiTestBase
 
     private static Filing NewFiling(string accession) =>
         new() { CompanyId = AppleId, AccessionNumber = accession, Form = "10-K" };
-
-    private static SourceFieldReview RevReview(long revId, ReviewableField field, long? filingId) =>
-        new() { CompanyId = AppleId, Relation = RelationKind.REVENUE, RevenueSourceId = revId, Field = field, ReferenceSnapshot = "x", FilingId = filingId };
-
-    private static SourceFieldReview CostReview(long costId, ReviewableField field, long? filingId) =>
-        new() { CompanyId = AppleId, Relation = RelationKind.COST, CostSourceId = costId, Field = field, ReferenceSnapshot = "y", FilingId = filingId };
 
     [Fact]
     public void SoftDeleteSourceCluster_RemovesEveryoneCitingTheSharedFiling()
@@ -38,22 +31,19 @@ public class SourceCascadeTests : ApiTestBase
             db.SaveChanges();
             filingId = filing.Id;
 
-            var rev1 = new RevenueSource(SourceType.SEGMENT, "Rev A", AppleId) { DataSource = DataSource.MANUAL };
-            var rev2 = new RevenueSource(SourceType.PRODUCT, "Rev B", AppleId) { DataSource = DataSource.MANUAL };
-            var cost = new CostSource(CostBase.COGS, "Cost A", AppleId) { DataSource = DataSource.MANUAL };
+            // All three cite the same filing.
+            var rev1 = new RevenueSource(SourceType.SEGMENT, "Rev A", AppleId)
+                { DataSource = DataSource.MANUAL, FilingId = filingId, Evidence = "x" };
+            var rev2 = new RevenueSource(SourceType.PRODUCT, "Rev B", AppleId)
+                { DataSource = DataSource.MANUAL, FilingId = filingId, Evidence = "x" };
+            var cost = new CostSource(CostBase.COGS, "Cost A", AppleId)
+                { DataSource = DataSource.MANUAL, FilingId = filingId, Evidence = "y" };
             db.RevenueSources.AddRange(rev1, rev2);
             db.CostSources.Add(cost);
             db.SaveChanges();
             rev1Id = rev1.Id; rev2Id = rev2.Id; costId = cost.Id;
 
-            // All three cite the same filing through a review.
-            db.SourceFieldReviews.AddRange(
-                RevReview(rev1Id, ReviewableField.VALUE, filingId),
-                RevReview(rev2Id, ReviewableField.VALUE, filingId),
-                CostReview(costId, ReviewableField.VALUE, filingId));
-            db.SaveChanges();
-
-            new FilingRepository(db).SoftDeleteSourceCluster(RelationKind.REVENUE, rev1Id);
+            new FilingRepository(db).SoftDeleteSourceCluster(ExtractionNode.REVENUE, rev1Id);
         }
 
         using (var scope = Factory.Services.CreateScope())
@@ -63,14 +53,11 @@ public class SourceCascadeTests : ApiTestBase
             Assert.NotNull(db.RevenueSources.Single(r => r.Id == rev2Id).DeletedAt);   // sibling citing the filing
             Assert.NotNull(db.CostSources.Single(c => c.Id == costId).DeletedAt);       // sibling cost citing the filing
             Assert.NotNull(db.Filings.Single(f => f.Id == filingId).DeletedAt);
-            Assert.All(
-                db.SourceFieldReviews.Where(r => r.RevenueSourceId == rev1Id || r.RevenueSourceId == rev2Id || r.CostSourceId == costId).ToList(),
-                r => Assert.NotNull(r.DeletedAt));
         }
     }
 
     [Fact]
-    public void SoftDeleteSourceCluster_MultipleFilingsPerSource_RemovesAllOfThem()
+    public void SoftDeleteSourceCluster_OtherFilingsUntouched()
     {
         long rev1Id, rev2Id, filingAId, filingBId;
 
@@ -83,50 +70,45 @@ public class SourceCascadeTests : ApiTestBase
             db.SaveChanges();
             filingAId = fa.Id; filingBId = fb.Id;
 
-            var rev1 = new RevenueSource(SourceType.SEGMENT, "Rev 1", AppleId) { DataSource = DataSource.MANUAL };
-            var rev2 = new RevenueSource(SourceType.SEGMENT, "Rev 2", AppleId) { DataSource = DataSource.MANUAL };
+            // rev1 cites filing A, rev2 cites filing B — different clusters.
+            var rev1 = new RevenueSource(SourceType.SEGMENT, "Rev 1", AppleId)
+                { DataSource = DataSource.MANUAL, FilingId = filingAId };
+            var rev2 = new RevenueSource(SourceType.SEGMENT, "Rev 2", AppleId)
+                { DataSource = DataSource.MANUAL, FilingId = filingBId };
             db.RevenueSources.AddRange(rev1, rev2);
             db.SaveChanges();
             rev1Id = rev1.Id; rev2Id = rev2.Id;
 
-            // rev1 cites TWO filings across its fields; rev2 cites filing B only.
-            db.SourceFieldReviews.AddRange(
-                RevReview(rev1Id, ReviewableField.VALUE, filingAId),
-                RevReview(rev1Id, ReviewableField.NAME, filingBId),
-                RevReview(rev2Id, ReviewableField.VALUE, filingBId));
-            db.SaveChanges();
-
-            new FilingRepository(db).SoftDeleteSourceCluster(RelationKind.REVENUE, rev1Id);
+            new FilingRepository(db).SoftDeleteSourceCluster(ExtractionNode.REVENUE, rev1Id);
         }
 
         using (var scope = Factory.Services.CreateScope())
         {
             var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
             Assert.NotNull(db.Filings.Single(f => f.Id == filingAId).DeletedAt);
-            Assert.NotNull(db.Filings.Single(f => f.Id == filingBId).DeletedAt);   // rev1's second filing
+            Assert.Null(db.Filings.Single(f => f.Id == filingBId).DeletedAt);          // other cluster survives
             Assert.NotNull(db.RevenueSources.Single(r => r.Id == rev1Id).DeletedAt);
-            Assert.NotNull(db.RevenueSources.Single(r => r.Id == rev2Id).DeletedAt); // pulled in via shared filing B
+            Assert.Null(db.RevenueSources.Single(r => r.Id == rev2Id).DeletedAt);
         }
     }
 
     [Fact]
-    public void SoftDeleteSourceCluster_NoFiling_RemovesOnlyThatSourceAndItsReviews()
+    public void SoftDeleteSourceCluster_NoFiling_RemovesOnlyThatSource()
     {
         long soloId, otherId;
 
         using (var scope = Factory.Services.CreateScope())
         {
             var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-            var solo = new RevenueSource(SourceType.SEGMENT, "Solo A", AppleId) { DataSource = DataSource.MANUAL };
+            // Proof from Company Facts: an evidence quote but no filing.
+            var solo = new RevenueSource(SourceType.SEGMENT, "Solo A", AppleId)
+                { DataSource = DataSource.MANUAL, Evidence = "from company facts" };
             var other = new RevenueSource(SourceType.SEGMENT, "Solo B", AppleId) { DataSource = DataSource.MANUAL };
             db.RevenueSources.AddRange(solo, other);
             db.SaveChanges();
             soloId = solo.Id; otherId = other.Id;
 
-            db.SourceFieldReviews.Add(RevReview(soloId, ReviewableField.NAME, null));   // proof from Company Facts, no filing
-            db.SaveChanges();
-
-            new FilingRepository(db).SoftDeleteSourceCluster(RelationKind.REVENUE, soloId);
+            new FilingRepository(db).SoftDeleteSourceCluster(ExtractionNode.REVENUE, soloId);
         }
 
         using (var scope = Factory.Services.CreateScope())
@@ -134,9 +116,6 @@ public class SourceCascadeTests : ApiTestBase
             var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
             Assert.NotNull(db.RevenueSources.Single(r => r.Id == soloId).DeletedAt);
             Assert.Null(db.RevenueSources.Single(r => r.Id == otherId).DeletedAt);   // unrelated, no shared filing
-            Assert.All(
-                db.SourceFieldReviews.Where(r => r.RevenueSourceId == soloId).ToList(),
-                r => Assert.NotNull(r.DeletedAt));
         }
     }
 }

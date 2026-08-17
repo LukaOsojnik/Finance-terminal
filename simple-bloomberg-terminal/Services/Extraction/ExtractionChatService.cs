@@ -53,7 +53,7 @@ public class ExtractionChatService : IExtractionChatService
         "has already determined this item belongs to YOUR segment and routed it to you with the " +
         "verbatim source text. Do NOT hand it off again, do NOT route it elsewhere, and do NOT " +
         "question the routing — your only job is to RECORD it here. Emit a ```save``` block now using " +
-        "the schema above, putting the supplied passage in `reference` and the relevant `proof` fields. " +
+        "the schema above, putting the supplied passage in `reference` and in `evidence`. " +
         "The item may be a qualitative relationship (a supplier/customer/counterparty dependency) with " +
         "NO dollar figure — that is expected and valid: set `value` and `percentage` to null, name the " +
         "counterparty in `related_company`, and still emit the save block. Then confirm in one sentence " +
@@ -80,16 +80,15 @@ public class ExtractionChatService : IExtractionChatService
             "When the user wants to SAVE a specific cost, output a fenced block exactly like:\n" +
             "```save\n{\"name\":\"\",\"classification\":\"COGS\",\"value\":null,\"percentage\":null," +
             "\"related_company\":null,\"related_company_ticker\":null,\"reference\":null," +
-            "\"proof\":{\"name\":\"\",\"value\":null,\"percentage\":null," +
-            "\"classification\":null,\"related_company\":null}}\n```\n" +
+            "\"evidence\":\"\"}\n```\n" +
             "classification is exactly one of COGS, OPEX, TOTAL_COSTS. value is absolute US dollars " +
             "(prefer the tagged XBRL figure; scale any 'in thousands/millions'); percentage is 0-100; " +
             "use null when not stated. related_company is a named supplier/counterparty (else null); " +
             "when it's a publicly traded company you can identify, also set related_company_ticker to " +
             "its stock ticker (else null) so it can be enriched. reference is the verbatim passage " +
             "(name the SEC Item or note, then the source text) this whole cost record was drawn from. " +
-            "Each proof field is the VERBATIM excerpt substring backing that one field (null for " +
-            "fields you left null). Emit one save block per cost the user confirms, alongside your " +
+            "evidence is ONE VERBATIM excerpt substring backing this record — quote enough to identify " +
+            "any figure you report. Emit one save block per cost the user confirms, alongside your " +
             "normal reply.",
 
         ExtractionNode.RISK =>
@@ -100,14 +99,13 @@ public class ExtractionChatService : IExtractionChatService
             "decide which disclosed risks to keep. Be concise.\n\n" +
             "When the user wants to SAVE a specific risk, output a fenced block exactly like:\n" +
             "```save\n{\"name\":\"\",\"classification\":\"BUSINESS\",\"note\":null,\"reference\":null," +
-            "\"proof\":{\"name\":\"\",\"classification\":null,\"note\":null}}\n```\n" +
+            "\"evidence\":\"\"}\n```\n" +
             "classification is the risk scope, exactly one of MACROECONOMIC, INDUSTRY, BUSINESS, " +
             "LEGAL_REGULATORY, FINANCIAL, GENERAL. note is one or two sentences summarising the risk; " +
             "use null when not stated. reference is the verbatim passage (name the SEC Item — 1A risk " +
             "factors / 7A market risk — then the source text) this whole risk record was drawn from. " +
-            "Each proof field is the VERBATIM excerpt substring backing it " +
-            "(null for fields you left null). Emit one save block per risk the user confirms, " +
-            "alongside your normal reply.",
+            "evidence is ONE VERBATIM excerpt substring backing this record. Emit one save block per " +
+            "risk the user confirms, alongside your normal reply.",
 
         _ =>
             "You are the lead financial analyst. Parallel worker agents have already scanned ONE SEC " +
@@ -123,8 +121,7 @@ public class ExtractionChatService : IExtractionChatService
             "When the user wants to SAVE a specific source, output a fenced block exactly like:\n" +
             "```save\n{\"name\":\"\",\"classification\":\"PRODUCT\",\"value\":null,\"percentage\":null," +
             "\"related_company\":null,\"related_company_ticker\":null,\"reference\":null," +
-            "\"proof\":{\"name\":\"\",\"value\":null,\"percentage\":null," +
-            "\"classification\":null,\"related_company\":null}}\n```\n" +
+            "\"evidence\":\"\"}\n```\n" +
             "classification is exactly one of CUSTOMER, SEGMENT, REGION, PRODUCT. value is absolute US " +
             "dollars (prefer the tagged XBRL figure; scale any 'in thousands/millions'); percentage is " +
             "0-100; use null when not stated. " +
@@ -132,8 +129,9 @@ public class ExtractionChatService : IExtractionChatService
             "company you can identify, also set related_company_ticker to its stock ticker (else null) " +
             "so it can be enriched. reference is the verbatim passage (name the SEC Item or note, then " +
             "the source text) this whole revenue record was drawn from. " +
-            "Each proof field is the VERBATIM excerpt substring backing it (null for fields you left " +
-            "null). Emit one save block per source the user confirms, alongside your normal reply.",
+            "evidence is ONE VERBATIM excerpt substring backing this record — quote enough to identify " +
+            "any figure you report. Emit one save block per source the user confirms, alongside your " +
+            "normal reply.",
     };
 
     public async IAsyncEnumerable<ChatDelta> StreamReplyAsync(

@@ -86,12 +86,14 @@ Reused (no new persistence logic):
   in `IMemoryCache` (key `filing-findings:{node}:{accession}:{doc}`).
 - `IExtractionChatService.StreamReplyAsync` — grounds on that cached digest; used both for the
   auto-summary and for chat replies.
-- `UpsertRowByNode`, `UpsertReviewByNode`, `GetOrCreateCompanyAsync`, `EnsureReciprocal`,
+- `UpsertRow`, `GetOrCreateCompanyAsync`, `EnsureReciprocal`,
   `ResolveFilingId` — the existing save / link-counterparty helpers.
 
 #### `SaveBatch` behaviour
-For each item: upsert the source row + per-field proof (endpoint `"AI extraction"`, pointer
-`"ai-suggested"`, filing upserted by accession). If the item names a related company and the node is
+The batch's filing is upserted once by accession, then each item upserts its source row with its proof
+riding along: `reference` (where in the filing), `evidence` (the one verbatim quote) and that
+`FilingId` — one proof per row, written in the same call as the values (see `SaveBatchItem.Evidence`).
+If the item names a related company and the node is
 not RISK, it resolves/creates that company via `GetOrCreateCompanyAsync` (FMP/Yahoo when a ticker is
 present, else a minimal stub) and creates the reciprocal mirror row via `EnsureReciprocal`
 (revenue↔cost). Returns `{ saved, links }`.
@@ -100,7 +102,14 @@ present, else a minimal stub) and creates the reciprocal mirror row via `EnsureR
 - `ScanJobReplyRequest { List<ChatMessage> Messages }`
 - `SaveBatchRequest { CompanyId, Node, Accession, Form, List<SaveBatchItem> Items }`
 - `SaveBatchItem { Name, Classification, Value?, Percentage?, Note?, RelatedCompany?,
-  RelatedCompanyTicker?, ExtractionProof? Proof }`
+  RelatedCompanyTicker?, Reference?, Evidence? }` — `Reference` is where in the document the record was
+  read (SEC Item / note / subheading) and `Evidence` is one verbatim quote backing the whole
+  record; both are stored on the saved row. `Evidence` replaced a per-field `ExtractionProof` object once the model's output showed the split was
+  fiction: `proof.name` and `proof.value` came back as the same sentence whenever a source had a
+  figure, and `proof.classification` was always a torn-off fragment, since a classification is a
+  judgement with nothing in the filing to quote for it. `normalizeSave()` in `site.js` still reads the
+  old nested shape as a fallback, because save blocks are parsed out of conversations already stored in
+  localStorage.
 
 ### `Services/ExtractionChatService.cs`
 The ```save``` block schema in `SystemFor(node)` (revenue & cost) gained an optional

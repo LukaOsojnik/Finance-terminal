@@ -224,7 +224,7 @@ generira i skup izvještaja, po jedan u zasebnoj datoteci (`R1.htm`, `R2.htm`, �
 u indeksu `FilingSummary.xml`. To su financijski izvještaji već rekonstruirani u ispravne tablice, s
 pravim zaglavljima, s mjernom jedinicom u naslovu izvještaja i s imenom pojma taksonomije na ćeliji
 naziva svakog retka. Posljednje je najvrednije, jer povezuje dvosmislen naziv stavke s pojmom na koji
-se oslanja provjera tagiranim podacima iz odjeljka 4.7. Item 8 čita te izvještaje, ostali Itemi glavni
+se oslanja provjera tagiranim podacima iz odjeljka 4.6. Item 8 čita te izvještaje, ostali Itemi glavni
 dokument.
 
 Ne preuzimaju se svi izvještaji. Jedna objava ih indeksira između sedamdeset i sto, a svaki je zaseban
@@ -240,21 +240,20 @@ Dohvaćeni dokument i pripremljeni odsječci izvještaja spremaju se u međuspre
 Jedan prolaz ekstrakcije više puta poseže za istim izvješćem, a bez međuspremnika svaki bi dohvat
 značio novo preuzimanje i novu pripremu cijelog dokumenta.
 
-## 4.4. Segmentacija dokumenta
+## 4.4. Podjela dokumenta i odabir sadržaja
 
-Godišnje izvješće prelazi sto stranica. Cijeli tekst ne stane u jedan poziv modela, a i kad bi
-stao, točnost bi pala jer modeli slabije koriste podatke u sredini dugog konteksta [12]. Zato se
-dokument dijeli.
+Godišnje izvješće prelazi sto stranica. Cijeli tekst ne stane u jedan poziv modela, a i kad bi stao,
+točnost bi pala jer modeli slabije koriste podatke u sredini dugog konteksta [12]. Zato se dokument
+dijeli, a zatim se bira koji se dijelovi uopće čitaju.
 
-Podjela je dvostupanjska. Prvo se pronalaze granice Itema, zatim se unutar odabranih Itema pronalaze
-podnaslovi.
+Podjela je dvostupanjska. Prvo se pronalaze granice Itema, zatim se unutar njih pronalaze podnaslovi.
 
-Granice Itema traže se regexom, na dva načina. Prvi je oznaka Itema na početku retka; regex hvata i
-slovo iza rednog broja, jer bez njega `Item 1A` ne bi bio prepoznat kao zasebna stavka. Drugi je
-propisani naslov stavke, jer dio izdavatelja u tijelu dokumenta ne ispisuje oznaku Itema, nego samo
-naslov. Naslovi su propisani regulativom, pa su jednako pouzdana oznaka granice kao i redni broj.
-Naslov se priznaje samo ako zauzima cijeli redak, čime se izbjegavaju spominjanja usred rečenice.
-Oznaka `Item 1` nema naslovni oblik, jer je „Business" preopćenita riječ za pouzdano podudaranje.
+Granice Itema traže se regexom, na dva načina. Prvi je oznaka Itema na početku retka; obrazac hvata i
+slovo iza rednog broja (`Item 1A`) i decimalni oblik koji koristi obrazac 8-K (`Item 2.02`). Drugi je
+propisani naslov stavke, jer dio izdavatelja u tijelu dokumenta ne ispisuje oznaku, nego samo naslov.
+Naslovi su propisani regulativom, pa su jednako pouzdana oznaka granice kao i redni broj. Naslov se
+priznaje samo ako zauzima cijeli redak, čime otpadaju spominjanja usred rečenice. Oznaka `Item 1` nema
+naslovni oblik, jer je „Business" preopćenita riječ za pouzdano podudaranje.
 
 ```csharp
 private static readonly (string Num, string Title)[] ItemTitles =
@@ -265,7 +264,7 @@ private static readonly (string Num, string Title)[] ItemTitles =
     ("8",  @"Financial\s+Statements\s+and\s+Supplementary\s+Data"),
 ];
 
-foreach (Match m in Regex.Matches(text, @"(?im)^[#>*_\s]*Item\s+(\d+[A-Z]?)\b"))
+foreach (Match m in Regex.Matches(text, @"(?im)^[#>*_\s]*Item\s+(\d+(?:\.\d+)?[A-Z]?)\b"))
     found.Add((m.Groups[1].Value.ToUpperInvariant(), m.Index, m.Index + m.Length));
 
 foreach (var (num, title) in ItemTitles)
@@ -275,27 +274,54 @@ foreach (var (num, title) in ItemTitles)
 
 Isječak programskog koda 4. Pronalaženje granica Itema po oznaci i po propisanom naslovu.
 
-Jedna oznaka Itema pojavljuje se više puta u dokumentu. Jednom u sadržaju na početku, jednom na
-mjestu same stavke. Sustav uzima ono pojavljivanje iza kojeg slijedi najviše teksta do sljedeće
-oznake. Redak iz sadržaja tako otpada sam od sebe, bez posebnog pravila.
-
-Stavka završava na sljedećoj *različitoj* oznaci, a ne na sljedećoj oznaci bilo koje vrste.
-Izdavatelji naslov stavke ponavljaju kao zaglavlje svake stranice, pa bi strože pravilo stavku
-prekinulo na njezinu prvom prijelomu stranice.
+Jedna se oznaka pojavljuje više puta: u sadržaju na početku i na mjestu same stavke. Uzima se ono
+pojavljivanje iza kojeg slijedi najviše teksta, pa redak iz sadržaja otpada sam od sebe, bez posebnog
+pravila. Stavka završava na sljedećoj *različitoj* oznaci, jer izdavatelji naslov stavke ponavljaju kao
+zaglavlje svake stranice, pa bi strože pravilo stavku prekinulo na njezinu prvom prijelomu stranice.
 
 Ovdje je vidljiva uloga koja je rule-based metodama preostala. Regex u sustavu ne izvlači nijednu
-vrijednost. Ne traži iznose, nazive ni postotke. Traži samo strukturu dokumenta, odnosno mjesta na
-kojima jedan Item prelazi u drugi. Oblik oznake Itema propisan je i stabilan, pa pravilo na njemu ne
-otkazuje. Vrijednosti unutar Itema nisu propisane i njih preuzima model.
+vrijednost. Traži samo strukturu dokumenta, odnosno mjesta na kojima jedan Item prelazi u drugi. Oblik
+oznake propisan je i stabilan, pa pravilo na njemu ne otkazuje. Vrijednosti unutar Itema nisu propisane
+i njih preuzima model.
 
-Tekst Itema dijeli se na odsječke. Granica odsječka je prazan redak, a odsječak se puni do četiri
-tisuće znakova. Odlomak se nikada ne prekida na pola. Odlomak koji sam prelazi ograničenje reže se,
-osim ako je tablica. Tablica se prosljeđuje cijela, jer bi rezanje izgubilo retke s iznosima.
+Podnaslovi unutar Itema prepoznaju se po retku čiji je cijeli tekst podebljan; redak s oznakom Itema
+pritom je granica, a ne podnaslov. Jedno izvješće daje reda veličine stotinu podnaslova, a većina ne
+nosi podatak koji aktivni čvor traži. Slanje svih odsječaka modelu bilo bi izvedivo, ali skupo.
 
-Tablica uz sebe povlači i uvodnu rečenicu. Rečenica koja tablicu najavljuje zaseban je odlomak
-(„The following table shows net sales by reportable segment … (dollars in millions):"), a u njoj
-stoje predmet i mjerna skala. Tablica koja bi bez nje pala na granicu odsječka bila bi mreža golih
-brojeva, pa se uvodna rečenica prenosi u novi odsječak zajedno s tablicom.
+Zato se uvodi korak trijaže. Modelu se šalju samo naslovi, numerirani, bez teksta ispod njih, a on
+vraća redne brojeve podnaslova vrijednih čitanja. To je jedan poziv na brzoj razini modela opisanoj u
+odjeljku 4.2, uz uključeno nametanje JSON izlaza.
+
+```json
+{"ids":[0,3,7,12]}
+```
+
+Isječak programskog koda 5. Odgovor modela u koraku trijaže.
+
+Trijaža ne smije biti jedina brana. Ako poziv ne uspije ili model vrati prazan popis, sustav čita sve
+podnaslove; otkaz trijaže tako poskupljuje obradu, ali je ne prekida. Uz to se Item 7 za čvorove
+prihoda i troška uvijek dodaje u cijelosti, jer se njegov opis poslovanja po segmentima ne može
+pouzdano ocijeniti po naslovu.
+
+Dva slučaja zaobilaze podnaslove i čitaju se u cijelosti. Item 8 ne dijeli se iz dokumenta: njegovi
+odsječci nastaju iz izvještaja opisanih u odjeljku 4.3, gdje je svaka datoteka već cjelovita
+financijska tablica, a uzastopne tablice pakiraju se u odsječak uz naslov izvještaja kao oznaku izvora.
+Item u kojem je pronađeno manje od pet podnaslova smatra se neprepoznatim, jer pravilo o podebljanju
+otkazuje kod izdavatelja koji podnaslove ističu veličinom i bojom. Kad takav Item daje više odsječaka
+nego što ih stane u proračun, odabir je determinističan i bez modela: boduju se ključne riječi aktivnog
+čvora i prisutnost tablice, a odabrani odsječci prosljeđuju se redoslijedom u dokumentu. Odsječci s
+tablicom imaju prednost jer tablice u izvješću nose iznose, a stoje pri kraju stavke, gdje bi ih
+odsijecanje po redoslijedu izgubilo.
+
+Odabrani sadržaj pakira se u odsječke. Granica odsječka je prazan redak, a odsječak se puni do četiri
+tisuće znakova; granicu prelaze samo cjelovita tablica i tijelo pojedinog podnaslova koje je već samo
+veće od nje. Uzastopni podnaslovi istog Itema spajaju se u jedan poziv, jer bi inače kratak podnaslov
+trošio cijeli poziv modela, a odsječak nikada ne prelazi granicu Itema. Odlomak se ne prekida na pola:
+onaj koji sam prelazi ograničenje reže se, osim ako je tablica. Tablica se prosljeđuje cijela, jer bi
+rezanje izgubilo retke s iznosima, i uz sebe povlači uvodnu rečenicu. Rečenica koja tablicu najavljuje
+zaseban je odlomak („The following table shows net sales by reportable segment … (dollars in
+millions):"), a u njoj stoje predmet i mjerna skala; tablica koja bi bez nje pala na granicu odsječka
+bila bi mreža golih brojeva.
 
 ```html
 <table><tr><td colspan="3"></td><td colspan="15">Dec 27, 2025</td></tr>
@@ -304,44 +330,13 @@ brojeva, pa se uvodna rečenica prenosi u novi odsječak zajedno s tablicom.
 <tr><td colspan="3">Operating income</td>…<td>$9,317</td>…<td>$12,739</td></tr></table>
 ```
 
-Isječak programskog koda 5. Tablica poslovnih segmenata onako kako je prima agent-radnik.
+Isječak programskog koda 6. Tablica poslovnih segmenata onako kako je prima agent-radnik.
 
-Item 8 ne dijeli se iz dokumenta. Njegovi odsječci nastaju iz izvještaja opisanih u odjeljku 4.3,
-gdje je svaka datoteka već jedna cjelovita financijska tablica. Uzastopne tablice pakiraju se u
-odsječak do istog ograničenja veličine, uz naslov izvještaja kao oznaku izvora.
+Proračun jednog skeniranja iznosi četrdeset osam odsječaka po čvoru i izvješću. Troše ga tri izvora:
+trijažirani podnaslovi, izvještaji Itema 8 i neprepoznati Itemi. Posljednji dobivaju ono što od
+proračuna preostane, uz zajamčenih šest odsječaka po Itemu, jer je njihovo čitanje najmanje ciljano.
 
-Podnaslovi unutar ostalih Itema prepoznaju se po podebljanom retku. Pravilo ovisi o načinu na koji
-izdavatelj oblikuje dokument, pa kod izdavatelja koji podnaslove ističe veličinom i bojom gotovo
-nijedan ne bude prepoznat. Zato Item koji daje manje od pet podnaslova ne ide kroz podnaslove, nego
-se čita sekvencijalno, redoslijedom u dokumentu, jednako kao Item 8.
-
-## 4.5. Odabir odsječaka
-
-Godišnje izvješće daje reda veličine stotinu odsječaka. Većina ne sadrži podatak koji aktivni čvor
-traži. Slanje svih odsječaka modelu bilo bi izvedivo, ali skupo.
-
-Zato se uvodi korak trijaže. Modelu se šalju samo naslovi podnaslova, numerirani, bez teksta ispod
-njih. Model vraća redne brojeve podnaslova vrijednih čitanja.
-
-```json
-{"ids":[0,3,7,12]}
-```
-
-Isječak programskog koda 6. Odgovor modela u koraku trijaže.
-
-Trijaža je jedan poziv i troši malo tokena, jer naslovi su kratki. Izvodi se na brzoj razini modela
-opisanoj u odjeljku 4.2, uz uključeno nametanje JSON izlaza.
-
-Trijaža ne smije biti jedina brana. Ako poziv ne uspije ili model vrati prazan popis, sustav čita sve
-podnaslove. Otkaz trijaže tako poskupljuje obradu, ali je ne prekida. Uz to se Item 7 uvijek dodaje u
-cijelosti za čvorove prihoda i troška, jer se njegov opis poslovanja po segmentima ne može pouzdano
-ocijeniti po naslovu.
-
-Odabrani podnaslovi pakiraju se u odsječke. Uzastopni podnaslovi istog Itema spajaju se u jedan
-poziv dok se ne dosegne ograničenje veličine odsječka. Bez pakiranja bi kratak podnaslov trošio
-cijeli poziv modela.
-
-## 4.6. Paralelna ekstrakcija
+## 4.5. Paralelna ekstrakcija
 
 Svaki odsječak čita jedan poziv modela. Pozivi su neovisni, pa se izvode paralelno, uz istovremeno
 najviše šest poziva. Ograničenje postoji zbog ograničenja učestalosti zahtjeva prema pružatelju
@@ -414,7 +409,7 @@ Otkaz jednog poziva ne ruši prolaz. Odsječak čiji je poziv pao vraća prazan 
 nastavljaju. Isto vrijedi za odgovor prekinut zbog ograničenja duljine izlaza: sustav pokušava
 spasiti dio niza koji je zatvoren i odbacuje samo posljednji nepotpuni zapis.
 
-## 4.7. Strukturirana provjera tagiranim podacima
+## 4.6. Strukturirana provjera tagiranim podacima
 
 Uz izvješće pisano za ljude, izdavatelj objavljuje i strojno čitljivu inačicu istih iznosa u formatu
 XBRL. Iznosi su ondje označeni imenom pojma iz propisane taksonomije, razdobljem i mjernom jedinicom.
@@ -470,7 +465,7 @@ bi činjenicu da izvori ne daju isti odgovor.
 Za čvor rizika ovaj korak ne postoji. Objavljeni rizik nema brojčanu vrijednost, pa nema ni tagiranog
 podatka s kojim bi se usporedio.
 
-## 4.8. Objedinjavanje i priprema zapisa
+## 4.7. Objedinjavanje i priprema zapisa
 
 Nalazi agenata-radnika oblikuju se u sažetak. Sažetak sadrži naziv, klasifikaciju, iznos, postotak i
 protustranku svakog kandidata, oznaku Itema iz kojeg potječe te doslovne isječke po poljima.
@@ -503,7 +498,7 @@ Polje `reference` sadrži doslovan odlomak iz kojeg je cijeli zapis izveden, uz 
 Polja unutar `proof` sadrže isječak po pojedinom polju. Razlika je namjerna. Jedan zapis ima jedan
 izvorni odlomak, ali svako njegovo polje može biti potkrijepljeno drugom rečenicom.
 
-## 4.9. Entitetski model
+## 4.8. Entitetski model
 
 Ekstrahirani podaci pohranjuju se u tri entiteta izvora, po jedan za svaki čvor. Uz njih stoje
 entitet objave i entitet dokaza po polju.
@@ -549,7 +544,7 @@ Polje `ReviewableField` nabraja polja koja se mogu potkrijepiti: `VALUE`, `PERCE
 `RELATED_COMPANY`, `CLASSIFICATION` i `NOTE`. Po zapisu i polju postoji najviše jedan važeći dokaz.
 Novi dokaz zamjenjuje prethodni.
 
-## 4.10. Normalizacija vrijednosti
+## 4.9. Normalizacija vrijednosti
 
 U odjeljku 2.2 razdvojeno je pronalaženje podatka od svođenja vrijednosti na oblik ciljne sheme. U
 sustavu se ta dva zadatka događaju na različitim mjestima.
@@ -580,7 +575,7 @@ modelu. Prompt traži vrijednost iz šifrarnika, ali ta se tvrdnja ne uzima na r
 Brojčane vrijednosti čitaju se tolerantno. Model iznos može vratiti kao broj ili kao niz znakova, a
 oba oblika se prihvaćaju.
 
-## 4.11. Postupanje s pogreškama
+## 4.10. Postupanje s pogreškama
 
 Jezični model je nedeterministična komponenta. Uz to sustav ovisi o vanjskim uslugama koje mogu biti
 nedostupne. Svaka takva točka ima definirano ponašanje pri otkazu.
@@ -602,11 +597,11 @@ Zajedničko načelo je da otkaz jedne komponente smanjuje količinu podataka, a 
 Iznimka je posljednji redak. Zapis koji ne prolazi provjeru šifrarnika ne pohranjuje se, jer bi
 neispravna klasifikacija ušla u bazu.
 
-## 4.12. Proširivost
+## 4.11. Proširivost
 
 Dodavanje novog čvora ekstrakcije zahtijeva izmjene na četiri mjesta: popis Itema koji se čitaju,
 prompt agenta-radnika i vodećeg agenta, šifrarnik klasifikacije i ciljni entitet. Motor obrade se ne
-mijenja. Dohvat, segmentacija, trijaža, paralelno izvođenje, objedinjavanje i pohrana dokaza rade
+mijenja. Dohvat, podjela dokumenta, trijaža, paralelno izvođenje, objedinjavanje i pohrana dokaza rade
 jednako za svaki čvor.
 
 To je razlika prema rule-based pristupu opisanom u odjeljku 2.3. Ondje novi tip podatka znači nova
@@ -626,7 +621,7 @@ Ovaj dio ne ulazi u rad.
    pokriva i pomoćnu pretragu protustranaka, bez posebnog objašnjenja.
 
 2. **Numeriranje literature.** Poglavlje koristi tri već potvrđene reference: [12] u odjeljku 4.4 te
-   [8] i [16] u odjeljku 4.6. Numeracija iz poglavlja 2 i 3 ostaje netaknuta.
+   [8] i [16] u odjeljku 4.5. Numeracija iz poglavlja 2 i 3 ostaje netaknuta.
 
 3. **Numeriranje isječaka i tablica.** Isječci programskog koda numerirani su od 1, tablice također.
    Ako prethodna poglavlja sadrže isječke ili tablice, brojeve treba pomaknuti.
@@ -642,7 +637,7 @@ Ovaj dio ne ulazi u rad.
    i odziva, čime otpada potreba za ručnim označavanjem skupa dokumenata. Vrijedi samo za čvorove
    prihoda i troška. Čvor rizika nema brojčanu vrijednost i mora se vrednovati drukčije.
 
-7. **Trošak održavanja.** Odjeljak 4.12 daje kvalitativan argument za drugo istraživačko pitanje:
+7. **Trošak održavanja.** Odjeljak 4.11 daje kvalitativan argument za drugo istraživačko pitanje:
    novi tip podatka ne zahtijeva nova pravila prepoznavanja. To je najbliže mjerljivom obliku
    kriterija fleksibilnosti. Kriterij troška održavanja i dalje nije riješen.
 
@@ -658,10 +653,10 @@ Ovaj dio ne ulazi u rad.
     se u vrednovanju odlučiš na usporedbu pružatelja usluge, arhitektura to već podupire i ne traži
     izmjene koda. Isto vrijedi za usporedbu zero-shot i few-shot prompta: dodavanje riješenog
     primjera u prompt agenta-radnika je izmjena jednog niza znakova, pa je i to izvediv pokus ako
-    zatreba brojka uz tvrdnju iz odjeljka 4.6.
+    zatreba brojka uz tvrdnju iz odjeljka 4.5.
 
 11. **Ako se 3. poglavlje dopunjava.** Odjeljak 3.2 obrađuje prompt kao specifikaciju zadatka. Ako
-    ondje zero-shot i few-shot nisu razgraničeni, tvrdnja u 4.6 visi u zraku i traži jednu rečenicu
+    ondje zero-shot i few-shot nisu razgraničeni, tvrdnja u 4.5 visi u zraku i traži jednu rečenicu
     definicije u 3.2, uz istu referencu [8].
 
 12. **Item kao naziv.** Numerirani dijelovi obrasca 10-K zadržavaju izvornu oznaku (`Item 7`,

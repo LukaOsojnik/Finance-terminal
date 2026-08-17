@@ -60,30 +60,28 @@
                         <td>@(r.RelatedCompany ?? r.Note ?? "—")</td>
                         <td><small class="text-muted">@(r.ContributorEmail ?? "—")</small></td>
                         <td>
-                            @if (r.Proofs.Count == 0)
+                            @if (string.IsNullOrWhiteSpace(r.Reference) && string.IsNullOrWhiteSpace(r.Evidence))
                             {
                                 <span class="text-muted">none</span>
                             }
                             else
                             {
-                                <ul class="list-unstyled mb-0">
-                                    @foreach (var pr in r.Proofs)
-                                    {
-                                        <li class="mb-1">
-                                            <strong>@pr.Field.Replace("_", " "):</strong>
-                                            <span class="text-muted">@(pr.Snapshot.Length > 160 ? pr.Snapshot[..160] + "…" : pr.Snapshot)</span>
-                                            @if (!string.IsNullOrWhiteSpace(pr.FilingUrl))
-                                            {
-                                                <a href="@pr.FilingUrl" target="_blank" rel="noopener">[@(pr.FilingLabel ?? "filing")]</a>
-                                            }
-                                            else if (!string.IsNullOrWhiteSpace(pr.Pointer) && pr.Pointer.StartsWith("http"))
-                                            {
-                                                <a href="@pr.Pointer" target="_blank" rel="noopener">[source]</a>
-                                            }
-                                            <span class="text-muted">· @pr.Endpoint</span>
-                                        </li>
-                                    }
-                                </ul>
+                                @if (!string.IsNullOrWhiteSpace(r.Reference))
+                                {
+                                    <div><strong>@r.Reference</strong></div>
+                                }
+                                @if (!string.IsNullOrWhiteSpace(r.Evidence))
+                                {
+                                    <div class="text-muted">“@(r.Evidence!.Length > 160 ? r.Evidence[..160] + "…" : r.Evidence)”</div>
+                                }
+                                @if (!string.IsNullOrWhiteSpace(r.FilingUrl))
+                                {
+                                    <a href="@r.FilingUrl" target="_blank" rel="noopener">[@(r.FilingLabel ?? "filing")]</a>
+                                }
+                                else if (!string.IsNullOrWhiteSpace(r.Reference) && r.Reference!.StartsWith("http"))
+                                {
+                                    <a href="@r.Reference" target="_blank" rel="noopener">[source]</a>
+                                }
                             }
                         </td>
                     </tr>

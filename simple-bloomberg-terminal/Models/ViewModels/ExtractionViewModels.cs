@@ -24,8 +24,8 @@ public class ExtractionIndexViewModel
 }
 
 /// <summary>
-/// One "Use as reference" action: the current state of the left cells (so the source row
-/// can be created/updated) plus which cell is being proved and the selected proof text.
+/// Set one row's proof: the current state of the left cells (so the source row can be
+/// created/updated) plus the reference + evidence being frozen onto it.
 /// </summary>
 public class ReferenceRequest
 {
@@ -33,7 +33,7 @@ public class ReferenceRequest
     public long? RevenueSourceId { get; set; }   // null => create a new source row on save
 
     // Which node this row belongs to (REVENUE / COST / RISK), as the enum name. Decides the target
-    // entity and the RelationKind stamped on the proof.
+    // entity the row is written to.
     public string Node { get; set; } = "REVENUE";
 
     // Left-cell values (written back to the source row, source of truth for the numbers).
@@ -47,12 +47,9 @@ public class ReferenceRequest
     public string? Note { get; set; }            // RISK node only (free-text)
     public long? RelatedCompanyId { get; set; }
 
-    // The proof.
-    public string Field { get; set; } = string.Empty;
-    public string Endpoint { get; set; } = string.Empty;   // which EDGAR response backed it
-    public string ReferencePointer { get; set; } = string.Empty;
-    public string ReferenceSnapshot { get; set; } = string.Empty;
-    public string? ReferencedValue { get; set; }
+    // The proof: WHERE in the document (SEC Item / note / subheading) and the verbatim quote.
+    public string? Reference { get; set; }
+    public string? Evidence { get; set; }
 
     // The filing the proof came from (sent only when a filing document is open in the right
     // pane — null when the proof was taken from Company Facts). Used to upsert a Filing and link
@@ -63,23 +60,17 @@ public class ReferenceRequest
     public string? FilingUrl { get; set; }
 }
 
-/// <summary>Returned to the page so it can bind a freshly-created row id and flag the cell.</summary>
-public record ReferenceResult(long RevenueSourceId, long ReviewId, string Field);
+/// <summary>Returned to the page so it can bind a freshly-created row id.</summary>
+public record ReferenceResult(long RevenueSourceId);
 
 /// <summary>
 /// One AI-extracted revenue source proposed from a filing (Mode B: AI fills, human reviews). The
-/// page drops these values into the left cells and stashes each <see cref="Proof"/> snapshot so the
-/// existing "Use as reference" save path can freeze it — no new write path. Nothing is persisted
-/// until the human confirms a cell.
+/// page drops these values into the left cells and its <see cref="Evidence"/> into the proof box, so
+/// the existing save path can freeze it — no new write path. Nothing is persisted until the human saves.
 /// </summary>
 public record ExtractionSuggestion(
     string Name, string? Classification, double? Value, double? Percentage,
-    string? RelatedCompany, string Section, ExtractionProof Proof, string? Note = null);
-
-/// <summary>Per-field verbatim proof text the model lifted from the chunk it read.</summary>
-public record ExtractionProof(
-    string? Name, string? Value, string? Percentage, string? Classification, string? RelatedCompany,
-    string? Note = null);
+    string? RelatedCompany, string Section, string? Evidence, string? Note = null);
 
 /// <summary>Outcome of an auto-scan: how many headings the triage model chose to read in full, how
 /// many candidate rows the workers pulled from them, and every heading it was offered with whether it
@@ -90,9 +81,8 @@ public record AutoScanResult(int Scanned, int Found, IReadOnlyList<ScannedHeadin
 public record ScannedHeading(string Section, string Title, bool Picked);
 
 /// <summary>
-/// One "Save" of the whole left form: the source-row values plus every field that carries proof.
-/// The controller upserts the <c>RevenueSource</c> once, then upserts a <c>SourceFieldReview</c>
-/// per entry in <see cref="Proofs"/> — replacing the old one-button-per-cell flow.
+/// One "Save" of the whole left form: the source-row values plus the row's single proof
+/// (<see cref="Reference"/> + <see cref="Evidence"/> and the filing they came from).
 /// </summary>
 public class SaveRequest
 {
@@ -106,12 +96,19 @@ public class SaveRequest
     public string? Note { get; set; }            // RISK node only (free-text)
     public long? RelatedCompanyId { get; set; }
 
-    public List<ProofInput> Proofs { get; set; } = [];
+    // The row's proof: WHERE in the document, the verbatim quote, and the open filing they came from
+    // (filing fields null when the text was taken from Company Facts).
+    public string? Reference { get; set; }
+    public string? Evidence { get; set; }
+    public string? FilingAccessionNumber { get; set; }
+    public string? FilingForm { get; set; }
+    public string? FilingDate { get; set; }
+    public string? FilingUrl { get; set; }
 }
 
 /// <summary>
 /// Save several AI-proposed objects at once, straight from the notification widget's chat (the
-/// user ticks which ```save``` blocks to keep). Each item upserts its source row + per-field proof;
+/// user ticks which ```save``` blocks to keep). Each item upserts its source row (proof included);
 /// items that name a counterparty additionally resolve/create that company (FMP/Yahoo, like the
 /// discover→link pipeline) and get a reciprocal mirror row — so the relationship is bidirectional.
 /// </summary>
@@ -134,22 +131,14 @@ public class SaveBatchItem
     public string? Note { get; set; }
     public string? RelatedCompany { get; set; }
     public string? RelatedCompanyTicker { get; set; }   // enables the FMP/Yahoo create path
-    public string? Reference { get; set; }               // per-record source passage → {Cost|Revenue}Source/CompanyRisk.Reference
-    public ExtractionProof? Proof { get; set; }
-}
+    public string? Reference { get; set; }               // where in the document → {Cost|Revenue}Source/CompanyRisk.Reference
 
-/// <summary>Proof for one field, carried inside a <see cref="SaveRequest"/>.</summary>
-public class ProofInput
-{
-    public string Field { get; set; } = string.Empty;
-    public string Endpoint { get; set; } = string.Empty;
-    public string ReferencePointer { get; set; } = string.Empty;
-    public string ReferenceSnapshot { get; set; } = string.Empty;
-    public string? ReferencedValue { get; set; }
-    public string? FilingAccessionNumber { get; set; }
-    public string? FilingForm { get; set; }
-    public string? FilingDate { get; set; }
-    public string? FilingUrl { get; set; }
+    // One verbatim quote backing the whole record → {Cost|Revenue}Source/CompanyRisk.Evidence. It was
+    // a per-field object (proof.name, proof.value, proof.classification…) until the model's own output
+    // showed the split was fiction: proof.name and proof.value came back as the SAME sentence whenever
+    // a source had a figure, and proof.classification was always a torn-off fragment — a classification
+    // is an inference, so there is nothing in the filing to quote for it.
+    public string? Evidence { get; set; }
 }
 
 /// <summary>
@@ -219,8 +208,8 @@ public class LinkCounterpartyRequest
     public string? CountryCode { get; set; }
     public string? Sector { get; set; }
     public string? Ticker { get; set; }            // when set, a new counterparty is fetched from FMP
-    public string? SourceUrl { get; set; }         // sonar citation — saved as proof on the linked row
-    public string? Note { get; set; }              // sonar's one-line note, used as the proof snapshot
+    public string? SourceUrl { get; set; }         // sonar citation — stored as the linked row's Reference
+    public string? Note { get; set; }              // sonar's one-line note — stored as the row's Evidence
     public double? Value { get; set; }             // estimated contract value (USD) from valued discovery; stored on the row
 }
 

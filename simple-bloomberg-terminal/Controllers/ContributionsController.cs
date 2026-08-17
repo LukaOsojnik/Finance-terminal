@@ -22,20 +22,18 @@ public class ContributionsController : Controller
     private readonly IRevenueSourceRepository _revenue;
     private readonly ICostSourceRepository _cost;
     private readonly ICompanyRiskRepository _risks;
-    private readonly ISourceFieldReviewRepository _reviews;
     private readonly UserManager<AppUser> _users;
     private readonly IContributionWriter _writer;
 
     public ContributionsController(
         ICompanyRepository companies, IRevenueSourceRepository revenue, ICostSourceRepository cost,
-        ICompanyRiskRepository risks, ISourceFieldReviewRepository reviews, UserManager<AppUser> users,
+        ICompanyRiskRepository risks, UserManager<AppUser> users,
         IContributionWriter writer)
     {
         _companies = companies;
         _revenue = revenue;
         _cost = cost;
         _risks = risks;
-        _reviews = reviews;
         _users = users;
         _writer = writer;
     }
@@ -71,10 +69,6 @@ public class ContributionsController : Controller
         var company = _companies.GetById(id);
         if (company is null) return NotFound();
 
-        // Proofs for every pending row, fetched once and matched by source id below. Reused from the
-        // extraction flow's review repository (Filing already eager-loaded for the link).
-        var reviews = _reviews.GetByCompany(id).ToList();
-
         // Materialize each section once so the projections (and the email batch below) don't re-query.
         var revenue = _revenue.GetPendingByCompany(id).ToList();
         var cost = _cost.GetPendingByCompany(id).ToList();
@@ -103,7 +97,8 @@ public class ContributionsController : Controller
             ContributorEmail = Email(r.ContributedByUserId),
             SupersedesId = r.SupersedesId,
             SupersededName = r.SupersedesId is { } sid ? _revenue.GetById(sid)?.Name : null,
-            Proofs = ProofsFor(reviews, p => p.RevenueSourceId == r.Id)
+            Reference = r.Reference, Evidence = r.Evidence,
+            FilingLabel = FilingLabel(r.Filing), FilingUrl = FilingUrl(r.Filing)
         }).ToList();
 
         vm.Cost = cost.Select(c => new ContributionRow
@@ -113,7 +108,8 @@ public class ContributionsController : Controller
             ContributorEmail = Email(c.ContributedByUserId),
             SupersedesId = c.SupersedesId,
             SupersededName = c.SupersedesId is { } sid ? _cost.GetById(sid)?.Name : null,
-            Proofs = ProofsFor(reviews, p => p.CostSourceId == c.Id)
+            Reference = c.Reference, Evidence = c.Evidence,
+            FilingLabel = FilingLabel(c.Filing), FilingUrl = FilingUrl(c.Filing)
         }).ToList();
 
         vm.Risk = risk.Select(r => new ContributionRow
@@ -122,23 +118,19 @@ public class ContributionsController : Controller
             ContributorEmail = Email(r.ContributedByUserId),
             SupersedesId = r.SupersedesId,
             SupersededName = r.SupersedesId is { } sid ? _risks.GetById(sid)?.Name : null,
-            Proofs = ProofsFor(reviews, p => p.CompanyRiskId == r.Id)
+            Reference = r.Reference, Evidence = r.Evidence,
+            FilingLabel = FilingLabel(r.Filing), FilingUrl = FilingUrl(r.Filing)
         }).ToList();
 
         return View(vm);
     }
 
-    private static List<ContributionProof> ProofsFor(
-        IEnumerable<SourceFieldReview> reviews, Func<SourceFieldReview, bool> belongsTo) =>
-        reviews.Where(belongsTo).Select(p => new ContributionProof
-        {
-            Field = p.Field.ToString(),
-            Snapshot = p.ReferenceSnapshot,
-            Pointer = p.ReferencePointer,
-            Endpoint = p.Endpoint,
-            FilingLabel = p.Filing == null ? null : $"{p.Filing.Form} {p.Filing.AccessionNumber}".Trim(),
-            FilingUrl = p.Filing?.PrimaryDocUrl
-        }).ToList();
+    // A pending row's source filing, shown only while the filing itself is still live.
+    private static string? FilingLabel(Filing? f) =>
+        f is null || f.DeletedAt != null ? null : $"{f.Form} {f.AccessionNumber}".Trim();
+
+    private static string? FilingUrl(Filing? f) =>
+        f is null || f.DeletedAt != null ? null : f.PrimaryDocUrl;
 
     // Approve every selected pending row. Batched so a section "Approve all" button posts the whole
     // section's ids in one call; the transition rules live in IContributionWriter.

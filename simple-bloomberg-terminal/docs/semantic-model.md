@@ -19,7 +19,6 @@
 | RevenueSources | RevenueSource | Revenue line item for a Company |
 | CostSources | CostSource | Cost line item for a Company |
 | CompanyRisks | CompanyRisk | Disclosed risk for a Company (SEC Item 1A/7A); Name + Scope + Note, no money figures |
-| SourceFieldReviews | SourceFieldReview | Per-field provenance (incl. the filing link) + AI verdict for one cell of a revenue/cost/risk source |
 | Filings | Filing | A SEC EDGAR filing used as proof for a cost/revenue source; identity is the EDGAR accession number |
 | AspNetUsers | AppUser | Application user (ASP.NET Core Identity), extended with profile-picture metadata |
 | UserApiKeys | UserApiKey | 1:1 store of a user's bring-your-own third-party API keys (encrypted) |
@@ -168,7 +167,9 @@ Weekly trading-volume time series per Company, backfilled from Yahoo Finance's c
 | Name | string | |
 | Value | double? | |
 | Percentage | double? | |
-| Reference | string? | Per-record source passage: the verbatim filing excerpt (SEC Item or note + source text) the whole revenue row was drawn from, set by the extraction agent. Distinct from the per-field SourceFieldReview proof rows — those back one field each; this cites the record overall. Nullable `longtext` (migration `20260616113409_AddRevenueAndRiskReference`) |
+| Reference | string? | WHERE in the document the row came from: the SEC Item / note / subheading (e.g. "Item 7. Management's Discussion"), set by the extraction agent. Nullable `longtext` (migration `20260616113409_AddRevenueAndRiskReference`) |
+| Evidence | string? | The exact verbatim substring from the filing backing the row — findable by a literal search in the document. One quote per row. Nullable `longtext` (migration `20260814074704_CollapseProofOntoSourceRows`) |
+| FilingId | long? | FK → Filings (Restrict, indexed); the filing Reference/Evidence were taken from (null when they came from Company Facts or a web source). Nav: `Filing`. Migration `20260814074704_CollapseProofOntoSourceRows` |
 | DataSource | DataSource? | EDGAR, MANUAL, CLAUDE_ESTIMATED… |
 | DeletedAt | DateTime? | Soft-delete timestamp |
 | Status | ContributionStatus | Review state; defaults to Approved (live). User contributions are Pending until a Manager rules on them |
@@ -185,7 +186,9 @@ Weekly trading-volume time series per Company, backfilled from Yahoo Finance's c
 | Name | string | |
 | Value | double? | |
 | Percentage | double? | |
-| Reference | string? | Per-record source passage: the verbatim filing excerpt (SEC Item or note + source text) the whole cost row was drawn from, set by the extraction agent. Distinct from the per-field SourceFieldReview proof rows — those back one field each; this cites the record overall. Nullable `longtext` (migration `20260616080209_AddCostSourceReference`) |
+| Reference | string? | WHERE in the document the row came from: the SEC Item / note / subheading, set by the extraction agent. Nullable `longtext` (migration `20260616080209_AddCostSourceReference`) |
+| Evidence | string? | The exact verbatim substring from the filing backing the row — findable by a literal search in the document. One quote per row. Nullable `longtext` (migration `20260814074704_CollapseProofOntoSourceRows`) |
+| FilingId | long? | FK → Filings (Restrict, indexed); the filing Reference/Evidence were taken from (null when they came from Company Facts or a web source). Nav: `Filing`. Migration `20260814074704_CollapseProofOntoSourceRows` |
 | DataSource | DataSource? | |
 | DeletedAt | DateTime? | Soft-delete timestamp |
 | Status | ContributionStatus | Review state; defaults to Approved (live). User contributions are Pending until a Manager rules on them |
@@ -200,37 +203,18 @@ Weekly trading-volume time series per Company, backfilled from Yahoo Finance's c
 | Scope | RiskScope | MACROECONOMIC, INDUSTRY, BUSINESS, LEGAL_REGULATORY, FINANCIAL, GENERAL |
 | Name | string | |
 | Note | string? | Free-text detail |
-| Reference | string? | Per-record source passage: the verbatim filing excerpt (SEC Item 1A/7A + source text) the whole risk row was drawn from, set by the extraction agent. Distinct from the per-field SourceFieldReview proof rows — those back one field each; this cites the record overall. Nullable `longtext` (migration `20260616113409_AddRevenueAndRiskReference`) |
+| Reference | string? | WHERE in the document the row came from: the SEC Item / note / subheading (e.g. "Item 1A. Risk Factors"), set by the extraction agent. Nullable `longtext` (migration `20260616113409_AddRevenueAndRiskReference`) |
+| Evidence | string? | The exact verbatim substring from the filing backing the row — findable by a literal search in the document. One quote per row. Nullable `longtext` (migration `20260814074704_CollapseProofOntoSourceRows`) |
+| FilingId | long? | FK → Filings (Restrict, indexed); the filing Reference/Evidence were taken from (null when they came from Company Facts or a web source). Nav: `Filing`. Migration `20260814074704_CollapseProofOntoSourceRows` |
 | DataSource | DataSource? | |
 | DeletedAt | DateTime? | Soft-delete timestamp |
 | Status | ContributionStatus | Review state; defaults to Approved (live). User contributions are Pending until a Manager rules on them |
 | ContributedByUserId | string? | FK → AspNetUsers.Id (OnDelete SetNull, indexed); the user who proposed a pending row; null = system/admin write. Nav: `ContributedBy` |
 | SupersedesId | long? | Self-reference (audit pointer, not a configured FK) to the live Approved row this pending edit would replace; null = brand-new addition |
 
-Disclosed risk extracted from SEC Item 1A risk factors / Item 7A market risk. Mirrors RevenueSource/CostSource but has no money/percentage/counterparty — just Name + Scope + Note. Per-cell proof lives in SourceFieldReview (Relation = RISK).
+Disclosed risk extracted from SEC Item 1A risk factors / Item 7A market risk. Mirrors RevenueSource/CostSource but has no money/percentage/counterparty — just Name + Scope + Note. Its proof is the Reference/Evidence pair on the row itself, taken from `Filing`.
 
-### SourceFieldReview
-| Property | Type | Notes |
-|---|---|---|
-| Id | long | PK |
-| CompanyId | long | FK → Companies (analyzed company, denormalized) |
-| Relation | RelationKind | COST / REVENUE / RISK discriminator |
-| RevenueSourceId | long? | FK → RevenueSources; set iff Relation==REVENUE |
-| CostSourceId | long? | FK → CostSources; set iff Relation==COST |
-| CompanyRiskId | long? | FK → CompanyRisks; set iff Relation==RISK |
-| Field | ReviewableField | Which cell this row proves |
-| Endpoint | string | API endpoint that produced the proof |
-| ReferencePointer | string | JSON path / text offset the user selected |
-| ReferenceSnapshot | string | Literal proof text, frozen at reference time |
-| ReferencedValue | string? | Value snapshot at reference time → staleness detection |
-| FilingId | long? | FK → Filings; the filing this per-field proof was drawn from (null when proof came from Company Facts). Per-field, so one source cites several filings via its reviews. |
-| Mark | int? | null=unreviewed, 0=fail, 1=pass |
-| Rationale | string? | AI reason for the mark |
-| ReviewedAt | DateTime? | |
-| ReviewerModel | string? | Model id |
-| DeletedAt | DateTime? | Soft-delete timestamp |
-
-Constraints: check `CK_SourceFieldReview_OneSource` enforces exactly one of RevenueSourceId / CostSourceId / CompanyRiskId is set; unique indexes `(RevenueSourceId, Field)`, `(CostSourceId, Field)`, and `(CompanyRiskId, Field)` — one current reference per cell (NULLs don't collide across relation types).
+**Proof model.** All three source types (RevenueSource, CostSource, CompanyRisk) carry their proof on the row: one `Reference` (where in the document), one `Evidence` (the verbatim substring) and one `FilingId` (the document). This replaced a per-field `SourceFieldReview` table — dropped in migration `20260814074704_CollapseProofOntoSourceRows`, which backfilled each row's Evidence/FilingId from its surviving review. Since one filing extraction already produces N source rows, per-cell proof rows were redundant: on the AI path all of a row's reviews carried a byte-identical snapshot, and the per-field grading columns (Mark/Rationale/ReviewedAt/ReviewerModel) were never written.
 
 ### Filing
 | Property | Type | Notes |
@@ -243,7 +227,7 @@ Constraints: check `CK_SourceFieldReview_OneSource` enforces exactly one of Reve
 | PrimaryDocUrl | string? | |
 | DeletedAt | DateTime? | Soft-delete timestamp |
 
-Constraints: unique index on `AccessionNumber` — EDGAR accession numbers are globally unique, so there is one Filing row per filing, shared by every SourceFieldReview that cites it (upsert-by-accession). The filing link is per-field on SourceFieldReview, so one source can cite multiple filings across its reviews. Migration: `20260603210530_AddFiling`; link moved to SourceFieldReview in `20260603213908_MoveFilingLinkToReview`.
+Constraints: unique index on `AccessionNumber` — EDGAR accession numbers are globally unique, so there is one Filing row per filing, shared by every source row that cites it (upsert-by-accession). The link is one filing per source row (`RevenueSource`/`CostSource`/`CompanyRisk.FilingId`). Migration: `20260603210530_AddFiling`; the link moved to the (now dropped) per-field review table in `20260603213908_MoveFilingLinkToReview` and back onto the source rows in `20260814074704_CollapseProofOntoSourceRows`.
 
 ### AppUser
 Extends ASP.NET Core Identity's `IdentityUser` (maps to **AspNetUsers**). Standard Identity columns (Id, UserName, NormalizedUserName, Email, NormalizedEmail, PasswordHash, SecurityStamp, etc.) come from the base class; only the added columns are listed below.
@@ -360,13 +344,10 @@ Company ──────────────── RevenueSource      (1:N
 Company ──────────────── CostSource         (1:N, FK RelatedCompanyId — counterparty, nav: CostFromDependents)
 Company ◄──────────────► Event              (N:M, junction table)
 
-Company ──────────────── SourceFieldReview  (1:N, FK CompanyId, Restrict)
-RevenueSource ────────── SourceFieldReview  (1:N, FK RevenueSourceId nullable, Restrict)
-CostSource ───────────── SourceFieldReview  (1:N, FK CostSourceId nullable, Restrict)
-CompanyRisk ──────────── SourceFieldReview  (1:N, FK CompanyRiskId nullable, Restrict)
-
 Company ──────────────── Filing             (1:N, FK CompanyId, Restrict)
-Filing ───────────────── SourceFieldReview  (1:N, FK FilingId nullable, Restrict)
+Filing ───────────────── RevenueSource      (1:N, FK FilingId nullable, Restrict — the row's proof filing)
+Filing ───────────────── CostSource         (1:N, FK FilingId nullable, Restrict — the row's proof filing)
+Filing ───────────────── CompanyRisk        (1:N, FK FilingId nullable, Restrict — the row's proof filing)
 
 Event   ◄──────────────► TradeBloc          (N:M, junction table)
 
@@ -399,8 +380,6 @@ AppUser ──────────────── CompanyRisk        (1:N
 | CostBase | COGS, OPEX, TOTAL_COSTS |
 | DataSource | EDGAR, MANUAL, CLAUDE_ESTIMATED, OPENBB, FMP, YAHOO |
 | FiscalPeriod | FY, Q1, Q2, Q3, Q4 |
-| RelationKind | COST, REVENUE, RISK |
-| ReviewableField | VALUE, PERCENTAGE, NAME, RELATED_COMPANY, CLASSIFICATION, NOTE |
 | RiskScope | MACROECONOMIC, INDUSTRY, BUSINESS, LEGAL_REGULATORY, FINANCIAL, GENERAL |
 | ContributionStatus | Approved (=0, default/live), Pending, Rejected |
 | ChatProviderId | DeepSeek, Kimi, OpenAi, Anthropic (parsing-role chat provider; stored as the enum *name* in UserApiKey.ParsingProvider) |

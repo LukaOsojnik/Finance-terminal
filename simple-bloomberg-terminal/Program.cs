@@ -170,7 +170,6 @@ builder.Services.AddScoped<ICompanyRiskRepository, CompanyRiskRepository>();
 builder.Services.AddScoped<ICompanyFinancialRepository, CompanyFinancialRepository>();
 builder.Services.AddScoped<IScenarioRepository, ScenarioRepository>();
 builder.Services.AddScoped<IScenarioShockRepository, ScenarioShockRepository>();
-builder.Services.AddScoped<ISourceFieldReviewRepository, SourceFieldReviewRepository>();
 builder.Services.AddScoped<IFilingRepository, FilingRepository>();
 builder.Services.AddScoped<IStockIndexRepository, StockIndexRepository>();
 builder.Services.AddScoped<IIndexImportJobRepository, IndexImportJobRepository>();

@@ -1,6 +1,5 @@
 using System.Net;
 using System.Net.Http.Json;
-using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using simple_bloomberg_terminal.Data;
 using simple_bloomberg_terminal.Dtos;
@@ -9,15 +8,15 @@ using simple_bloomberg_terminal.Models.Enums;
 namespace simple_bloomberg_terminal.Tests;
 
 /// <summary>
-/// Phase-1 extraction flow: refresh Apple's EDGAR rows, then "Use as reference" on the revenue
-/// row's VALUE cell. Asserts a <c>SourceFieldReview</c> lands with the right FK + Field + frozen
-/// snapshot + <c>Mark==null</c>, and that re-referencing the same cell upserts in place.
+/// Phase-1 extraction flow: refresh Apple's EDGAR rows, then freeze proof onto the revenue row.
+/// Proof is one pair per row — Reference (where in the document) + Evidence (the verbatim passage) —
+/// stored on the row itself along with the filing it came from.
 /// </summary>
 public class ExtractionTests : ApiTestBase
 {
     private const long AppleId = CustomWebApplicationFactory.CompanyDeletableId;
 
-    private record RefResult(long RevenueSourceId, long ReviewId, string Field);
+    private record RefResult(long RevenueSourceId);
 
     private async Task<long> RefreshAppleAndGetRevenueRowId()
     {
@@ -28,7 +27,7 @@ public class ExtractionTests : ApiTestBase
     }
 
     [Fact]
-    public async Task Reference_OnEdgarRevenueRow_WritesUnreviewedSnapshot()
+    public async Task Reference_OnEdgarRevenueRow_WritesProofOntoTheRow()
     {
         var rowId = await RefreshAppleAndGetRevenueRowId();
 
@@ -39,10 +38,8 @@ public class ExtractionTests : ApiTestBase
             sourceType = "SEGMENT",
             name = "Revenue 2023",
             value = 383_000_000_000d,
-            field = "VALUE",
-            referencePointer = "chars 10-25",
-            referenceSnapshot = "\"val\": 383000000000",
-            referencedValue = "383000000000"
+            reference = "Item 7. Management's Discussion",
+            evidence = "\"val\": 383000000000"
         });
         Assert.Equal(HttpStatusCode.OK, resp.StatusCode);
         var result = await resp.Content.ReadFromJsonAsync<RefResult>();
@@ -50,49 +47,42 @@ public class ExtractionTests : ApiTestBase
 
         using var scope = Factory.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-        var review = db.SourceFieldReviews.Single(r => r.Id == result.ReviewId);
+        var row = db.RevenueSources.Single(r => r.Id == rowId);
 
-        Assert.Equal(rowId, review.RevenueSourceId);
-        Assert.Null(review.CostSourceId);
-        Assert.Equal(RelationKind.REVENUE, review.Relation);
-        Assert.Equal(ReviewableField.VALUE, review.Field);
-        Assert.Equal("\"val\": 383000000000", review.ReferenceSnapshot);
-        Assert.Null(review.Mark);   // queued for phase 2
+        Assert.Equal("Item 7. Management's Discussion", row.Reference);
+        Assert.Equal("\"val\": 383000000000", row.Evidence);
+        Assert.Null(row.FilingId);   // no filing was open — proof came from Company Facts
     }
 
     [Fact]
-    public async Task Reference_SameCellTwice_UpsertsInPlace()
+    public async Task Reference_SameRowTwice_OverwritesTheProofInPlace()
     {
         var rowId = await RefreshAppleAndGetRevenueRowId();
 
-        async Task<RefResult> Ref(string snapshot) =>
+        async Task<RefResult> Ref(string evidence) =>
             (await (await Client.PostAsJsonAsync("/extraction/reference", new
             {
                 companyId = AppleId,
                 revenueSourceId = rowId,
                 sourceType = "SEGMENT",
                 name = "Revenue 2023",
-                field = "NAME",
-                referencePointer = "p",
-                referenceSnapshot = snapshot
+                reference = "Item 8. Financial Statements",
+                evidence
             })).Content.ReadFromJsonAsync<RefResult>())!;
 
         var first = await Ref("first proof");
         var second = await Ref("second proof");
 
-        Assert.Equal(first.ReviewId, second.ReviewId);   // same (row, field) row reused
+        Assert.Equal(first.RevenueSourceId, second.RevenueSourceId);   // same row reused
 
         using var scope = Factory.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-        var rows = db.SourceFieldReviews
-            .Where(r => r.RevenueSourceId == rowId && r.Field == ReviewableField.NAME && r.DeletedAt == null)
-            .ToList();
-        Assert.Single(rows);
-        Assert.Equal("second proof", rows[0].ReferenceSnapshot);
+        var row = db.RevenueSources.Single(r => r.Id == rowId);
+        Assert.Equal("second proof", row.Evidence);
     }
 
     [Fact]
-    public async Task Reference_NoSourceRow_CreatesRowThenReview()
+    public async Task Reference_NoSourceRow_CreatesTheRowWithItsProof()
     {
         var resp = await Client.PostAsJsonAsync("/extraction/reference", new
         {
@@ -101,9 +91,8 @@ public class ExtractionTests : ApiTestBase
             sourceType = "PRODUCT",
             name = "Services",
             value = 85_000_000_000d,
-            field = "VALUE",
-            referencePointer = "p",
-            referenceSnapshot = "services revenue 85B"
+            reference = "Item 8, Segment note",
+            evidence = "services revenue 85B"
         });
         Assert.Equal(HttpStatusCode.OK, resp.StatusCode);
         var result = await resp.Content.ReadFromJsonAsync<RefResult>();
@@ -114,11 +103,11 @@ public class ExtractionTests : ApiTestBase
         var row = db.RevenueSources.Single(r => r.Id == result.RevenueSourceId);
         Assert.Equal("Services", row.Name);
         Assert.Equal(DataSource.MANUAL, row.DataSource);
-        Assert.True(db.SourceFieldReviews.Any(r => r.RevenueSourceId == row.Id));
+        Assert.Equal("services revenue 85B", row.Evidence);
     }
 
     [Fact]
-    public async Task References_AfterReferencing_ReturnsSavedPointer()
+    public async Task References_AfterReferencing_ReturnsTheRowsProof()
     {
         var rowId = await RefreshAppleAndGetRevenueRowId();
         await Client.PostAsJsonAsync("/extraction/reference", new
@@ -127,23 +116,20 @@ public class ExtractionTests : ApiTestBase
             revenueSourceId = rowId,
             sourceType = "SEGMENT",
             name = "Revenue 2023",
-            field = "VALUE",
-            referencePointer = "chars 40-60",
-            referenceSnapshot = "val 383000000000"
+            reference = "Item 7A. Quantitative Disclosures",
+            evidence = "val 383000000000"
         });
 
-        var refs = await Client.GetFromJsonAsync<List<RefRow>>($"/extraction/references/{rowId}");
-        var v = Assert.Single(refs!);
-        Assert.Equal("VALUE", v.Field);
-        Assert.Equal("chars 40-60", v.Pointer);
-        Assert.Equal("val 383000000000", v.Snapshot);
-        Assert.Null(v.Mark);
+        var proof = await Client.GetFromJsonAsync<RefRow>($"/extraction/references/{rowId}");
+        Assert.Equal("Item 7A. Quantitative Disclosures", proof!.Reference);
+        Assert.Equal("val 383000000000", proof.Evidence);
+        Assert.Null(proof.Filing);
     }
 
-    private record RefRow(string Field, string Snapshot, string Pointer, string Endpoint, int? Mark);
+    private record RefRow(string? Reference, string? Evidence, string? Filing);
 
     [Fact]
-    public async Task Reference_MissingSnapshot_Returns400()
+    public async Task Reference_MissingEvidence_Returns400()
     {
         var resp = await Client.PostAsJsonAsync("/extraction/reference", new
         {
@@ -151,8 +137,7 @@ public class ExtractionTests : ApiTestBase
             revenueSourceId = (long?)null,
             sourceType = "SEGMENT",
             name = "X",
-            field = "VALUE",
-            referenceSnapshot = ""
+            evidence = ""
         });
         Assert.Equal(HttpStatusCode.BadRequest, resp.StatusCode);
     }
@@ -166,11 +151,11 @@ public class ExtractionTests : ApiTestBase
         Task<HttpResponseMessage> RefWithFiling() => Client.PostAsJsonAsync("/extraction/reference", new
         {
             companyId = AppleId, revenueSourceId = rowId, sourceType = "SEGMENT", name = "Revenue 2023",
-            field = "VALUE", referencePointer = "p", referenceSnapshot = "snap", referencedValue = "1",
+            reference = "Item 8", evidence = "snap",
             filingAccessionNumber = accession, filingForm = "10-K", filingDate = "2023-11-03", filingUrl = "http://x"
         });
 
-        // 1. First reference creates the Filing.
+        // 1. First reference creates the Filing and links the row to it.
         Assert.Equal(HttpStatusCode.OK, (await RefWithFiling()).StatusCode);
 
         long filingId;
@@ -179,6 +164,7 @@ public class ExtractionTests : ApiTestBase
             var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
             var f = db.Filings.Single(x => x.AccessionNumber == accession);
             filingId = f.Id;
+            Assert.Equal(filingId, db.RevenueSources.Single(r => r.Id == rowId).FilingId);
             f.DeletedAt = DateTime.UtcNow;   // simulate a prior source-cluster delete
             db.SaveChanges();
         }

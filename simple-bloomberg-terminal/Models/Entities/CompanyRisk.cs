@@ -7,7 +7,8 @@ namespace simple_bloomberg_terminal.Models.Entities;
 /// <summary>
 /// A risk a company discloses (extracted from Item 1A risk factors / Item 7A market risk). Unlike
 /// revenue/cost rows it has no money figures — just a short Name, a <see cref="RiskScope"/> bucket,
-/// and a free-text Note. Proof per cell lives in <see cref="SourceFieldReview"/> (Relation = RISK).
+/// and a free-text Note. Its proof is the <see cref="Reference"/> / <see cref="Evidence"/> pair on
+/// the row itself, taken from <see cref="Filing"/>.
 /// </summary>
 public class CompanyRisk : IContribution
 {
@@ -24,10 +25,18 @@ public class CompanyRisk : IContribution
     public string Name { get; set; }
     public string? Note { get; set; }
 
-    // Per-record source passage: the verbatim filing excerpt (SEC Item 1A/7A + source text) the whole
-    // risk row was drawn from, set by the extraction agent. Distinct from the per-field proof rows in
-    // <see cref="Reviews"/> — those back one field each; this cites the record overall.
+    // WHERE in the document this row came from: the SEC Item / note / subheading (e.g.
+    // "Item 1A. Risk Factors"), set by the extraction agent.
     public string? Reference { get; set; }
+
+    // The exact verbatim substring from the filing backing this row — findable by a literal search
+    // in the document. One quote per row (the proof used to be split per field; the model only ever
+    // produced one).
+    public string? Evidence { get; set; }
+
+    // The filing the Reference/Evidence were taken from (null when they came from Company Facts or
+    // a web source rather than a filing document).
+    public long? FilingId { get; set; }
 
     public DataSource? DataSource { get; set; }
     public long CompanyId { get; set; }
@@ -46,6 +55,6 @@ public class CompanyRisk : IContribution
     [ForeignKey("ContributedByUserId")]
     public virtual AppUser? ContributedBy { get; set; }
 
-    // Per-field proof rows; their distinct filings are the risk's proof filings.
-    public virtual ICollection<SourceFieldReview> Reviews { get; set; } = [];
+    [ForeignKey("FilingId")]
+    public virtual Filing? Filing { get; set; }
 }

@@ -82,55 +82,46 @@ public class FilingRepository(AppDbContext db) : IFilingRepository
         return filing;
     }
 
-    public void SoftDeleteSourceCluster(RelationKind relation, long sourceId)
+    public void SoftDeleteSourceCluster(ExtractionNode node, long sourceId)
     {
         var now = DateTime.UtcNow;
 
-        // Filings this source cites, via its per-field reviews (a source can cite several).
-        var filingIds = db.SourceFieldReviews
-            .Where(r => r.DeletedAt == null && r.FilingId != null &&
-                (relation == RelationKind.REVENUE ? r.RevenueSourceId == sourceId : r.CostSourceId == sourceId))
-            .Select(r => r.FilingId!.Value)
-            .Distinct()
-            .ToList();
+        // The filing this source cites (one per row, on the row itself).
+        var filingId = node == ExtractionNode.REVENUE
+            ? db.RevenueSources.Where(s => s.Id == sourceId).Select(s => s.FilingId).FirstOrDefault()
+            : db.CostSources.Where(s => s.Id == sourceId).Select(s => s.FilingId).FirstOrDefault();
 
-        if (filingIds.Count == 0)
+        if (filingId is null)
         {
-            // No proof filing — remove just this source and its own reviews.
-            SoftDeleteSourcesAndReviews(now,
-                relation == RelationKind.REVENUE ? new List<long> { sourceId } : new List<long>(),
-                relation == RelationKind.COST ? new List<long> { sourceId } : new List<long>());
+            // No source filing — remove just this source.
+            SoftDeleteSources(now,
+                node == ExtractionNode.REVENUE ? [sourceId] : [],
+                node == ExtractionNode.COST ? [sourceId] : []);
             return;
         }
 
-        // Cluster: every source that cites any of those filings (via its reviews).
-        var clusterReviews = db.SourceFieldReviews
-            .Where(r => r.DeletedAt == null && r.FilingId != null && filingIds.Contains(r.FilingId.Value))
-            .ToList();
-        var revIds = clusterReviews.Where(r => r.RevenueSourceId != null).Select(r => r.RevenueSourceId!.Value).Distinct().ToList();
-        var costIds = clusterReviews.Where(r => r.CostSourceId != null).Select(r => r.CostSourceId!.Value).Distinct().ToList();
+        // Cluster: every revenue/cost source citing that same filing.
+        var revIds = db.RevenueSources
+            .Where(s => s.DeletedAt == null && s.FilingId == filingId).Select(s => s.Id).ToList();
+        var costIds = db.CostSources
+            .Where(s => s.DeletedAt == null && s.FilingId == filingId).Select(s => s.Id).ToList();
 
-        SoftDeleteSourcesAndReviews(now, revIds, costIds);
+        SoftDeleteSources(now, revIds, costIds);
 
-        // Soft-delete the filings themselves.
-        foreach (var f in db.Filings.Where(f => filingIds.Contains(f.Id) && f.DeletedAt == null))
+        // Soft-delete the filing itself.
+        foreach (var f in db.Filings.Where(f => f.Id == filingId && f.DeletedAt == null))
             f.DeletedAt = now;
 
         db.SaveChanges();
     }
 
-    // Soft-delete the given source rows plus ALL of their reviews (every cell, not only the ones
-    // that cited a filing). Caller commits.
-    private void SoftDeleteSourcesAndReviews(DateTime now, List<long> revIds, List<long> costIds)
+    // Soft-delete the given source rows. Caller commits.
+    private void SoftDeleteSources(DateTime now, List<long> revIds, List<long> costIds)
     {
         foreach (var r in db.RevenueSources.Where(s => revIds.Contains(s.Id) && s.DeletedAt == null))
             r.DeletedAt = now;
         foreach (var c in db.CostSources.Where(s => costIds.Contains(s.Id) && s.DeletedAt == null))
             c.DeletedAt = now;
-        foreach (var rv in db.SourceFieldReviews.Where(r => r.DeletedAt == null &&
-                     ((r.RevenueSourceId != null && revIds.Contains(r.RevenueSourceId.Value)) ||
-                      (r.CostSourceId != null && costIds.Contains(r.CostSourceId.Value)))))
-            rv.DeletedAt = now;
 
         db.SaveChanges();
     }

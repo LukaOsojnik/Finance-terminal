@@ -3,7 +3,7 @@
 
 <div class="page-header">
     <h2><span class="page-header-accent">//</span> Extraction — <span id="nodeTitle">Revenue</span></h2>
-    <div class="page-subtitle">Bind cells to EDGAR proof text · pick the node, select in the right pane, freeze with “Use as reference”</div>
+    <div class="page-subtitle">Bind a row to its EDGAR proof · pick the node, select the passage in the right pane, freeze it as the row’s evidence</div>
 </div>
 
 @Html.AntiForgeryToken()
@@ -38,22 +38,18 @@
         <div class="cell-row">
             <label class="ext-field-label" id="classLabel">Classification</label>
             <select id="f_sourceType" asp-items="ViewBag.SourceTypes" class="form-control"></select>
-            <div class="ref-info" data-info="CLASSIFICATION"></div>
         </div>
         <div class="cell-row">
             <label class="ext-field-label">Name</label>
             <input id="f_name" class="form-control"/>
-            <div class="ref-info" data-info="NAME"></div>
         </div>
         <div class="cell-row" id="valueRow">
             <label class="ext-field-label">Value</label>
             <input id="f_value" class="form-control" type="number" step="any"/>
-            <div class="ref-info" data-info="VALUE"></div>
         </div>
         <div class="cell-row" id="pctRow">
             <label class="ext-field-label">% (0–100)</label>
             <input id="f_percentage" class="form-control" type="number" step="0.1"/>
-            <div class="ref-info" data-info="PERCENTAGE"></div>
         </div>
         <div class="cell-row" id="counterpartyRow">
             <label class="ext-field-label">Counterparty</label>
@@ -65,16 +61,26 @@
                 Required = false,
                 Placeholder = "Type company name (optional)..."
             })
-            <div class="ref-info" data-info="RELATED_COMPANY"></div>
         </div>
         <!-- RISK node only: free-text note describing the risk. -->
         <div class="cell-row" id="noteRow" hidden>
             <label class="ext-field-label">Note</label>
             <textarea id="f_note" class="form-control" rows="3" placeholder="Short description of the risk..."></textarea>
-            <div class="ref-info" data-info="NOTE"></div>
         </div>
 
-        <!-- The one save: writes the row + every field that carries proof, in a single request. -->
+        <!-- The row's single proof: where in the document + the verbatim passage backing the whole row. -->
+        <div class="cell-row ext-proof-row">
+            <label class="ext-field-label" for="f_reference">Reference (where in the document)</label>
+            <input id="f_reference" class="form-control" placeholder="e.g. Item 7. Management’s Discussion..."/>
+        </div>
+        <div class="cell-row">
+            <label class="ext-field-label" for="f_evidence">Evidence (verbatim passage)</label>
+            <textarea id="f_evidence" class="form-control" rows="3" placeholder="Select the passage in the right pane, then USE SELECTION..."></textarea>
+            <button type="button" id="useSelectionBtn" class="ext-btn ext-btn-ref">USE SELECTION</button>
+            <div id="proofFiling" class="ext-status"></div>
+        </div>
+
+        <!-- The one save: writes the row plus its reference + evidence in a single request. -->
         <div class="cell-row ext-save-row">
             <button type="button" id="saveBtn" class="ext-btn ext-btn-primary ext-btn-save">SAVE ROW</button>
             <div id="saveStatus" class="ext-status"></div>
@@ -218,11 +224,8 @@
     .extraction-pane-actions { display: flex; gap: .4rem; }
 
     .cell-row { margin-bottom: .85rem; }
-    .ref-info { margin-top: .35rem; font-size: .74rem; line-height: 1.35; font-family: var(--font-mono); }
-    .ref-info .ref-ok { color: var(--green); font-weight: bold; }
-    .ref-info .ref-fail { color: var(--red); font-weight: bold; }
-    .ref-info .ref-ptr { color: var(--muted); }
-    .ref-info .ref-snip { color: var(--text-secondary); font-style: italic; }
+    /* The proof pair (reference + evidence) reads as its own block under the value cells. */
+    .ext-proof-row { margin-top: 1rem; padding-top: .9rem; border-top: 1px solid var(--border-subtle); }
 
     .ext-endpoint { font-family: var(--font-mono); font-size: .7rem; color: var(--muted);
         letter-spacing: .04em; margin-bottom: .5rem; min-height: 1em; }
@@ -331,9 +334,7 @@
     const rowPicker = document.getElementById('rowPicker');
     let edgarRows = [];        // revenue rows pulled from the refresh response (left pre-fill)
     let currentRowId = null;   // bound source row; null => first reference creates it
-    let currentEndpoint = '';  // the EDGAR response currently shown (stored as provenance)
     let currentFiling = null;  // the filing doc currently open (null when viewing Company Facts)
-    let aiProof = {};          // field -> AI-suggested proof snapshot (Mode B); used when nothing is hand-selected
 
     const $ = id => document.getElementById(id);
     const numOrNull = v => v === '' || v == null ? null : Number(v);
@@ -405,7 +406,6 @@
         docToc.hidden = true;           // and its sidebar TOC
         pre.hidden = false;
         pre.textContent = text;
-        currentEndpoint = endpoint;
         currentFiling = null;   // generic text view: no filing backs it (openFiling re-sets this)
         endpointLabel.textContent = endpoint ? `source: ${endpoint}` : '';
     }
@@ -464,7 +464,6 @@
             docToc.innerHTML = '';
             docToc.hidden = true;
         }
-        currentEndpoint = endpoint;
         currentFiling = filing;   // proof taken here links the source row to this filing
         endpointLabel.textContent = endpoint ? `source: ${endpoint}` : '';
     }
@@ -486,35 +485,20 @@
 
     const escapeHtml = s => (s || '').replace(/[&<>"]/g,
         c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
-    const shortText = (s, n = 90) => {
-        s = (s || '').replace(/\s+/g, ' ').trim();
-        return s.length > n ? s.slice(0, n) + '…' : s;
-    };
 
-    // Render the saved pointer (✓ + char offsets + snapshot preview) under a cell.
-    function renderRef(field, ref) {
-        const el = document.querySelector(`.ref-info[data-info="${field}"]`);
-        if (!el) return;
-        if (!ref) { el.innerHTML = ''; el.removeAttribute('title'); return; }
-        const badge = ref.mark === 1 ? `<span class="ref-ok">✓ PASS</span>`
-            : ref.mark === 0 ? `<span class="ref-fail">✗ FAIL</span>`
-            : `<span class="ref-ok">✓</span>`;
-        el.innerHTML =
-            `${badge} ` +
-            `<span class="ref-ptr">${escapeHtml(ref.pointer || '')}</span> ` +
-            `<span class="ref-snip">“${escapeHtml(shortText(ref.snapshot))}”</span>`;
-        el.title = `${ref.rationale ? 'AI: ' + ref.rationale + '\n\n' : ''}${ref.endpoint ? ref.endpoint + '\n\n' : ''}${ref.snapshot || ''}`;
-    }
-    function clearRefs() { document.querySelectorAll('.ref-info').forEach(el => renderRef(el.dataset.info, null)); }
-
-    // Show whatever references already exist for the bound row (survives reloads).
-    async function loadExistingRefs(rowId) {
-        clearRefs();
+    // Load the proof already on the bound row into the two proof boxes (survives reloads).
+    async function loadExistingProof(rowId) {
+        $('f_reference').value = '';
+        $('f_evidence').value = '';
+        $('proofFiling').textContent = '';
         if (!rowId) return;
         try {
             const res = await fetch(`/extraction/references/${rowId}?node=${node}`);
             if (!res.ok) return;
-            (await res.json()).forEach(r => renderRef(r.field, r));
+            const p = await res.json();
+            $('f_reference').value = p.reference || '';
+            $('f_evidence').value = p.evidence || '';
+            $('proofFiling').textContent = p.filing ? `on record from: ${p.filing}` : '';
         } catch { /* non-fatal */ }
     }
 
@@ -527,8 +511,7 @@
         $('f_percentage').value = r && r.percentage != null ? r.percentage : '';
         $('f_note').value = r && r.note != null ? r.note : '';
         currentRowId = r ? r.id : null;
-        aiProof = {};            // a different row's cells aren't backed by the last AI suggestion
-        loadExistingRefs(currentRowId);
+        loadExistingProof(currentRowId);
     }
 
     rowPicker.addEventListener('change', () => {
@@ -626,35 +609,14 @@
         else { showText(raw, endpoint); currentFiling = f; }
     }
 
-    // ---- capture the selected proof text within the response pane ----
-    function selectionInfo() {
-        const sel = window.getSelection();
-        const text = sel ? sel.toString() : '';
-        let pointer = 'selection';
-        if (sel && sel.rangeCount && text) {
-            const range = sel.getRangeAt(0);
-            const node = pre.firstChild;
-            if (node && range.startContainer === node && range.endContainer === node)
-                pointer = `chars ${range.startOffset}-${range.endOffset}`;
-        }
-        return { text, pointer };
-    }
-    function cellValue(field) {
-        switch (field) {
-            case 'VALUE': return $('f_value').value || null;
-            case 'PERCENTAGE': return $('f_percentage').value || null;
-            case 'NAME': return $('f_name').value || null;
-            case 'CLASSIFICATION': return $('f_sourceType').value || null;
-            case 'NOTE': return $('f_note').value || null;
-            case 'RELATED_COMPANY': {
-                const inp = relatedHidden()?.closest('.autocomplete')?.querySelector('.autocomplete-input');
-                return inp ? (inp.value || null) : null;
-            }
-        }
-        return null;
-    }
+    // ---- capture the selected passage in the response pane as the row's evidence ----
+    $('useSelectionBtn').addEventListener('click', () => {
+        const text = (window.getSelection()?.toString() || '').trim();
+        if (!text) { uiAlert('Select the passage in the right pane first.'); return; }
+        $('f_evidence').value = text;
+    });
 
-    // ---- SAVE: one button writes the row + every field that carries proof ----
+    // ---- SAVE: one button writes the row plus its single reference + evidence ----
     async function saveRow() {
         const id = Number(companyId());
         if (!id) { uiAlert('Pick a company first.'); return; }
@@ -662,22 +624,7 @@
         const status = $('saveStatus');
         status.textContent = 'Saving…';
 
-        // Attach proof for any field the AI backed (stashed in aiProof). Fields you typed by hand
-        // with no proof still save their value — they just have no reference row.
-        const proofs = Object.entries(aiProof)
-            .filter(([, snap]) => snap && snap.trim())
-            .map(([field, snapshot]) => ({
-                field,
-                endpoint: currentEndpoint || 'AI extraction',
-                referencePointer: 'ai-suggested',
-                referenceSnapshot: snapshot,
-                referencedValue: cellValue(field),
-                filingAccessionNumber: currentFiling?.accessionNumber || null,
-                filingForm: currentFiling?.form || null,
-                filingDate: currentFiling?.filingDate || null,
-                filingUrl: currentFiling?.documentUrl || null
-            }));
-
+        const evidence = $('f_evidence').value.trim();
         const body = {
             companyId: id,
             revenueSourceId: currentRowId,
@@ -688,7 +635,14 @@
             percentage: numOrNull($('f_percentage').value),
             note: $('f_note').value || null,
             relatedCompanyId: relatedHidden()?.value ? Number(relatedHidden().value) : null,
-            proofs
+            // The row's proof. Omitted (null) fields keep whatever citation is already on the row.
+            reference: $('f_reference').value.trim() || null,
+            evidence: evidence || null,
+            // Only sent when a filing doc is open in the right pane; null from Company Facts.
+            filingAccessionNumber: currentFiling?.accessionNumber || null,
+            filingForm: currentFiling?.form || null,
+            filingDate: currentFiling?.filingDate || null,
+            filingUrl: currentFiling?.documentUrl || null
         };
         try {
             const res = await fetch('/extraction/save', {
@@ -699,8 +653,8 @@
             if (!res.ok) { status.textContent = 'Save failed: ' + await res.text(); return; }
             const r = await res.json();
             currentRowId = r.revenueSourceId;            // bind the (possibly new) row
-            status.textContent = `Saved row #${r.revenueSourceId}` + (r.proofs ? ` · ${r.proofs} proof(s)` : ' · no proof attached');
-            loadExistingRefs(currentRowId);              // refresh the per-field proof readout
+            status.textContent = `Saved row #${r.revenueSourceId}` + (r.proof ? ' · proof frozen' : ' · no proof attached');
+            loadExistingProof(currentRowId);             // refresh the proof readout
         } catch (e) { status.textContent = 'Network error: ' + e.message; }
     }
     $('saveBtn').addEventListener('click', saveRow);
@@ -749,7 +703,7 @@
         o.value = row.id; o.textContent = `${row.name} (#${row.id})`;
         rowPicker.appendChild(o);
         rowPicker.value = row.id;
-        fillCells(row);          // sets cells + currentRowId + loads existing refs
+        fillCells(row);          // sets cells + currentRowId + loads the row's existing proof
         loadFacts();             // open the right pane so the user can browse/select proof
     })();
 })();

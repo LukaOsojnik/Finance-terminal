@@ -46,8 +46,8 @@
             <div class="detail-metric-value">@(src.Percentage.HasValue ? src.Percentage.Value.ToString("F1") + "%" : "—")</div>
         </div>
         <div class="detail-metric-card">
-            <div class="detail-metric-label">PROOF FIELDS</div>
-            <div class="detail-metric-value">@Model.Reviews.Count()</div>
+            <div class="detail-metric-label">PROOF</div>
+            <div class="detail-metric-value">@(string.IsNullOrWhiteSpace(src.Evidence) ? "NONE" : "ON RECORD")</div>
         </div>
         <div class="detail-metric-card">
             <div class="detail-metric-label">COMPANY</div>
@@ -66,49 +66,73 @@
     </div>
 </div>
 
-@* ── Connected filings / proof (per field) ── *@
-<div class="detail-section-label">// CONNECTED FILINGS — PROOF PER FIELD</div>
+@* ── Source proof: one reference + one evidence quote + the filing they came from ── *@
+@{
+    var proofFiling = src.Filing is { DeletedAt: null } ? src.Filing : null;
+    var hasProof = !string.IsNullOrWhiteSpace(src.Reference) || !string.IsNullOrWhiteSpace(src.Evidence) || proofFiling != null;
+}
+<div class="detail-section-label">// SOURCE PROOF</div>
 <div class="row g-3 mb-5">
     <div class="col-12">
         <div class="detail-card">
             <div class="mb-2">
                 <a asp-controller="Extraction" asp-action="Index" asp-route-companyId="@src.CompanyId" asp-route-revenueSourceId="@src.Id" class="btn-detail">ADD REFERENCES →</a>
             </div>
-            @if (!Model.Reviews.Any())
+            @if (!hasProof)
             {
                 <div class="detail-pending">NO PROOF ON RECORD YET.</div>
             }
             else
             {
                 <table class="terminal-table">
-                    <thead>
-                        <tr>
-                            <th>Field</th>
-                            <th>Proof snapshot</th>
-                            <th>Filing</th>
-                        </tr>
-                    </thead>
                     <tbody>
-                        @foreach (var rev in Model.Reviews)
-                        {
-                            <tr>
-                                <td class="tag-cell">@rev.Field</td>
-                                <td class="name-cell" title="@rev.ReferenceSnapshot">“@Short(rev.ReferenceSnapshot)”</td>
-                                <td class="muted-cell">
-                                    @if (rev.Filing != null && rev.Filing.DeletedAt == null)
-                                    {
-                                        <a href="@rev.Filing.PrimaryDocUrl" target="_blank" rel="noopener">@rev.Filing.Form @rev.Filing.AccessionNumber</a>
-                                    }
-                                    else
-                                    {
-                                        <span class="muted-cell">—</span>
-                                    }
-                                </td>
-                            </tr>
-                        }
+                        <tr>
+                            <td class="tag-cell">REFERENCE</td>
+                            <td class="name-cell">@(string.IsNullOrWhiteSpace(src.Reference) ? "—" : src.Reference)</td>
+                        </tr>
+                        <tr>
+                            <td class="tag-cell">EVIDENCE</td>
+                            <td class="name-cell" title="@src.Evidence">
+                                @(string.IsNullOrWhiteSpace(src.Evidence) ? "—" : "“" + Short(src.Evidence, 240) + "”")
+                            </td>
+                        </tr>
+                        <tr>
+                            <td class="tag-cell">FILING</td>
+                            <td class="muted-cell">
+                                @if (proofFiling != null)
+                                {
+                                    <a href="@proofFiling.PrimaryDocUrl" target="_blank" rel="noopener">@proofFiling.Form @proofFiling.AccessionNumber</a>
+                                }
+                                else
+                                {
+                                    <span class="muted-cell">—</span>
+                                }
+                            </td>
+                        </tr>
                     </tbody>
                 </table>
+
+                <form asp-action="DetachProof" asp-route-id="@src.Id" method="post" class="mt-2">
+                    @Html.AntiForgeryToken()
+                    <button type="submit" class="btn-detail">CLEAR PROOF</button>
+                </form>
             }
+
+            @* Point the row at one of the company's known filings (blank = no filing). *@
+            <form asp-action="SetProofFiling" asp-route-id="@src.Id" method="post" class="d-flex gap-2 align-items-center mt-3">
+                @Html.AntiForgeryToken()
+                <label class="form-label mb-0" for="filingAccession">SOURCE FILING</label>
+                <select id="filingAccession" name="filingAccession" class="form-select" style="max-width:340px;">
+                    <option value="">— none —</option>
+                    @foreach (var f in Model.CompanyFilings)
+                    {
+                        <option value="@f.AccessionNumber" selected="@(proofFiling?.AccessionNumber == f.AccessionNumber)">
+                            @f.Form @f.AccessionNumber @(f.FilingDate?.ToString("yyyy-MM-dd"))
+                        </option>
+                    }
+                </select>
+                <button type="submit" class="btn-detail">SET FILING</button>
+            </form>
         </div>
     </div>
 </div>

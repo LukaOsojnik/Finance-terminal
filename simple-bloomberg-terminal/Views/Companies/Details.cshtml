@@ -422,31 +422,21 @@
                                 <td class="name-cell">@(r.RelatedCompany != null && r.RelatedCompany.DeletedAt == null ? r.RelatedCompany.Name : "—")</td>
                                 <td class="muted-cell">
                                     @{
-                                        var revFilings = r.Reviews
-                                            .Where(rv => rv.DeletedAt == null && rv.Filing != null && rv.Filing.DeletedAt == null)
-                                            .Select(rv => rv.Filing!)
-                                            .DistinctBy(f => f.Id)
-                                            .ToList();
-                                        var revWebRefs = r.Reviews
-                                            .Where(rv => rv.DeletedAt == null && rv.Filing == null && rv.ReferencePointer.StartsWith("http"))
-                                            .Select(rv => rv.ReferencePointer)
-                                            .Distinct()
-                                            .ToList();
+                                        var revFiling = r.Filing is { DeletedAt: null } ? r.Filing : null;
+                                        var revWebRef = revFiling == null && (r.Reference?.StartsWith("http") ?? false)
+                                            ? r.Reference : null;
                                     }
-                                    @if (revFilings.Count == 0 && revWebRefs.Count == 0)
+                                    @if (revFiling != null)
                                     {
-                                        <span class="muted-cell">—</span>
+                                        <div><a href="@revFiling.PrimaryDocUrl" target="_blank" rel="noopener">@revFiling.Form @revFiling.AccessionNumber</a></div>
+                                    }
+                                    else if (revWebRef != null)
+                                    {
+                                        <div><a href="@revWebRef" target="_blank" rel="noopener">web ↗</a></div>
                                     }
                                     else
                                     {
-                                        @foreach (var f in revFilings)
-                                        {
-                                            <div><a href="@f.PrimaryDocUrl" target="_blank" rel="noopener">@f.Form @f.AccessionNumber</a></div>
-                                        }
-                                        @foreach (var url in revWebRefs)
-                                        {
-                                            <div><a href="@url" target="_blank" rel="noopener">web ↗</a></div>
-                                        }
+                                        <span class="muted-cell">—</span>
                                     }
                                 </td>
                                 <td style="white-space:nowrap;">
@@ -516,31 +506,21 @@
                                 <td class="name-cell">@(c.RelatedCompany != null && c.RelatedCompany.DeletedAt == null ? c.RelatedCompany.Name : "—")</td>
                                 <td class="muted-cell">
                                     @{
-                                        var costFilings = c.Reviews
-                                            .Where(rv => rv.DeletedAt == null && rv.Filing != null && rv.Filing.DeletedAt == null)
-                                            .Select(rv => rv.Filing!)
-                                            .DistinctBy(f => f.Id)
-                                            .ToList();
-                                        var costWebRefs = c.Reviews
-                                            .Where(rv => rv.DeletedAt == null && rv.Filing == null && rv.ReferencePointer.StartsWith("http"))
-                                            .Select(rv => rv.ReferencePointer)
-                                            .Distinct()
-                                            .ToList();
+                                        var costFiling = c.Filing is { DeletedAt: null } ? c.Filing : null;
+                                        var costWebRef = costFiling == null && (c.Reference?.StartsWith("http") ?? false)
+                                            ? c.Reference : null;
                                     }
-                                    @if (costFilings.Count == 0 && costWebRefs.Count == 0)
+                                    @if (costFiling != null)
                                     {
-                                        <span class="muted-cell">—</span>
+                                        <div><a href="@costFiling.PrimaryDocUrl" target="_blank" rel="noopener">@costFiling.Form @costFiling.AccessionNumber</a></div>
+                                    }
+                                    else if (costWebRef != null)
+                                    {
+                                        <div><a href="@costWebRef" target="_blank" rel="noopener">web ↗</a></div>
                                     }
                                     else
                                     {
-                                        @foreach (var f in costFilings)
-                                        {
-                                            <div><a href="@f.PrimaryDocUrl" target="_blank" rel="noopener">@f.Form @f.AccessionNumber</a></div>
-                                        }
-                                        @foreach (var url in costWebRefs)
-                                        {
-                                            <div><a href="@url" target="_blank" rel="noopener">web ↗</a></div>
-                                        }
+                                        <span class="muted-cell">—</span>
                                     }
                                 </td>
                                 <td>
@@ -595,23 +575,14 @@
                                 <td class="muted-cell">@(string.IsNullOrWhiteSpace(risk.Note) ? "—" : risk.Note)</td>
                                 <td class="tag-cell">@(risk.DataSource?.ToString() ?? "—")</td>
                                 <td class="muted-cell">
-                                    @{
-                                        var riskFilings = risk.Reviews
-                                            .Where(rv => rv.DeletedAt == null && rv.Filing != null && rv.Filing.DeletedAt == null)
-                                            .Select(rv => rv.Filing!)
-                                            .DistinctBy(f => f.Id)
-                                            .ToList();
-                                    }
-                                    @if (riskFilings.Count == 0)
+                                    @{ var riskFiling = risk.Filing is { DeletedAt: null } ? risk.Filing : null; }
+                                    @if (riskFiling != null)
                                     {
-                                        <span class="muted-cell">—</span>
+                                        <div><a href="@riskFiling.PrimaryDocUrl" target="_blank" rel="noopener">@riskFiling.Form @riskFiling.AccessionNumber</a></div>
                                     }
                                     else
                                     {
-                                        @foreach (var f in riskFilings)
-                                        {
-                                            <div><a href="@f.PrimaryDocUrl" target="_blank" rel="noopener">@f.Form @f.AccessionNumber</a></div>
-                                        }
+                                        <span class="muted-cell">—</span>
                                     }
                                 </td>
                             </tr>

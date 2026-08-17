@@ -120,7 +120,7 @@ Each `CounterpartySuggestion` carries: `Name`, `Side`, `Segment`, `Classificatio
 - a real `"https://…"` string in `source_url` → used directly;
 - a `[n]` marker (in `source_url` or embedded in the `note` prose) → resolved against the response's 1-based `citations[]` array.
 
-On **LINK**, the resolved URL is saved as a `SourceFieldReview` on the new row's `RELATED_COMPANY` field (`Endpoint = "Perplexity sonar"`, `ReferencePointer = <url>`, no filing). It then shows as a `web ↗` link in the row's proof cell on the Details page.
+On **LINK**, the resolved URL is stored as the new row's `Reference` and sonar's one-line note as its `Evidence` (no filing — this came from the web). The URL then shows as a `web ↗` link in the row's proof cell on the Details page.
 
 ---
 

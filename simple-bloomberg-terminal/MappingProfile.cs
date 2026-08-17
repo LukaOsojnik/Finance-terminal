@@ -88,10 +88,6 @@ public class MappingProfile : Profile
         CreateMap<Filing, FilingDto>();
         CreateMap<FilingRequestDto, Filing>();
 
-        // SourceFieldReview
-        CreateMap<SourceFieldReview, SourceFieldReviewDto>();
-        CreateMap<SourceFieldReviewRequestDto, SourceFieldReview>();
-
         // Scenario (nested Shocks -> ScenarioShockDto, resolves via the ScenarioShock map below)
         CreateMap<Scenario, ScenarioDto>();
         CreateMap<ScenarioRequestDto, Scenario>();

@@ -832,35 +832,35 @@
 | Route source | `[Route("revenue-sources")]` + `[Route("{id:long}/breakdown")]` |
 | View | Views/RevenueSources/Details.cshtml |
 | Parameters | id: long (route, constrained) |
-| Notes | Single-source management page: shows the source's editable fields (inline edit form posting to Edit) plus its per-field proof reviews with their connected filings, and lets the user detach a field's proof or replace which filing backs it. ViewModel: `RevenueSourceDetailViewModel` |
+| Notes | Single-source management page: shows the source's editable fields (inline edit form posting to Edit) plus its proof — one Reference (where in the document), one Evidence quote and the source filing — and lets the user clear that proof or set which filing backs the row. ViewModel: `RevenueSourceDetailViewModel` |
 
 ---
 
-## /revenue-sources/{id}/reviews/{reviewId}/detach
+## /revenue-sources/{id}/proof/detach
 
 | Field | Value |
 |---|---|
 | Controller | RevenueSourcesController |
-| Action | DetachReview |
+| Action | DetachProof |
 | HTTP | POST |
-| Route source | `[Route("revenue-sources")]` + `[Route("{id:long}/reviews/{reviewId:long}/detach")]` |
-| View | — (soft-deletes one SourceFieldReview, redirects to breakdown Details) |
-| Parameters | id: long (route, constrained); reviewId: long (route, constrained) |
-| Notes | Detaches one field's proof by soft-deleting that SourceFieldReview for the source |
-
----
-
-## /revenue-sources/{id}/reviews/{reviewId}/filing
-
-| Field | Value |
-|---|---|
-| Controller | RevenueSourcesController |
-| Action | SetReviewFiling |
-| HTTP | POST |
-| Route source | `[Route("revenue-sources")]` + `[Route("{id:long}/reviews/{reviewId:long}/filing")]` |
+| Route source | `[Route("revenue-sources")]` + `[Route("{id:long}/proof/detach")]` |
 | View | — (redirects to breakdown Details) |
-| Parameters | id: long (route, constrained); reviewId: long (route, constrained); filingId: long? (form/query) |
-| Notes | Sets/clears that review's FilingId (replace which filing backs the field; null clears it) and resets the phase-2 verdict |
+| Parameters | id: long (route, constrained) |
+| Notes | Clears the row's proof: Reference, Evidence and FilingId in one write |
+
+---
+
+## /revenue-sources/{id}/proof/filing
+
+| Field | Value |
+|---|---|
+| Controller | RevenueSourcesController |
+| Action | SetProofFiling |
+| HTTP | POST |
+| Route source | `[Route("revenue-sources")]` + `[Route("{id:long}/proof/filing")]` |
+| View | — (redirects to breakdown Details) |
+| Parameters | id: long (route, constrained); filingAccession: string? / filingForm: string? / filingDate: string? / filingUrl: string? (form) |
+| Notes | Sets which filing backs the row — upserted by accession, so a filing only browsed from EDGAR is created on the fly; a blank accession clears the link |
 
 ---
 
@@ -1082,7 +1082,7 @@
 | Route source | `[Route("extraction")]` + `[Route("")]` |
 | View | Views/Extraction/Index.cshtml |
 | Parameters | companyId: long? (query string, optional); revenueSourceId: long? (query string, optional — REVENUE deep-link prefill only); node: string? (query string, optional — `REVENUE`\|`COST`\|`RISK`, default `REVENUE`) |
-| Notes | Phase-1 split-screen extraction UI — company autocomplete picker plus a Node dropdown (Revenue/Cost/Risk) that drives which SEC Items are scanned (Revenue/Cost → Items 7,8; Risk → Items 1A,7A), the AI prompts, and which entity a save lands in (RevenueSource / CostSource / CompanyRisk). Left pane = source cells, right pane = JSON from `POST /api/stock/refresh/{companyId}`; "Use as reference" writes per-cell SourceFieldReview rows. `?revenueSourceId=` deep-links prefill an existing RevenueSource row (REVENUE node only). The page JS also reads `accession`, `doc`, `form`, and `jobId` from the query string (not bound server-side) to rehydrate the filing/scan context when the user clicks back from the notification widget to save a background scan's yielded objects |
+| Notes | Phase-1 split-screen extraction UI — company autocomplete picker plus a Node dropdown (Revenue/Cost/Risk) that drives which SEC Items are scanned (Revenue/Cost → Items 7,8; Risk → Items 1A,7A), the AI prompts, and which entity a save lands in (RevenueSource / CostSource / CompanyRisk). Left pane = source cells plus the row's proof pair (Reference + Evidence, with USE SELECTION copying the right pane's text selection into Evidence), right pane = JSON from `POST /api/stock/refresh/{companyId}`; SAVE ROW writes the row and its proof in one request. `?revenueSourceId=` deep-links prefill an existing RevenueSource row (REVENUE node only). The page JS also reads `accession`, `doc`, `form`, and `jobId` from the query string (not bound server-side) to rehydrate the filing/scan context when the user clicks back from the notification widget to save a background scan's yielded objects |
 
 ---
 
@@ -1094,9 +1094,9 @@
 | Action | References |
 | HTTP | GET |
 | Route source | `[Route("extraction")]` + `[Route("references/{sourceId:long}")]` |
-| View | — (JSON array of per-field references: field, snapshot, pointer, endpoint, mark, rationale, filing) |
-| Parameters | sourceId: long (route, constrained); node: string? (query string, optional — `REVENUE`\|`COST`\|`RISK`, default `REVENUE`; picks which source table/FK the id resolves against) |
-| Notes | Existing references for a source row, so the extraction page can show each cell's pointer on load. Returns 404 when the source row id is not found for the given node |
+| View | — (JSON `{ reference, evidence, filing }` — filing is a "Form Accession" label, null when the row cites none or it was soft-deleted) |
+| Parameters | sourceId: long (route, constrained); node: string? (query string, optional — `REVENUE`\|`COST`\|`RISK`, default `REVENUE`; picks which source table the id resolves against) |
+| Notes | The proof already on a source row, so the extraction page can fill its Reference/Evidence boxes when it binds the row. Returns 404 when the source row id is not found for the given node |
 
 ---
 
@@ -1108,9 +1108,9 @@
 | Action | Reference |
 | HTTP | POST |
 | Route source | `[Route("extraction")]` + `[Route("reference")]` |
-| View | — (JSON `ReferenceResult` record: RevenueSourceId, ReviewId, Field) |
-| Parameters | JSON body (ReferenceRequest) — now also carries `node` (`REVENUE`\|`COST`\|`RISK`, default `REVENUE`) and `note` (RISK rows) |
-| Notes | Ensures the node's source row exists (RevenueSource / CostSource / CompanyRisk; create if new, DataSource=MANUAL) then upserts one SourceFieldReview per (row, Field) with the matching RelationKind and Mark=null; re-referencing resets the verdict. Responses: 200 OK; 400 (missing companyId/name/snapshot, or invalid classification); 404 (source row id not found). Superseded in the UI by `POST /extraction/save` (endpoint still present but no longer called) |
+| View | — (JSON `ReferenceResult` record: RevenueSourceId) |
+| Parameters | JSON body (ReferenceRequest): companyId, revenueSourceId?, node (`REVENUE`\|`COST`\|`RISK`, default `REVENUE`), sourceType, name, value, percentage, note (RISK rows), relatedCompanyId, reference, evidence, filingAccessionNumber?, filingForm?, filingDate?, filingUrl? |
+| Notes | Sets one row's proof: upserts the node's source row (RevenueSource / CostSource / CompanyRisk; create if new, DataSource=MANUAL) with its `reference` + `evidence`, plus the `FilingId` from upserting the sent accession (null when the text came from Company Facts). Responses: 200 OK; 400 (missing companyId/name/evidence, or invalid classification); 404 (source row id not found). Superseded in the UI by `POST /extraction/save` (endpoint still present but no longer called) |
 
 ---
 
@@ -1122,9 +1122,9 @@
 | Action | Save |
 | HTTP | POST |
 | Route source | `[Route("extraction")]` + `[Route("save")]` |
-| View | — (JSON `{ revenueSourceId, proofs }`) |
-| Parameters | JSON body (SaveRequest): companyId, revenueSourceId?, node (`REVENUE`\|`COST`\|`RISK`, default `REVENUE`), sourceType, name, value, percentage, note, relatedCompanyId, proofs:[{field, endpoint, referencePointer, referenceSnapshot, referencedValue, filingAccessionNumber, filingForm, filingDate, filingUrl}] |
-| Notes | Current UI save path — saves the whole extraction form in one request: `node` selects which entity the row upserts into (RevenueSource / CostSource / CompanyRisk; `note` backs RISK rows) from the field values, then upserts one SourceFieldReview per entry in Proofs. Responses: 200 OK; 400 (bad companyId / missing name / invalid classification); 404 (revenueSourceId given but row not found) |
+| View | — (JSON `{ revenueSourceId, proof }` — `proof` is true when an evidence quote was sent) |
+| Parameters | JSON body (SaveRequest): companyId, revenueSourceId?, node (`REVENUE`\|`COST`\|`RISK`, default `REVENUE`), sourceType, name, value, percentage, note, relatedCompanyId, reference, evidence, filingAccessionNumber?, filingForm?, filingDate?, filingUrl? |
+| Notes | Current UI save path — saves the whole extraction form in one request: `node` selects which entity the row upserts into (RevenueSource / CostSource / CompanyRisk; `note` backs RISK rows), and the row's single proof (reference + evidence + the filing upserted from the sent accession) is written with it. An omitted reference/evidence/filing keeps whatever citation the row already carries. Responses: 200 OK; 400 (bad companyId / missing name / invalid classification); 404 (revenueSourceId given but row not found) |
 
 ---
 
@@ -1137,8 +1137,8 @@
 | HTTP | POST |
 | Route source | `[Route("extraction")]` + `[Route("save-batch")]` |
 | View | — (JSON `{ saved, links }`) |
-| Parameters | JSON body — { companyId, node, accession, form, items:[{ name, classification, value, percentage, note, relatedCompany, relatedCompanyTicker, proof:{ name, value, percentage, classification, relatedCompany, note } }] } |
-| Notes | Batch-saves multiple AI-proposed objects in one call from the notification widget's chat (the user ticks which `​```save```​` blocks to keep). For each item it upserts the source row (RevenueSource / CostSource / CompanyRisk) plus per-field SourceFieldReview proof (endpoint "AI extraction", pointer "ai-suggested"). Items that name a related company (revenue→CUSTOMER, cost→SUPPLIER) additionally resolve or create that company via the same FMP/Yahoo pipeline as link-counterparty (`GetOrCreateCompanyAsync`) and create a reciprocal mirror row on it (`EnsureReciprocal`) — i.e. the relationship is saved bidirectionally. Returns `{ saved, links }` (rows saved, reciprocal links created). Responses: 200 OK; 400 (CompanyId missing); 404 (company not found) |
+| Parameters | JSON body — { companyId, node, accession, form, items:[{ name, classification, value, percentage, note, relatedCompany, relatedCompanyTicker, reference, evidence }] } |
+| Notes | Batch-saves multiple AI-proposed objects in one call from the notification widget's chat (the user ticks which `​```save```​` blocks to keep). The batch's filing is upserted once by accession; each item then upserts its source row (RevenueSource / CostSource / CompanyRisk) with its own `reference` + `evidence` and that FilingId. Items that name a related company (revenue→CUSTOMER, cost→SUPPLIER) additionally resolve or create that company via the same FMP/Yahoo pipeline as link-counterparty (`GetOrCreateCompanyAsync`) and create a reciprocal mirror row on it (`EnsureReciprocal`) — i.e. the relationship is saved bidirectionally. Returns `{ saved, links }` (rows saved, reciprocal links created). Responses: 200 OK; 400 (CompanyId missing); 404 (company not found) |
 
 ---
 
@@ -1152,7 +1152,7 @@
 | Route source | `[Route("extraction")]` + `[Route("auto-extract/{companyId:long}")]` |
 | View | — (JSON source suggestions for the human to confirm) |
 | Parameters | companyId: long (route, constrained); accession: string (query, required); doc: string (query, required); node: string? (query string, optional — `REVENUE`\|`COST`\|`RISK`, default `REVENUE`); form: string? (query string, optional — SEC form type, e.g. `10-K`, forwarded to the sec2md markdown sidecar) |
-| Notes | Mode B — AI (`IFilingExtractionService`) reads one SEC filing and proposes rows + per-field proof for the active node (revenue / cost / company-risk) for the human to confirm; persists nothing (the page fills the form and the existing save path freezes proof). Responses: 200 OK; 400 (missing accession/doc); 404 (no such company); 503 (Claude unreachable) |
+| Notes | Mode B — AI (`IFilingExtractionService`) reads one SEC filing and proposes rows + their proof for the active node (revenue / cost / company-risk) for the human to confirm; persists nothing (the page fills the form and the existing save path freezes proof). Responses: 200 OK; 400 (missing accession/doc); 404 (no such company); 503 (Claude unreachable) |
 
 ---
 
@@ -1264,7 +1264,7 @@
 | Route source | `[Route("extraction")]` + `[Route("link-counterparty")]` |
 | View | — (JSON `{ sourceId, counterpartyId, node }`) |
 | Parameters | req: LinkCounterpartyRequest (body) — { companyId, name, side, classification, existingCompanyId?, countryCode?, sector?, ticker?, sourceUrl?, note? } |
-| Notes | Confirms one discovered counterparty: reuse (fuzzy `MatchByName`) or create the company (FMP-by-ticker, else minimal), create the `RevenueSource`/`CostSource` row with `RelatedCompanyId`, and save the sonar citation as a `RELATED_COMPANY` `SourceFieldReview`. See `docs/web_search.md`. Responses: 200 OK; 400 (missing companyId/name or bad classification); 404 (no such company) |
+| Notes | Confirms one discovered counterparty: reuse (fuzzy `MatchByName`) or create the company (FMP-by-ticker, else minimal), create the `RevenueSource`/`CostSource` row with `RelatedCompanyId`, and store the sonar citation as that row's proof (the citation URL as `Reference`, sonar's note as `Evidence`). See `docs/web_search.md`. Responses: 200 OK; 400 (missing companyId/name or bad classification); 404 (no such company) |
 
 ---
 
@@ -1510,21 +1510,6 @@
 
 ---
 
-## api/SourceFieldReviews
-
-| Field | Value |
-|---|---|
-| Controller | SourceFieldReviewsController (Controllers/Api/) |
-| Action | GetAll / GetById / Create / Update / Delete |
-| HTTP | GET /api/SourceFieldReviews (`?q=` optional search), GET /api/SourceFieldReviews/{id:long}, POST /api/SourceFieldReviews, PUT /api/SourceFieldReviews/{id:long}, DELETE /api/SourceFieldReviews/{id:long} |
-| Route source | `[ApiController]` + `[Route("api/[controller]")]` |
-| View | — (JSON `SourceFieldReviewDto` / list) |
-| Parameters | q: string? (query, GetAll); id: long (route, constrained); body: `SourceFieldReviewRequestDto` (Create/Update) |
-| Auth | `[Authorize]` class-level (GET); `[Authorize(Roles = "Admin,Manager")]` on Create/Update/Delete |
-| Notes | Standard CRUD; Delete is a soft-delete (`_repo.SoftDelete`) |
-
----
-
 ## api/Scenarios
 
 | Field | Value |
@@ -1710,7 +1695,7 @@
 ASP.NET Core Identity now gates the existing controllers as follows:
 
 - **MVC entity controllers** (Countries, Companies, Events, TradeBlocs, CountryDetails, CountryAdvantages, CountryChallenges, GdpSnapshots, RevenueSources, CostSources, Indices): read GETs (`Index`/`Search`/`Details`/`Lookup`/`ValidateCountry` and the like) are `[AllowAnonymous]`; `Create`/`Edit`/`Delete` (and the other mutating actions) require `[Authorize(Roles = "Admin,Manager")]`.
-- **API controllers** (Controllers/Api — GraphController, StockController, CompanyRisks, CompanyFinancials, Filings, SourceFieldReviews, Scenarios, ScenarioShocks): `GET` requires `[Authorize]` (any authenticated user); `POST`/`PUT`/`DELETE` require `[Authorize(Roles = "Admin,Manager")]`.
+- **API controllers** (Controllers/Api — GraphController, StockController, CompanyRisks, CompanyFinancials, Filings, Scenarios, ScenarioShocks): `GET` requires `[Authorize]` (any authenticated user); `POST`/`PUT`/`DELETE` require `[Authorize(Roles = "Admin,Manager")]`.
 - **Public** (no auth): Home, Ticker, Graph, Impact.
 - **ExtractionController**: `[Authorize(Roles = "Admin,Manager")]` for the whole controller.
 - **AccountController**: `[Authorize]` (any authenticated user).

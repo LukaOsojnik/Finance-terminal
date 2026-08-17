@@ -64,13 +64,20 @@ public class FilingExtractionService : IFilingExtractionService
     // (name + classification + money + counterparty); risk swaps money/counterparty for a free-text
     // note and a scope bucket. All three return the same {"sources":[...]} envelope so Parse is shared.
     //
-    // 'proof' is the FIRST key of every source, and deliberately so. A model writes a JSON object
-    // left to right, so with proof last it commits to a figure and only then reaches for a quote to
-    // justify it — post-hoc rationalising, structurally unable to correct the answer. Quoting first
+    // 'evidence' is the FIRST key of every source, and deliberately so. A model writes a JSON object
+    // left to right, so with the quote last it commits to a figure and only then reaches for something
+    // to justify it — post-hoc rationalising, structurally unable to correct the answer. Quoting first
     // forces it to locate the row label, the units and the column header BEFORE it can emit a number,
     // which is the same work as reading the column correctly. It is also the only evidence the Pro
     // chat agent ever sees: FormatDigest hands it these strings instead of re-reading the filing, so
-    // a thin proof leaves it nothing to disagree with.
+    // a thin quote leaves it nothing to disagree with.
+    //
+    // It is ONE string, not the per-field object this used to be. The model's own output showed the
+    // per-field split was fiction: proof.name and proof.value came back as the same sentence whenever
+    // a source had a figure, and proof.classification was always a torn-off fragment, because a
+    // classification is a judgement and there is nothing in the filing to quote for it. A schema that
+    // demands impossible data gets fabricated data. Note that the quote-first discipline above comes
+    // from evidence being FIRST, not from it being split — so none of it is lost.
     private static string SystemFor(ExtractionNode node) => node switch
     {
         ExtractionNode.COST =>
@@ -83,14 +90,12 @@ public class FilingExtractionService : IFilingExtractionService
             "label), classification (exactly one of COGS, OPEX, TOTAL_COSTS), value (cost in absolute " +
             "US dollars — scale any 'in thousands/millions' to the full number; null if not stated), " +
             "percentage (share of total cost or revenue 0-100, null if not stated), related_company (a " +
-            "named supplier/counterparty if the row is about one, else null). Write 'proof' FIRST, " +
-            "before the fields it backs: for every field you intend to fill, quote the VERBATIM " +
-            "substring of this excerpt that backs it (null for fields you will leave null), then fill " +
-            "the field to match what you quoted. A figure read from a table must be quoted with enough " +
-            "context to identify it — its row label, its units, and its column header. Reply with JSON " +
-            "only, no prose, no code fences: " +
-            "{\"sources\":[{\"proof\":{\"name\":\"\",\"value\":null,\"percentage\":null," +
-            "\"classification\":null,\"related_company\":null},\"name\":\"\",\"classification\":\"\"," +
+            "named supplier/counterparty if the row is about one, else null). Write 'evidence' FIRST, " +
+            "before the fields it backs: ONE VERBATIM substring of this excerpt that backs this cost, " +
+            "then fill the fields to match what you quoted. Quote enough to identify every figure you " +
+            "report — for a table row that means its row label, its units and its column header. Reply " +
+            "with JSON only, no prose, no code fences: " +
+            "{\"sources\":[{\"evidence\":\"\",\"name\":\"\",\"classification\":\"\"," +
             "\"value\":null,\"percentage\":null,\"related_company\":null}]}. If the excerpt names no " +
             "cost source, reply {\"sources\":[]}.",
 
@@ -100,13 +105,11 @@ public class FilingExtractionService : IFilingExtractionService
             "in THIS excerpt — do not guess or carry over outside knowledge. For each risk provide: " +
             "name (a short label for the risk), classification (its scope, exactly one of " +
             "MACROECONOMIC, INDUSTRY, BUSINESS, LEGAL_REGULATORY, FINANCIAL, GENERAL), note (one or " +
-            "two sentences summarising the risk in plain language). Write 'proof' FIRST, before the " +
-            "fields it backs: for every field you intend to fill, quote the VERBATIM substring of this " +
-            "excerpt that backs it (null for fields you will leave null), then fill the field to match " +
-            "what you quoted. Reply with JSON only, no prose, no code fences: " +
-            "{\"sources\":[{\"proof\":{\"name\":\"\",\"classification\":null,\"note\":null}," +
-            "\"name\":\"\",\"classification\":\"\",\"note\":null}]}. If the excerpt names " +
-            "no risk, reply {\"sources\":[]}.",
+            "two sentences summarising the risk in plain language). Write 'evidence' FIRST, before the " +
+            "fields it backs: ONE VERBATIM substring of this excerpt that backs this risk, then fill " +
+            "the fields to match what you quoted. Reply with JSON only, no prose, no code fences: " +
+            "{\"sources\":[{\"evidence\":\"\",\"name\":\"\",\"classification\":\"\",\"note\":null}]}. " +
+            "If the excerpt names no risk, reply {\"sources\":[]}.",
 
         // The "A NAMED COUNTERPARTY IS ITSELF A SOURCE" block is what makes routing Items 1/1A pay
         // off. Without it every field in this prompt points at a figure, and SourceType offers no
@@ -137,14 +140,12 @@ public class FilingExtractionService : IFilingExtractionService
             "value (revenue in absolute US dollars — scale any 'in thousands/millions' to the full " +
             "number; null if not stated), percentage (share of total revenue 0-100, null if not stated), " +
             "related_company (a named counterparty/customer if the row is about one, else null). Write " +
-            "'proof' FIRST, before the fields it backs: for every field you intend to fill, quote the " +
-            "VERBATIM substring of this excerpt that backs it (null for fields you will leave null), " +
-            "then fill the field to match what you quoted. A figure read from a table must be quoted " +
-            "with enough context to identify it — its row label, its units, and its column header; a " +
-            "percentage must be quoted with the words that say what it is a share OF. Reply with JSON " +
-            "only, no prose, no code fences: " +
-            "{\"sources\":[{\"proof\":{\"name\":\"\",\"value\":null,\"percentage\":null," +
-            "\"classification\":null,\"related_company\":null},\"name\":\"\",\"classification\":\"\"," +
+            "'evidence' FIRST, before the fields it backs: ONE VERBATIM substring of this excerpt that " +
+            "backs this source, then fill the fields to match what you quoted. Quote enough to identify " +
+            "every figure you report — for a table row that means its row label, its units and its " +
+            "column header, and for a percentage the words that say what it is a share OF. Reply with " +
+            "JSON only, no prose, no code fences: " +
+            "{\"sources\":[{\"evidence\":\"\",\"name\":\"\",\"classification\":\"\"," +
             "\"value\":null,\"percentage\":null,\"related_company\":null}]}. If the excerpt names no " +
             "revenue source, reply {\"sources\":[]}.",
     };
@@ -231,7 +232,6 @@ public class FilingExtractionService : IFilingExtractionService
                 chunks.AddRange(FilingSections.BuildSection(raw, "8", node));
         }
 
-        if (thin.Count > 0 && await FetchRawAsync(companyId, accession, doc, filingType, ct) is { } thinRaw)
         // The thin Items absorb whatever the other two feeds left of the scan's ceiling. They go last
         // for a reason: Item 8 carries the audited tables and the triaged headings were chosen on
         // purpose, whereas this feed is a blind sequential read of a section whose outline we failed
@@ -241,10 +241,11 @@ public class FilingExtractionService : IFilingExtractionService
         // them: three thin Items meant 3 × BuildSection's 40 = 120 untriaged calls on top of Item 8,
         // i.e. the filings with the worst targeting also cost the most. The floor keeps a thin Item
         // from being squeezed to nothing when the ceiling is already spent.
-            foreach (var item in thin)
+        if (thin.Count > 0 && await FetchRawAsync(companyId, accession, doc, filingType, ct) is { } thinRaw)
         {
             var remaining = Math.Max(0, FilingSections.MaxScanChunks - chunks.Count);
             var perItem = Math.Max(MinChunksPerThinItem, remaining / thin.Count);
+            foreach (var item in thin)
                 chunks.AddRange(FilingSections.BuildSection(thinRaw, item, node, perItem));
         }
 
@@ -468,22 +469,25 @@ public class FilingExtractionService : IFilingExtractionService
     /// every number the filing actually stated — 3M's Item 7 overview alone was enough to shadow
     /// $11,384M and 45.6% for Safety and Industrial.
     ///
-    /// Each field is taken with its own proof, so a figure never inherits the evidence for a figure
-    /// that was not adopted. <paramref name="a"/>'s Section is kept: it is where the source was first
-    /// evidenced, and every field carries verbatim proof of its own provenance regardless.
+    /// <paramref name="a"/>'s Section is kept: it is where the source was first evidenced.
+    ///
+    /// Evidence is one string per source now, so unlike the old per-field proof a merge has to CHOOSE
+    /// which quote survives. It keeps the quote belonging to whichever record supplied the VALUE: the
+    /// figure is the field most likely to be misread, so it is the one whose backing must be the
+    /// quote a reviewer sees. When neither side states a figure, either quote describes the same
+    /// source and the first is as good as the second.
     /// </summary>
     private static ExtractionSuggestion Combine(ExtractionSuggestion a, ExtractionSuggestion b)
     {
-        var (cls, clsProof) = a.Classification is not null
-            ? (a.Classification, a.Proof.Classification) : (b.Classification, b.Proof.Classification);
-        var (value, valueProof) = a.Value is not null
-            ? (a.Value, a.Proof.Value) : (b.Value, b.Proof.Value);
-        var (pct, pctProof) = a.Percentage is not null
-            ? (a.Percentage, a.Proof.Percentage) : (b.Percentage, b.Proof.Percentage);
-        var (related, relatedProof) = !string.IsNullOrWhiteSpace(a.RelatedCompany)
-            ? (a.RelatedCompany, a.Proof.RelatedCompany) : (b.RelatedCompany, b.Proof.RelatedCompany);
-        var (note, noteProof) = !string.IsNullOrWhiteSpace(a.Note)
-            ? (a.Note, a.Proof.Note) : (b.Note, b.Proof.Note);
+        var cls = a.Classification ?? b.Classification;
+        var value = a.Value ?? b.Value;
+        var pct = a.Percentage ?? b.Percentage;
+        var related = !string.IsNullOrWhiteSpace(a.RelatedCompany) ? a.RelatedCompany : b.RelatedCompany;
+        var note = !string.IsNullOrWhiteSpace(a.Note) ? a.Note : b.Note;
+
+        var figure = a.Value is not null ? a : b.Value is not null ? b : a;
+        var evidence = !string.IsNullOrWhiteSpace(figure.Evidence) ? figure.Evidence
+            : !string.IsNullOrWhiteSpace(a.Evidence) ? a.Evidence : b.Evidence;
 
         return a with
         {
@@ -492,8 +496,7 @@ public class FilingExtractionService : IFilingExtractionService
             Percentage = pct,
             RelatedCompany = related,
             Note = note,
-            Proof = new ExtractionProof(
-                a.Proof.Name ?? b.Proof.Name, valueProof, pctProof, clsProof, relatedProof, noteProof),
+            Evidence = evidence,
         };
     }
 
@@ -518,20 +521,10 @@ public class FilingExtractionService : IFilingExtractionService
             if (!string.IsNullOrWhiteSpace(s.RelatedCompany)) sb.Append(" | counterparty=").Append(s.RelatedCompany);
             if (!string.IsNullOrWhiteSpace(s.Note)) sb.Append(" | note=").Append(s.Note);
             sb.Append(" | from ").Append(s.Section).Append('\n');
-            AppendProof(sb, "name", s.Proof.Name);
-            AppendProof(sb, "value", s.Proof.Value);
-            AppendProof(sb, "percentage", s.Proof.Percentage);
-            AppendProof(sb, "classification", s.Proof.Classification);
-            AppendProof(sb, "related_company", s.Proof.RelatedCompany);
-            AppendProof(sb, "note", s.Proof.Note);
+            if (!string.IsNullOrWhiteSpace(s.Evidence))
+                sb.Append("    evidence: \"").Append(s.Evidence).Append("\"\n");
         }
         return sb.ToString();
-    }
-
-    private static void AppendProof(StringBuilder sb, string field, string? proof)
-    {
-        if (!string.IsNullOrWhiteSpace(proof))
-            sb.Append("    proof.").Append(field).Append(": \"").Append(proof).Append("\"\n");
     }
 
     // One worker: read a single chunk under the concurrency gate and return its candidates. Reports
@@ -603,7 +596,6 @@ public class FilingExtractionService : IFilingExtractionService
         {
             var name = Str(el, "name");
             if (string.IsNullOrWhiteSpace(name)) continue;
-            var proof = el.TryGetProperty("proof", out var p) ? p : default;
             yield return new ExtractionSuggestion(
                 Name: name!,
                 Classification: Str(el, "classification"),
@@ -611,9 +603,7 @@ public class FilingExtractionService : IFilingExtractionService
                 Percentage: LlmJson.Num(el, "percentage"),
                 RelatedCompany: Str(el, "related_company"),
                 Section: section,
-                Proof: new ExtractionProof(
-                    Str(proof, "name"), Str(proof, "value"), Str(proof, "percentage"),
-                    Str(proof, "classification"), Str(proof, "related_company"), Str(proof, "note")),
+                Evidence: Str(el, "evidence"),
                 Note: Str(el, "note"));
         }
     }

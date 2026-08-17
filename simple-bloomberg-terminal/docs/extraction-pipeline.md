@@ -1,6 +1,14 @@
-# Extraction Pipeline — human entry + AI review
+# Extraction Pipeline — human entry with referenced provenance
 
-A two-phase pipeline for gathering **cost & revenue source** data with provenance, then having an AI act as an analyst-reviewer that verifies each value against the source text it was drawn from. Each per-field proof links to the **`Filing`** it was drawn from — so a source can cite several filings (one per cell) and connects to all of them on the graph.
+A pipeline for gathering **cost & revenue source** data with provenance: every source row carries the
+proof it was drawn from — one `Reference` (where in the document), one `Evidence` (the verbatim
+substring) and one `FilingId` (the **`Filing`** it came from), so the row connects to its document on
+the graph.
+
+> An AI "phase 2" analyst-reviewer that graded each cell 0/1 was designed here and never built. The
+> per-field `SourceFieldReview` table it needed was dropped in migration
+> `20260814074704_CollapseProofOntoSourceRows`; its grading columns (`Mark`, `Rationale`,
+> `ReviewedAt`, `ReviewerModel`) were never written by any code path. Proof is now one pair per row.
 
 Scope: `RevenueSource` and `CostSource` first. Companion to `api-model.md` (where the data comes from), `external-api.md` (the macro side), and `web_search.md` (discovering counterparty companies via Perplexity when filings don't name them).
 
@@ -17,11 +25,11 @@ A cost/revenue source is an edge between two companies — this is already in th
 
 Relationship is **1:N**: Apple (`CompanyId`) owns many `RevenueSource` and many `CostSource` rows; each row optionally names one counterparty via `RelatedCompanyId`. Reverse navs (`Company.RevenueFromDependents` / `CostFromDependents`) make Apple→TSMC-as-cost also surface on TSMC's page as revenue-from-a-dependent. **One row, both directions.**
 
-The review table below never re-stores these two companies — it points at the source row, which already holds both.
+The proof columns live on the source row itself, which already holds both companies.
 
 ---
 
-## Phase 1 — human entry with referenced provenance
+## Human entry with referenced provenance
 
 ### UI
 
@@ -46,79 +54,35 @@ A split screen wired to an endpoint browser:
 
 ### Fields are bound to the source row (pre-fill + create)
 
-The left cells are **bound to a `RevenueSource`/`CostSource` row via the FK** — they are not retyped into the review table. The source row is the source of truth for the values; `SourceFieldReview` only stores proof + verdict.
+The left cells are **bound to a `RevenueSource`/`CostSource` row** — nothing is retyped elsewhere. The source row is the source of truth for both the values and their proof.
 
 - If EDGAR/Finnhub already fetched the row, the cells **pre-fill** from it — the user confirms and references rather than typing.
-- If the API missed something, the user **creates** a new row here: on save the `RevenueSource`/`CostSource` is inserted first, *then* the `SourceFieldReview` FK is set to it.
+- If the API missed something, the user **creates** a new row here: the save upserts the `RevenueSource`/`CostSource` together with its proof, in one write.
 
-**The FK forces ordering: no reference without a row.** `RevenueSourceId`/`CostSourceId` can only point at a row that exists, so the source row is always created (or already present) before its references. Editing a pre-filled cell writes back to the **source row**, not the review row.
+### Each row links to its filing
 
-### Each proof links to its filing
+When the proof is selected from an **open filing document** (not the Company Facts JSON), the save upserts a `Filing` by accession number and stores its id on the source row's `FilingId` — see the `Filing` section below. Saving from Company Facts (no filing open) leaves `FilingId` null; the row still carries its quote.
 
-When the proof is selected from an **open filing document** (not the Company Facts JSON), the same "Use as reference" action upserts a `Filing` by accession number and stores its id on **that cell's `SourceFieldReview` (`FilingId`)** — see the `Filing` section below. Because proof is per-field, different cells can cite different filings, so one source connects to *all* of them on the graph. Referencing from Company Facts (no filing open) sets that cell's `FilingId` to null.
+### What gets stored — one proof per row
 
-### What gets stored — one row per cell (1:N)
-
-Each "Use as reference" action writes one `SourceFieldReview` row capturing **which endpoint** and **which part of the response** backs that cell. Provenance is **per-field**, because different cells point at different sections of the response (the number from an XBRL fact, "TSMC" from a risk-factor paragraph, the label from a segment name).
-
-So **one source row → many `SourceFieldReview` rows (1:N), keyed by `Field`** — same FK (`RevenueSourceId`) repeated, `Field` differs. The unit of a review is `(source row, field)`: one proof + one mark per cell. A unique constraint on `(RevenueSourceId, Field)` / `(CostSourceId, Field)` keeps it to one current reference per cell.
-
-Critically, the reference stores a **frozen snapshot** of the selected text — not just a pointer — so re-fetching the endpoint later can't silently change the proof under the reviewer.
-
----
-
-## Phase 2 — AI analyst-reviewer
-
-After the user submits, an AI pass iterates **only rows that have both a filled cell and a reference**. For each, it judges: *does the referenced snapshot actually support this value?* and writes:
-
-- `Mark` = **1** (pass) or **0** (fail)
-- `Rationale` = one line on why (recovers the nuance a bare 0/1 loses)
-
-`Mark IS NULL` = not yet reviewed. Re-running the pass overwrites the mark in place (single-table model — no review history kept, by choice).
-
-### Consuming the data
-
-Trusted data = the verified set:
-
-```sql
--- revenue rows that passed review
-SELECT rs.* FROM RevenueSources rs
-JOIN SourceFieldReviews r
-  ON r.RevenueSourceId = rs.Id AND r.Mark = 1
-WHERE rs.DeletedAt IS NULL;
-```
-
-Render/graph only `Mark = 1` rows; treat `Mark = 0` and `Mark IS NULL` as untrusted.
-
----
-
-## The table — `SourceFieldReview`
-
-One table: per-field reference (phase 1) + nullable verdict (phase 2). Soft-delete like every entity.
+Since `Company → RevenueSource/CostSource/CompanyRisk` is 1:N, **one filing extraction already produces N source rows**. Each row therefore needs exactly one proof, and it lives on the row:
 
 | Column | Type | Notes |
 |---|---|---|
-| `Id` | long PK | |
-| `CompanyId` | long FK→Companies | analyzed company (Apple); denormalized for "all reviews for X" |
-| `Relation` | enum `RelationKind` {COST, REVENUE} | discriminator — which source table |
-| `RevenueSourceId` | long? FK→RevenueSources | exactly one of the two set, |
-| `CostSourceId` | long? FK→CostSources | matching `Relation` (check constraint) |
-| `Field` | enum `ReviewableField` {VALUE, PERCENTAGE, NAME, RELATED_COMPANY, CLASSIFICATION} | which cell this row proves |
-| `Endpoint` | string | which API endpoint produced the proof |
-| `ReferencePointer` | string | JSON path / text offset the user selected |
-| `ReferenceSnapshot` | string | literal proof text, **frozen at reference time** |
-| `ReferencedValue` | string? | value snapshot at reference time → staleness detection |
-| `FilingId` | long? FK→Filings | the filing this cell's proof came from (null if from Company Facts). Per-field, so one source cites many filings via its reviews |
-| `Mark` | int? | null = unreviewed, 0 = fail, 1 = pass |
-| `Rationale` | string? | AI's reason for the mark |
-| `ReviewedAt` | DateTime? | when phase 2 last ran on this row |
-| `ReviewerModel` | string? | model id, for reproducibility |
-| `DeletedAt` | DateTime? | soft-delete convention |
+| `Reference` | string? | WHERE in the document — the SEC Item / note / subheading (e.g. "Item 7. Management's Discussion") |
+| `Evidence` | string? | the exact verbatim substring, **frozen at save time** and findable by a literal search in the filing |
+| `FilingId` | long? FK→Filings (`Restrict`) | the document both came from; null when the proof came from Company Facts or a web source |
 
 Notes:
-- Counterparty (TSMC) is **not** a column here — it's `RelatedCompanyId` on the linked source row.
-- `Field = RELATED_COMPANY` is how you review "is TSMC really Apple's cost source?" separately from reviewing the dollar amount.
-- Two nullable FKs (not a bare polymorphic id) keep real DB referential integrity in EF Core.
+- Counterparty (TSMC) is not part of the proof — it's `RelatedCompanyId` on the same row.
+- `Evidence` is a **frozen snapshot**, so re-fetching the endpoint later can't silently change the proof.
+- Per-cell proof rows were dropped: on the AI path every cell of a row carried a byte-identical quote (the model only ever produces one quote per record), and a classification is an inference — there is nothing in the filing to quote for it.
+
+### Consuming the data
+
+Trusted data = live, approved rows: `DeletedAt IS NULL AND Status = 0` (Approved). The contribution
+review queue (`ContributionsController`) is what gates user-entered rows, and each row's
+`Reference` / `Evidence` / `Filing` is shown next to it so a Manager can verify before approving.
 
 ---
 
@@ -136,9 +100,9 @@ The reference's frozen snapshot answers *what text backs this cell*; the `Filing
 | `PrimaryDocUrl` | string? | ready link to the document |
 | `DeletedAt` | DateTime? | soft-delete convention |
 
-- **Filing per proof, not per source.** The link lives on `SourceFieldReview.FilingId` (nullable FK, `Restrict`). Because proof is per-field, one source can cite several filings — `VALUE` from a 10-K, `RELATED_COMPANY` from an 8-K. A source's proof filings = the distinct filings across its reviews.
-- **Upsert by accession.** The accession number is the key — the same 10-K referenced from two cells or two sources resolves to one `Filing` row, so the graph shows a single shared node.
-- **On the graph:** each source emits an edge `rev:{id}`/`cost:{id}` ──proof──▶ `filing:{id}` for every distinct filing its reviews cite. The source connects to every filing it appears in.
+- **One filing per source row.** The link lives on `RevenueSource`/`CostSource`/`CompanyRisk.FilingId` (nullable FK, `Restrict` — a cited filing can't be hard-deleted from under a row).
+- **Upsert by accession.** The accession number is the key — the same 10-K referenced from two sources resolves to one `Filing` row, so the graph shows a single shared node.
+- **On the graph:** a source's filing is carried on its leaf node (listed in the click popup) rather than drawn as its own node.
 
 > **Filings are not events.** EDGAR filings used to be ingested into the `Event` table on refresh (`10-K`/`10-Q` → `EARNINGS`, `8-K` → `CORPORATE_ACTION`). That mapping was **removed**: a refresh maps only revenue/cost rows and creates no filing rows. A `Filing` exists only when a user references a filing document in phase 1.
 
@@ -147,32 +111,26 @@ The reference's frozen snapshot answers *what text backs this cell*; the `Filing
 ## Flow
 
 ```
-PHASE 1 (human)
+HUMAN ENTRY
   pick endpoint ─► response renders on right (Company Facts JSON or a filing doc)
   source row pre-fills cells (if auto-fetched) OR user creates it
-     └─► ensure RevenueSource/CostSource row exists (INSERT if new)
-  per cell: confirm/type value (left) + select proof text (right) ─► "Use as reference"
+  confirm/type the values (left) + select the backing passage (right) ─► USE SELECTION
+  SAVE ROW
      ├─► if a filing doc is open: upsert Filing by AccessionNumber ─► FilingId
-     └─► UPSERT SourceFieldReview { CompanyId, Relation, source FK,
-                                    Field, Endpoint, Pointer,
-                                    Snapshot, ReferencedValue, FilingId, Mark=NULL }
-         (one row per cell — same source FK, different Field; FilingId may differ per cell,
-          so the source ──proof──▶ filing edges fan out to every filing it cites)
-
-PHASE 2 (AI, on submit)
-  for each SourceFieldReview where cell filled AND Snapshot present AND Mark IS NULL:
-     ask Claude: does Snapshot support the value in <source>.<Field>?
-     ─► UPDATE Mark = 0|1, Rationale, ReviewedAt, ReviewerModel
+     └─► UPSERT RevenueSource/CostSource/CompanyRisk
+                { values…, Reference, Evidence, FilingId }
+         (one row, one proof — an omitted Reference/Evidence/FilingId keeps
+          whatever citation the row already carries)
 
 CONSUME
-  graph/exports read source rows WHERE a SourceFieldReview with Mark=1 exists
+  graph/exports read live source rows (DeletedAt IS NULL, Status = Approved)
 ```
 
 ---
 
 ## Implementation note
 
-Reuse the existing `StockService` / `IStockApiClient` shape — no new layers (project convention). Data access stays in repositories; add a `ISourceFieldReviewRepository`. The phase-2 reviewer is a service that pulls unreviewed rows, calls Claude, and persists marks — same client/service/repo split as the EDGAR refresh.
+Reuse the existing `StockService` / `IStockApiClient` shape — no new layers (project convention). Data access stays in the existing revenue/cost/risk repositories; the proof rides along on the row, so no extra repository is involved. Every write goes through `IContributionWriter.UpsertRow`, which applies the reviewer gate and the "don't clobber the citation when a write omits it" rule.
 
 ---
 
@@ -180,11 +138,9 @@ Reuse the existing `StockService` / `IStockApiClient` shape — no new layers (p
 
 These are known holes, not blockers — listed so they're decided deliberately, not by accident.
 
-1. **Stale pass.** User edits the source value after a `Mark=1`. The mark now lies. Mitigation: compare current value to `ReferencedValue` on save; if changed, reset `Mark = NULL`. (Needs a hook on source-row update.)
-2. **Derived values.** If the user computes `Percentage` from two JSON numbers, the value isn't literally *in* the snapshot. The reviewer prompt must permit arithmetic/inference or these always score 0.
-3. **Unreferenced rows are invisible.** Phase 2 skips rows without a reference. A value with no proof is never reviewed yet may still exist — make sure the consumer (`Mark=1` filter) treats it as untrusted, not hidden.
-4. **`Mark = 0` has no feedback loop yet.** A fail should route back to the user to fix/re-reference. Undefined here — UI concern for later.
-5. **Machine-sourced data (EDGAR/Finnhub).** Those rows have provenance (the XBRL fact / API field) but no *user* reference. Option: auto-emit `SourceFieldReview` rows with `Endpoint=EDGAR`, `ReferenceSnapshot=<the fact>`, so machine data flows through the same review pass instead of being trusted blindly.
-6. **Name resolution.** Snapshot says "TSMC"; DB Company is "Taiwan Semiconductor". `Field=RELATED_COMPANY` reviews need the alias/Wikidata resolver from `api-model.md` or legitimate matches fail.
-7. **Binary mark is coarse.** 1/0 can't separate "right number, wrong company" from "completely wrong" — `Rationale` is the only place that nuance survives.
-8. **No review history.** Single-table, in-place overwrite by design. If you later want an audit trail of re-reviews, this is where a separate verdict table would come back.
+1. **Stale proof.** Editing a row's values doesn't invalidate its `Evidence` — the quote can end up next to a number nobody re-checked against it. There is no staleness flag (the old per-field `ReferencedValue` column went with the review table).
+2. **Derived values.** If `Percentage` is computed from two JSON numbers, that figure isn't literally *in* the `Evidence` quote. The quote cites the passage the row came from, not each arithmetic step.
+3. **Unproved rows exist.** `Reference`/`Evidence` are nullable — a row can be saved with no citation at all, and the UI simply shows "no proof on record".
+4. **Machine-sourced data (EDGAR/Finnhub).** Those rows have provenance (the XBRL fact / API field) but no quote, so their proof cells stay empty.
+5. **Name resolution.** Evidence says "TSMC"; the DB Company is "Taiwan Semiconductor". Verifying a counterparty by hand still needs the alias/Wikidata resolver from `api-model.md`.
+6. **No proof history.** Re-saving overwrites `Reference`/`Evidence` in place; nothing keeps the prior citation.
