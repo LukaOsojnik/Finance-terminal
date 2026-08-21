@@ -37,6 +37,11 @@ public sealed class AnthropicChatProvider : IChatProvider
     public async Task<string> CompleteAsync(
         string model, string system, string userPrompt,
         int maxTokens, bool jsonObject, CancellationToken ct)
+        => (await CompleteDetailedAsync(model, system, userPrompt, maxTokens, jsonObject, ct)).Content;
+
+    public async Task<LlmCompletion> CompleteDetailedAsync(
+        string model, string system, string userPrompt,
+        int maxTokens, bool jsonObject, CancellationToken ct)
     {
         // jsonObject is intentionally unused: Anthropic has no response_format toggle, so JSON-only
         // replies are driven by the system prompt (which every caller already phrases that way).
@@ -48,7 +53,19 @@ public sealed class AnthropicChatProvider : IChatProvider
             messages = new[] { new { role = "user", content = userPrompt } }
         };
         using var doc = await SendAsync(body, ct);
-        return TextOf(doc.RootElement);
+        var root = doc.RootElement;
+        var stopReason = root.TryGetProperty("stop_reason", out var reason) &&
+                         reason.ValueKind == JsonValueKind.String
+            ? reason.GetString()
+            : null;
+        // Present one provider-neutral vocabulary to extraction diagnostics.
+        var finishReason = stopReason switch
+        {
+            "max_tokens" => "length",
+            "end_turn" or "stop_sequence" => "stop",
+            _ => stopReason
+        };
+        return new LlmCompletion(TextOf(root), finishReason);
     }
 
     public async IAsyncEnumerable<ChatDelta> StreamAsync(

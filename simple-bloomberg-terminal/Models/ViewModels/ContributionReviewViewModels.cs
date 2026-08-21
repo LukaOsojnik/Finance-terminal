@@ -48,4 +48,8 @@ public class ContributionRow
     public string? Evidence { get; set; }
     public string? FilingLabel { get; set; }
     public string? FilingUrl { get; set; }
+
+    // Set alongside the label/url: lets the review page turn the quote into a jump into the filing
+    // document itself (the viewer addresses a filing by id, not by its SEC url).
+    public long? FilingId { get; set; }
 }

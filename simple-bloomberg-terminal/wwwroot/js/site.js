@@ -1258,12 +1258,17 @@ document.addEventListener('submit', async e => {
             if (s.percentage != null) bits.push(s.percentage + '%');
             const cp = s.relatedCompany
                 ? `<span class="scan-notify-save-cp">↔ ${escapeHtml(s.relatedCompany)}${s.relatedCompanyTicker ? ' (' + escapeHtml(s.relatedCompanyTicker) + ')' : ''}</span>` : '';
+            // The agent's verbatim quote for this row: click it to jump the filing pane (left) to the
+            // passage. It is the fastest way to check a proposal before ticking it.
+            const quote = s.evidence
+                ? `<button class="scan-notify-save-quote" type="button" data-quote="${i}"
+                    title="${escapeHtml(s.evidence)}">quote ↳</button>` : '';
             return `<div class="scan-notify-save-row">
                 <input type="checkbox" data-save="${i}" ${saveSel.has(s.key) ? 'checked' : ''}>
                 <span class="scan-notify-save-main" data-edit="${i}" title="Click to edit">
                     <span class="scan-notify-save-name">${escapeHtml(s.name)}</span>
                     <span class="scan-notify-save-meta">${escapeHtml(s.classification || '—')}${bits.length ? ' · ' + escapeHtml(bits.join(' · ')) : ''} ${cp}</span>
-                </span></div>`;
+                </span>${quote}</div>`;
         }).join('');
         const savesHtml =
             `<div class="scan-notify-saves-head"><span>Proposed saves</span><span>${items.length}</span></div>` +
@@ -1291,7 +1296,7 @@ document.addEventListener('submit', async e => {
                 headers: { 'Content-Type': 'application/json', 'RequestVerificationToken': token() },
                 body: JSON.stringify({
                     companyId: job.companyId, node: job.node,
-                    accession: job.accession, form: job.form, items
+                    accession: job.accession, form: job.form, doc: job.doc, items
                 })
             });
             if (!res.ok) { if (statusEl) { statusEl.style.color = 'var(--red)'; statusEl.textContent = `Save failed (${res.status})`; } return; }
@@ -1476,6 +1481,28 @@ document.addEventListener('submit', async e => {
         if (e.target.closest('[data-savebtn]')) {
             const job = jobById(openJobId);
             if (job) saveSelected(job);
+            return;
+        }
+        // Jump the doc pane to this row's quote. The filing is already rendered beside the chat, so
+        // this is a pure in-place scroll+highlight; only when the pane isn't showing (a job with no
+        // filing) does it fall back to the standalone viewer.
+        const q = e.target.closest('[data-quote]');
+        if (q) {
+            const s = (savesEl._items || [])[Number(q.getAttribute('data-quote'))];
+            const job = jobById(openJobId);
+            if (!s || !s.evidence || !window.EvidenceViewer) return;
+            if (docLoadedFor && docPaneEl.childElementCount) {
+                const res = window.EvidenceViewer.highlightIn(docPaneEl, s.evidence);
+                q.classList.toggle('is-miss', !res.found);
+                q.title = res.found
+                    ? (res.exact ? s.evidence : 'Closest match, not byte-exact — ' + s.evidence)
+                    : 'Not found in this document — ' + s.evidence;
+            } else if (job && jobHasFiling(job)) {
+                window.EvidenceViewer.open({
+                    quote: s.evidence, companyId: job.companyId, accession: job.accession,
+                    doc: job.doc, label: `${s.name} — ${job.filingLabel || 'filing'}`
+                });
+            }
             return;
         }
         const main = e.target.closest('[data-edit]');

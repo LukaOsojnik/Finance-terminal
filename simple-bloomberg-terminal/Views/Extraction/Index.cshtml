@@ -77,6 +77,7 @@
             <label class="ext-field-label" for="f_evidence">Evidence (verbatim passage)</label>
             <textarea id="f_evidence" class="form-control" rows="3" placeholder="Select the passage in the right pane, then USE SELECTION..."></textarea>
             <button type="button" id="useSelectionBtn" class="ext-btn ext-btn-ref">USE SELECTION</button>
+            <button type="button" id="findEvidenceBtn" class="ext-btn ext-btn-ref">FIND IN DOC</button>
             <div id="proofFiling" class="ext-status"></div>
         </div>
 
@@ -614,6 +615,19 @@
         const text = (window.getSelection()?.toString() || '').trim();
         if (!text) { uiAlert('Select the passage in the right pane first.'); return; }
         $('f_evidence').value = text;
+    });
+
+    // ---- the reverse trip: scroll the open filing to the evidence already on the row ----
+    // The row picker loads a saved row's stored quote into this box; this finds it back in the
+    // document, so verifying an existing row is a click rather than a Ctrl+F hunt.
+    $('findEvidenceBtn').addEventListener('click', () => {
+        const text = $('f_evidence').value.trim();
+        if (!text) { uiAlert('No evidence text to find.'); return; }
+        const pane = $('responseHtml');
+        if (pane.hidden || !pane.childElementCount) { uiAlert('Open the filing document first.'); return; }
+        const res = window.EvidenceViewer.highlightIn(pane, text);
+        if (!res.found) uiAlert('That passage is not in the document currently open.');
+        else if (!res.exact) $('saveStatus').textContent = 'Closest match highlighted — the quote is not byte-exact.';
     });
 
     // ---- SAVE: one button writes the row plus its single reference + evidence ----

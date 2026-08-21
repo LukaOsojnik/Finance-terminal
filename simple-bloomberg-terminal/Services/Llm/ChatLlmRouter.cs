@@ -16,6 +16,11 @@ public interface IChatLlm
         string system, string userPrompt,
         int maxTokens = 4096, bool jsonObject = false, bool fast = false, CancellationToken ct = default);
 
+    /// <summary>Non-streaming completion that also exposes why the provider stopped generating.</summary>
+    Task<LlmCompletion> CompleteDetailedAsync(
+        string system, string userPrompt,
+        int maxTokens = 4096, bool jsonObject = false, bool fast = false, CancellationToken ct = default);
+
     IAsyncEnumerable<ChatDelta> StreamAsync(
         IReadOnlyList<DeepSeekMessage> messages, int? maxTokens = null, CancellationToken ct = default);
 
@@ -45,13 +50,19 @@ public sealed class ChatLlmRouter : IChatLlm
     public async Task<string> CompleteAsync(
         string system, string userPrompt,
         int maxTokens = 4096, bool jsonObject = false, bool fast = false, CancellationToken ct = default)
+        => (await CompleteDetailedAsync(system, userPrompt, maxTokens, jsonObject, fast, ct)).Content;
+
+    public async Task<LlmCompletion> CompleteDetailedAsync(
+        string system, string userPrompt,
+        int maxTokens = 4096, bool jsonObject = false, bool fast = false, CancellationToken ct = default)
     {
         var keys = await _keys.GetAsync(ct);
         // Same provider (so one API key serves both), but the fast tier for parallel scan work.
         var model = fast
             ? ChatProviders.FastModel(keys.ParsingProvider)
             : ChatProviders.ResolveModel(keys.ParsingProvider, keys.ParsingModel);
-        return await Provider(keys.ParsingProvider).CompleteAsync(model, system, userPrompt, maxTokens, jsonObject, ct);
+        return await Provider(keys.ParsingProvider).CompleteDetailedAsync(
+            model, system, userPrompt, maxTokens, jsonObject, ct);
     }
 
     public async IAsyncEnumerable<ChatDelta> StreamAsync(

@@ -60,6 +60,20 @@ public class DeepSeekClientTests
     }
 
     [Fact]
+    public async Task CompleteDetailedAsync_ReturnsFinishReason()
+    {
+        var handler = ScriptedHttpHandler.Json(
+            """{"choices":[{"message":{"role":"assistant","content":"{\"sources\":["},"finish_reason":"length"}]}""");
+        var client = Build(handler);
+
+        var result = await client.CompleteDetailedAsync(
+            "deepseek-v4-flash", "s", "u", maxTokens: 16_000, jsonObject: true);
+
+        Assert.Equal("{\"sources\":[", result.Content);
+        Assert.Equal("length", result.FinishReason);
+    }
+
+    [Fact]
     public async Task CompleteAsync_EmptyChoices_ReturnsEmptyString()
     {
         var handler = ScriptedHttpHandler.Json("""{"choices":[]}""");

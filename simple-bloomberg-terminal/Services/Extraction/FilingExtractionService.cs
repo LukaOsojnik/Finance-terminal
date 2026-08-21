@@ -31,6 +31,8 @@ public class FilingExtractionService : IFilingExtractionService
     private readonly IMemoryCache _cache;
 
     private const int MaxParallel = 6;   // concurrent worker calls in the map phase
+    private const int WorkerMaxTokens = 16_000;
+    private const int WorkerRetryMaxTokens = 32_000;
 
     // Below this many headings, an Item's outline is treated as undetected rather than short — see
     // the `thin` handling in ScanAutoAsync. Real MD&A outlines run to dozens of sub-headings.
@@ -194,10 +196,11 @@ public class FilingExtractionService : IFilingExtractionService
         // with topic boundaries. Item 8 (financial statements) is handled separately, below.
         var picked = headings.Count > 0 ? await TriageHeadingsAsync(headings, node, ct) : [];
         var pickedSet = picked.ToHashSet();
-        // Always scan all of Item 7 (MD&A): for revenue/cost we want its full segment narrative, which
-        // triage can skip when judging by title. No-op for RISK (its sections are 1A/7A, not "Item 7").
+        // Always scan all of Item 1 (Business) and Item 7 (MD&A): for revenue/cost we want the full
+        // business, supplier and segment narrative, which triage can skip when judging by title.
+        // No-op for RISK (its sections are 1A/7A) and for 8-K Item 1.01 (the match is exact).
         for (int i = 0; i < headings.Count; i++)
-            if (headings[i].Section == "Item 7") pickedSet.Add(i);
+            if (headings[i].Section is "Item 1" or "Item 7") pickedSet.Add(i);
 
         // Heading-based chunks for the picked headings — but NOT Item 8. In the financial statements the
         // tables are detached from their bold headings, so "nearest heading" mislabels them (a segment
@@ -360,7 +363,10 @@ public class FilingExtractionService : IFilingExtractionService
         return headings;
     }
 
-    private static string RawKey(string accession, string doc) => $"filing-raw:{accession}:{doc}";
+    // Public so the evidence viewer's document endpoint (FilingsController.Document) reads the very
+    // entry a scan already populated: one cached copy of a multi-MB filing, and an instant open when
+    // the user clicks a quote right after the scan that produced it.
+    public static string RawKey(string accession, string doc) => $"filing-raw:{accession}:{doc}";
 
     // Fetch the filing document straight from EDGAR as HTML. FilingSections parses that directly now —
     // the Python sec2md sidecar that used to sit here converted the filing to markdown, which cost us
@@ -553,22 +559,42 @@ public class FilingExtractionService : IFilingExtractionService
             //   {"sources":[{"proof":{"name":"sales in EMEA","value":null
             // Raising it is close to free — it is a ceiling, not a spend, and unused tokens are never
             // billed — whereas setting it too low silently returns zero findings.
-            var answer = await _llm.CompleteAsync(system, prompt, maxTokens: 16000, jsonObject: true, fast: true, ct: ct);
+            var completion = await _llm.CompleteDetailedAsync(
+                system, prompt, maxTokens: WorkerMaxTokens, jsonObject: true, fast: true, ct: ct);
+            var answer = completion.Content;
             var found = Parse(answer, chunk.Section).ToList();
+
+            // Retry exactly once when the provider confirms that generation hit the ceiling before
+            // producing any usable JSON. Other malformed replies are not token-budget failures, and
+            // a truncated reply from which Parse salvaged complete sources is already useful.
+            var retried = false;
+            if (found.Count == 0 && !IsJsonObject(answer) &&
+                string.Equals(completion.FinishReason, "length", StringComparison.OrdinalIgnoreCase))
+            {
+                retried = true;
+                completion = await _llm.CompleteDetailedAsync(
+                    system, prompt, maxTokens: WorkerRetryMaxTokens,
+                    jsonObject: true, fast: true, ct: ct);
+                answer = completion.Content;
+                found = Parse(answer, chunk.Section).ToList();
+            }
 
             // A reply that does not parse as JSON AT ALL is a failed call, not an honest "no sources
             // in this excerpt" — and the two are indistinguishable downstream, since both end as an
-            // empty list. Providers here never surface finish_reason (DeepSeekResponse does not
-            // deserialise it), so malformed output is the only truncation signal we get. Report it as
-            // an error, with the raw reply, rather than letting the widget log a tidy "0 matches".
-            using (var probe = LlmJson.ParseObject(answer))
-                if (probe is null && found.Count == 0)
-                {
-                    onProgress?.Invoke(new ScanProgress(ScanChunkPhase.Error, index, 0, null, transcript,
-                        "Reply was not valid JSON — most likely truncated by the token ceiling " +
-                        $"(finish_reason=length). Raw reply:\n{answer}"));
-                    return found;
-                }
+            // empty list. Report the provider's actual finish reason alongside the raw reply rather
+            // than guessing that every malformed response hit the token ceiling.
+            if (!IsJsonObject(answer) && found.Count == 0)
+            {
+                var finish = completion.FinishReason is { Length: > 0 } reason
+                    ? $"finish_reason={reason}"
+                    : "finish_reason unavailable";
+                var retry = retried
+                    ? $" Retry with maxTokens={WorkerRetryMaxTokens} also failed."
+                    : "";
+                onProgress?.Invoke(new ScanProgress(ScanChunkPhase.Error, index, 0, null, transcript,
+                    $"Reply was not valid JSON ({finish}).{retry} Raw reply:\n{answer}"));
+                return found;
+            }
 
             onProgress?.Invoke(new ScanProgress(ScanChunkPhase.Done, index, found.Count, null, transcript, answer));
             return found;
@@ -579,6 +605,12 @@ public class FilingExtractionService : IFilingExtractionService
             return [];   // a dropped worker shouldn't sink the whole scan
         }
         finally { gate.Release(); }
+    }
+
+    private static bool IsJsonObject(string answer)
+    {
+        using var probe = LlmJson.ParseObject(answer);
+        return probe is not null;
     }
 
     // Pull suggestions out of the model's JSON, tolerant of code fences and string-or-number values.

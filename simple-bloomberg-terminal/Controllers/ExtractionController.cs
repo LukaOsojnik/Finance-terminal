@@ -213,8 +213,12 @@ public class ExtractionController : Controller
         if (owner is null) return NotFound();
         var node = ParseNode(req.Node);
 
-        // The filing every item in this batch was read from (upserted once by accession).
-        var filingId = ResolveFilingId(req.CompanyId, req.Accession, req.Form, null, null);
+        // The filing every item in this batch was read from (upserted once by accession). The URL is
+        // rebuilt here from the owner's CIK + the document the scan read, rather than trusted from the
+        // client: without it the Filing row is saved with a null PrimaryDocUrl and the proof can never
+        // be reopened, which is exactly what happened to every row saved from the chat widget.
+        var filingId = ResolveFilingId(req.CompanyId, req.Accession, req.Form, null,
+            EdgarArchive.DocUrl(owner.Cik, req.Accession, req.Doc));
 
         var saved = 0;
         var links = 0;

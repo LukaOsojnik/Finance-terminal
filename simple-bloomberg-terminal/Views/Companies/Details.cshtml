@@ -8,6 +8,19 @@
     var marginClass = co.GrossMargin.HasValue
         ? (co.GrossMargin.Value >= 0.5 ? "risk-low" : co.GrossMargin.Value >= 0.25 ? "risk-medium" : "risk-high")
         : "muted-cell";
+
+    // The row's verbatim quote, rendered under its filing link as a jump: clicking opens that filing
+    // in-page scrolled to the passage (wwwroot/js/evidence.js). Only for rows whose filing is still
+    // on record — without one there is nothing to open. Shared by all three tables below.
+    void EvidenceJump(Filing filing, string? evidence, string rowName)
+    {
+        if (string.IsNullOrWhiteSpace(evidence)) return;
+        <div class="evidence-link" role="button" tabindex="0" title="@evidence"
+             data-evidence="@evidence"
+             data-filing-id="@filing.Id"
+             data-sec-url="@filing.PrimaryDocUrl"
+             data-evidence-label="@rowName — @filing.Form @filing.AccessionNumber">evidence</div>
+    }
 }
 
 @* ── Hero ── *@
@@ -429,6 +442,7 @@
                                     @if (revFiling != null)
                                     {
                                         <div><a href="@revFiling.PrimaryDocUrl" target="_blank" rel="noopener">@revFiling.Form @revFiling.AccessionNumber</a></div>
+                                        EvidenceJump(revFiling, r.Evidence, r.Name);
                                     }
                                     else if (revWebRef != null)
                                     {
@@ -513,6 +527,7 @@
                                     @if (costFiling != null)
                                     {
                                         <div><a href="@costFiling.PrimaryDocUrl" target="_blank" rel="noopener">@costFiling.Form @costFiling.AccessionNumber</a></div>
+                                        EvidenceJump(costFiling, c.Evidence, c.Name);
                                     }
                                     else if (costWebRef != null)
                                     {
@@ -579,6 +594,7 @@
                                     @if (riskFiling != null)
                                     {
                                         <div><a href="@riskFiling.PrimaryDocUrl" target="_blank" rel="noopener">@riskFiling.Form @riskFiling.AccessionNumber</a></div>
+                                        EvidenceJump(riskFiling, risk.Evidence, risk.Name);
                                     }
                                     else
                                     {

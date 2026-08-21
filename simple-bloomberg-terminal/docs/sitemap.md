@@ -1510,6 +1510,21 @@
 
 ---
 
+## api/Filings/{id}/document
+
+| Field | Value |
+|---|---|
+| Controller | FilingsController (Controllers/Api/) |
+| Action | Document |
+| HTTP | GET |
+| Route source | `[ApiController]` + `[Route("api/[controller]")]` + `[HttpGet("{id:long}/document")]` |
+| View | — (the filing's primary document markup, returned as text/plain) |
+| Parameters | id: long (route, constrained) |
+| Auth | `[Authorize]` class-level (any authenticated user — no role restriction, unlike Create/Update/Delete) |
+| Notes | Read-only proxy of the stored filing's primary document from sec.gov Archives — the document file name comes from `Filing.PrimaryDocUrl` (its last path segment) and the CIK from the owning company; it reads/writes the same `IMemoryCache` entry (`FilingExtractionService.RawKey`) the extraction scan pipeline uses, so an already-scanned filing is served without a second SEC call. Backs the in-app evidence viewer (wwwroot/js/evidence.js), which opens the filing scrolled to the verbatim quote stored on a revenue/cost/risk row. Responses: 200 OK; 404 (no filing / document not found); 409 (filing has no PrimaryDocUrl, or company has no CIK); 503 (SEC unreachable) |
+
+---
+
 ## api/Scenarios
 
 | Field | Value |

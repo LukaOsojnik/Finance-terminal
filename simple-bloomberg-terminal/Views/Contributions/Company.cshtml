@@ -72,7 +72,22 @@
                                 }
                                 @if (!string.IsNullOrWhiteSpace(r.Evidence))
                                 {
-                                    <div class="text-muted">“@(r.Evidence!.Length > 160 ? r.Evidence[..160] + "…" : r.Evidence)”</div>
+                                    @* With the source filing still on record the quote is a jump: it opens
+                                       that filing scrolled to the passage, so the Manager verifies the proof
+                                       in place instead of hunting for it on sec.gov. *@
+                                    var quote = "“" + (r.Evidence!.Length > 160 ? r.Evidence[..160] + "…" : r.Evidence) + "”";
+                                    if (r.FilingId is { } fid)
+                                    {
+                                        <div class="text-muted evidence-link" role="button" tabindex="0" title="@r.Evidence"
+                                             data-evidence="@r.Evidence"
+                                             data-filing-id="@fid"
+                                             data-sec-url="@r.FilingUrl"
+                                             data-evidence-label="@r.Name — @(r.FilingLabel ?? "filing")">@quote</div>
+                                    }
+                                    else
+                                    {
+                                        <div class="text-muted">@quote</div>
+                                    }
                                 }
                                 @if (!string.IsNullOrWhiteSpace(r.FilingUrl))
                                 {

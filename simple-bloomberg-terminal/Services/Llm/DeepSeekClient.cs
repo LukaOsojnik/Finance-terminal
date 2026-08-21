@@ -32,6 +32,11 @@ public class DeepSeekClient : IDeepSeekClient, IChatProvider
     public async Task<string> CompleteAsync(
         string model, string system, string userPrompt,
         int maxTokens = 4096, bool jsonObject = false, CancellationToken ct = default)
+        => (await CompleteDetailedAsync(model, system, userPrompt, maxTokens, jsonObject, ct)).Content;
+
+    public async Task<LlmCompletion> CompleteDetailedAsync(
+        string model, string system, string userPrompt,
+        int maxTokens = 4096, bool jsonObject = false, CancellationToken ct = default)
     {
         var req = new DeepSeekRequest(
             Model: model,
@@ -52,7 +57,8 @@ public class DeepSeekClient : IDeepSeekClient, IChatProvider
         resp.EnsureSuccessStatusCode();
         var body = await resp.Content.ReadFromJsonAsync<DeepSeekResponse>(ct);
 
-        return body?.Choices?.FirstOrDefault()?.Message?.Content ?? "";
+        var choice = body?.Choices?.FirstOrDefault();
+        return new LlmCompletion(choice?.Message?.Content ?? "", choice?.FinishReason);
     }
 
     public async IAsyncEnumerable<ChatDelta> StreamAsync(

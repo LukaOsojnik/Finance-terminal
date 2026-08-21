@@ -2418,6 +2418,26 @@ body.scan-wresizing { cursor: ew-resize; user-select: none; }
 .scan-notify-save-name { color: var(--text-primary); }
 .scan-notify-save-meta { margin-top: 0.1rem; font-size: 0.68rem; color: var(--text-secondary); }
 .scan-notify-save-cp { color: var(--accent); }
+/* Jumps the filing pane to this proposal's verbatim quote; turns red when the quote can't be
+   located in the document (which is itself a signal about the proposal). */
+.scan-notify-save-quote {
+  flex: none;
+  align-self: center;
+  font-family: var(--font-display);
+  font-size: 0.62rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+  background: transparent;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  padding: 0.15rem 0.35rem;
+  cursor: pointer;
+  transition: var(--transition);
+}
+.scan-notify-save-quote:hover { color: var(--accent); border-color: var(--accent-dim); }
+.scan-notify-save-quote.is-miss { color: var(--red); border-color: var(--red); }
 .scan-notify-save-bar {
   display: flex;
   align-items: center;
@@ -3022,6 +3042,123 @@ textarea.form-control { resize: vertical; min-height: 3rem; line-height: 1.6; }
 }
 
 /* ═════════════════════════════════════════════════════════════
+   EVIDENCE VIEWER — click a row's verbatim quote, open the filing on it
+═════════════════════════════════════════════════════════════ */
+/* The quote wherever it is shown (source detail, contribution review, company tables). */
+.evidence-link {
+  cursor: pointer;
+  color: var(--text-primary);
+  border-bottom: 1px dashed var(--accent-dim);
+  transition: var(--transition);
+}
+.evidence-link:hover { color: var(--accent); border-bottom-color: var(--accent); }
+.evidence-link::after {
+  content: ' ↳';
+  color: var(--accent-dim);
+  font-size: 0.85em;
+}
+.evidence-link:hover::after { color: var(--accent); }
+
+.evidence-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1060;             /* above the scan panel (1031) and its edit modal (1050) */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1.5rem;
+}
+.evidence-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(5, 8, 12, 0.72);
+  backdrop-filter: blur(2px);
+}
+.evidence-box {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  width: min(1100px, 100%);
+  height: min(90vh, 100%);
+  background: var(--bg-card);
+  border: 1px solid var(--border-accent);
+  border-radius: var(--radius-md);
+  box-shadow: 0 8px 40px rgba(0,0,0,0.55), var(--accent-glow);
+  overflow: hidden;
+}
+.evidence-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.7rem 1rem;
+  border-bottom: 1px solid var(--border-subtle);
+}
+.evidence-title {
+  font-family: var(--font-display);
+  font-size: 0.85rem;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--text-primary);
+}
+.evidence-head-actions { display: flex; align-items: center; gap: 0.4rem; }
+.evidence-btn {
+  font-family: var(--font-display);
+  font-size: 0.68rem;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  text-decoration: none;
+  color: var(--text-secondary);
+  background: transparent;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  padding: 0.3rem 0.6rem;
+  cursor: pointer;
+  transition: var(--transition);
+}
+.evidence-btn:hover { color: var(--accent); border-color: var(--accent-dim); background: var(--bg-row-hover); }
+.evidence-status {
+  padding: 0.45rem 1rem;
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  color: var(--text-secondary);
+  border-bottom: 1px solid var(--border-subtle);
+}
+.evidence-status.is-miss { color: var(--red); }
+/* The filing renders as a white "page" inside the dark shell — same treatment the scan widget's
+   doc pane gives, so a filing looks identical wherever it is opened. */
+.evidence-doc {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  margin: 0.6rem;
+  padding: 0.9rem;
+  background: #fff;
+  color: #111;
+  font-size: 0.8rem;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+}
+.evidence-doc img { max-width: 100%; height: auto; }
+.evidence-doc table { border-collapse: collapse; }
+
+/* The located quote. Yellow rather than the accent: it sits on the filing's white page, not on the
+   terminal chrome, and has to read as a highlighter pen over black serif text. */
+mark.evidence-hit {
+  background: #ffe066;
+  color: #111;
+  box-shadow: 0 0 0 2px #ffe06699;
+  border-radius: 2px;
+}
+mark.evidence-hit.is-flash { animation: evidenceFlash 1.6s ease-out; }
+@keyframes evidenceFlash {
+  0%, 40% { background: #ffb703; box-shadow: 0 0 0 4px #ffb70366; }
+  100%    { background: #ffe066; box-shadow: 0 0 0 2px #ffe06699; }
+}
+
+/* ═════════════════════════════════════════════════════════════
    THEME TOGGLE (navbar) + LIGHT MODE
 ═════════════════════════════════════════════════════════════ */
 .theme-toggle {
@@ -3103,7 +3240,8 @@ textarea.form-control { resize: vertical; min-height: 3rem; line-height: 1.6; }
 [data-theme="light"] .terminal-dropdown,
 [data-theme="light"] .modal-box,
 [data-theme="light"] .scan-notify-panel,
-[data-theme="light"] .scan-notify-chip { box-shadow: 0 8px 28px rgba(20,40,70,0.14); }
+[data-theme="light"] .scan-notify-chip,
+[data-theme="light"] .evidence-box { box-shadow: 0 8px 28px rgba(20,40,70,0.14); }
 /* delete controls are admin/manager-only server-side; hide them entirely when logged out so anonymous
    browsers never see a button that only 403s. data-auth is stamped on <body> by _Layout; every delete
    form carries .js-confirm (full-page) or .js-row-delete (inline AJAX). !important because the forms set

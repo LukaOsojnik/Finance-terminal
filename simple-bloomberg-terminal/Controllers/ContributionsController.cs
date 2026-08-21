@@ -98,7 +98,7 @@ public class ContributionsController : Controller
             SupersedesId = r.SupersedesId,
             SupersededName = r.SupersedesId is { } sid ? _revenue.GetById(sid)?.Name : null,
             Reference = r.Reference, Evidence = r.Evidence,
-            FilingLabel = FilingLabel(r.Filing), FilingUrl = FilingUrl(r.Filing)
+            FilingLabel = FilingLabel(r.Filing), FilingUrl = FilingUrl(r.Filing), FilingId = FilingId(r.Filing)
         }).ToList();
 
         vm.Cost = cost.Select(c => new ContributionRow
@@ -109,7 +109,7 @@ public class ContributionsController : Controller
             SupersedesId = c.SupersedesId,
             SupersededName = c.SupersedesId is { } sid ? _cost.GetById(sid)?.Name : null,
             Reference = c.Reference, Evidence = c.Evidence,
-            FilingLabel = FilingLabel(c.Filing), FilingUrl = FilingUrl(c.Filing)
+            FilingLabel = FilingLabel(c.Filing), FilingUrl = FilingUrl(c.Filing), FilingId = FilingId(c.Filing)
         }).ToList();
 
         vm.Risk = risk.Select(r => new ContributionRow
@@ -119,7 +119,7 @@ public class ContributionsController : Controller
             SupersedesId = r.SupersedesId,
             SupersededName = r.SupersedesId is { } sid ? _risks.GetById(sid)?.Name : null,
             Reference = r.Reference, Evidence = r.Evidence,
-            FilingLabel = FilingLabel(r.Filing), FilingUrl = FilingUrl(r.Filing)
+            FilingLabel = FilingLabel(r.Filing), FilingUrl = FilingUrl(r.Filing), FilingId = FilingId(r.Filing)
         }).ToList();
 
         return View(vm);
@@ -131,6 +131,9 @@ public class ContributionsController : Controller
 
     private static string? FilingUrl(Filing? f) =>
         f is null || f.DeletedAt != null ? null : f.PrimaryDocUrl;
+
+    private static long? FilingId(Filing? f) =>
+        f is null || f.DeletedAt != null ? null : f.Id;
 
     // Approve every selected pending row. Batched so a section "Approve all" button posts the whole
     // section's ids in one call; the transition rules live in IContributionWriter.

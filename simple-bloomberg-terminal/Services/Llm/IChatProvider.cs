@@ -13,6 +13,12 @@ public interface IChatProvider
         string model, string system, string userPrompt,
         int maxTokens, bool jsonObject, CancellationToken ct);
 
+    /// <summary>Same completion with transport metadata retained for callers that need to distinguish
+    /// a token-ceiling cut from malformed output or a normal stop.</summary>
+    Task<LlmCompletion> CompleteDetailedAsync(
+        string model, string system, string userPrompt,
+        int maxTokens, bool jsonObject, CancellationToken ct);
+
     IAsyncEnumerable<ChatDelta> StreamAsync(
         string model, IReadOnlyList<DeepSeekMessage> messages,
         int? maxTokens, CancellationToken ct);

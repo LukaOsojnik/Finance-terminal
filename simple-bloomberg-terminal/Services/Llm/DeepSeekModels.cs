@@ -18,10 +18,17 @@ public record DeepSeekMessage(string Role, string Content);
 
 public record DeepSeekResponseFormat(string Type);
 
-// Response: { "choices": [ { "message": { "role": "assistant", "content": "..." } } ] }
+// Response: { "choices": [ { "message": { "role": "assistant", "content": "..." },
+//                            "finish_reason": "stop" } ] }
 public record DeepSeekResponse(List<DeepSeekChoice>? Choices);
 
-public record DeepSeekChoice(DeepSeekMessage? Message);
+public record DeepSeekChoice(
+    DeepSeekMessage? Message,
+    [property: JsonPropertyName("finish_reason")] string? FinishReason);
+
+/// <summary>A non-streaming answer plus the provider's reason for ending it. OpenAI-compatible
+/// providers use finish_reason; the Anthropic adapter normalizes its stop_reason to the same shape.</summary>
+public record LlmCompletion(string Content, string? FinishReason);
 
 // One streamed fragment surfaced to the chat. Kind is "reasoning" (v4 thinking trace, shown dim)
 // or "text" (the actual answer the user keeps).

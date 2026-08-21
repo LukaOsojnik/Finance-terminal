@@ -118,6 +118,11 @@ public class SaveBatchRequest
     public string Node { get; set; } = "REVENUE";
     public string? Accession { get; set; }   // filing the proofs came from (upserted by accession)
     public string? Form { get; set; }
+
+    // The filing's primary document file name (e.g. smci-20250630.htm). The scan read the filing
+    // through it, so the widget always has it — and without it the upserted Filing row has no
+    // PrimaryDocUrl, which leaves the saved proof unopenable (nothing to fetch the document from).
+    public string? Doc { get; set; }
     public List<SaveBatchItem> Items { get; set; } = [];
 }
 

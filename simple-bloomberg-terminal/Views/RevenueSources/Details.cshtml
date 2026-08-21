@@ -92,8 +92,26 @@
                         </tr>
                         <tr>
                             <td class="tag-cell">EVIDENCE</td>
+                            @* Clicking the quote opens the filing it was taken from, scrolled to and
+                               highlighting the passage — see wwwroot/js/evidence.js. Needs the filing
+                               to still be on record; otherwise it stays plain text. *@
                             <td class="name-cell" title="@src.Evidence">
-                                @(string.IsNullOrWhiteSpace(src.Evidence) ? "—" : "“" + Short(src.Evidence, 240) + "”")
+                                @if (string.IsNullOrWhiteSpace(src.Evidence))
+                                {
+                                    <text>—</text>
+                                }
+                                else if (proofFiling != null)
+                                {
+                                    <span class="evidence-link" role="button" tabindex="0"
+                                          data-evidence="@src.Evidence"
+                                          data-filing-id="@proofFiling.Id"
+                                          data-sec-url="@proofFiling.PrimaryDocUrl"
+                                          data-evidence-label="@src.Name — @proofFiling.Form @proofFiling.AccessionNumber">“@Short(src.Evidence, 240)”</span>
+                                }
+                                else
+                                {
+                                    <text>“@Short(src.Evidence, 240)”</text>
+                                }
                             </td>
                         </tr>
                         <tr>

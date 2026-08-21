@@ -44,6 +44,11 @@ public sealed class OpenAiCompatibleChatProvider : IChatProvider
     public async Task<string> CompleteAsync(
         string model, string system, string userPrompt,
         int maxTokens, bool jsonObject, CancellationToken ct)
+        => (await CompleteDetailedAsync(model, system, userPrompt, maxTokens, jsonObject, ct)).Content;
+
+    public async Task<LlmCompletion> CompleteDetailedAsync(
+        string model, string system, string userPrompt,
+        int maxTokens, bool jsonObject, CancellationToken ct)
     {
         var body = new Dictionary<string, object?>
         {
@@ -68,7 +73,8 @@ public sealed class OpenAiCompatibleChatProvider : IChatProvider
         resp.EnsureSuccessStatusCode();
         var parsed = await resp.Content.ReadFromJsonAsync<DeepSeekResponse>(ct);
 
-        return parsed?.Choices?.FirstOrDefault()?.Message?.Content ?? "";
+        var choice = parsed?.Choices?.FirstOrDefault();
+        return new LlmCompletion(choice?.Message?.Content ?? "", choice?.FinishReason);
     }
 
     public async IAsyncEnumerable<ChatDelta> StreamAsync(
