@@ -1,0 +1,235 @@
+[09:16:04 INF] Microsoft.Hosting.Lifetime Now listening on: http://localhost:5213
+[09:16:04 INF] Microsoft.Hosting.Lifetime Application started. Press Ctrl+C to shut down.
+[09:16:04 INF] Microsoft.Hosting.Lifetime Hosting environment: Development
+[09:16:04 INF] Microsoft.Hosting.Lifetime Content root path: C:\Users\luka.osojnik\Documents\Coding\simple-bloomberg-terminal\simple-bloomberg-terminal
+[09:16:04 INF] simple_bloomberg_terminal.Services.Provisioning.WeeklyVolumeRefreshService Weekly volume refresh: 6 companies with stale volume
+[09:16:05 INF] System.Net.Http.HttpClient.IStockApiClient.LogicalHandler Start processing HTTP request GET https://www.sec.gov/files/company_tickers.json
+[09:16:05 INF] System.Net.Http.HttpClient.IStockApiClient.ClientHandler Sending HTTP request GET https://www.sec.gov/files/company_tickers.json
+[09:16:05 WRN] Microsoft.EntityFrameworkCore.Query Compiling a query which loads related collections for more than one collection navigation, either via 'Include' or through projection, but no 'QuerySplittingBehavior' has been configured. By default, Entity Framework will use 'QuerySplittingBehavior.SingleQuery', which can potentially result in slow query performance. See https://go.microsoft.com/fwlink/?linkid=2134277 for more information. To identify the query that's triggering this warning call 'ConfigureWarnings(w => w.Throw(RelationalEventId.MultipleCollectionIncludeWarning))'.
+[09:16:05 INF] System.Net.Http.HttpClient.IStockApiClient.ClientHandler Received HTTP response headers after 420.4704ms - 200
+[09:16:05 INF] System.Net.Http.HttpClient.IStockApiClient.LogicalHandler End processing HTTP request after 456.2521ms - 200
+[09:16:06 INF] System.Net.Http.HttpClient.IYahooFinanceClient.LogicalHandler Start processing HTTP request GET https://query1.finance.yahoo.com/v8/finance/chart/MMM?*
+[09:16:06 INF] System.Net.Http.HttpClient.IYahooFinanceClient.ClientHandler Sending HTTP request GET https://query1.finance.yahoo.com/v8/finance/chart/MMM?*
+[09:16:06 INF] System.Net.Http.HttpClient.IYahooFinanceClient.ClientHandler Received HTTP response headers after 300.4543ms - 200
+[09:16:06 INF] System.Net.Http.HttpClient.IYahooFinanceClient.LogicalHandler End processing HTTP request after 312.6877ms - 200
+[09:16:06 INF] simple_bloomberg_terminal.Services.Provisioning.WeeklyVolumeRefreshService Company 143: appended 1 new weekly bars
+[09:16:07 INF] System.Net.Http.HttpClient.IStockApiClient.LogicalHandler Start processing HTTP request GET https://www.sec.gov/files/company_tickers.json
+[09:16:07 INF] System.Net.Http.HttpClient.IStockApiClient.ClientHandler Sending HTTP request GET https://www.sec.gov/files/company_tickers.json
+[09:16:07 INF] System.Net.Http.HttpClient.IStockApiClient.ClientHandler Received HTTP response headers after 30.1228ms - 200
+[09:16:07 INF] System.Net.Http.HttpClient.IStockApiClient.LogicalHandler End processing HTTP request after 52.9184ms - 200
+[09:16:07 INF] System.Net.Http.HttpClient.IYahooFinanceClient.LogicalHandler Start processing HTTP request GET https://query1.finance.yahoo.com/v8/finance/chart/ABBV?*
+[09:16:07 INF] System.Net.Http.HttpClient.IYahooFinanceClient.ClientHandler Sending HTTP request GET https://query1.finance.yahoo.com/v8/finance/chart/ABBV?*
+[09:16:07 INF] System.Net.Http.HttpClient.IYahooFinanceClient.ClientHandler Received HTTP response headers after 111.6998ms - 200
+[09:16:07 INF] System.Net.Http.HttpClient.IYahooFinanceClient.LogicalHandler End processing HTTP request after 130.6491ms - 200
+[09:16:07 INF] simple_bloomberg_terminal.Services.Provisioning.WeeklyVolumeRefreshService Company 157: appended 2 new weekly bars
+[09:16:07 INF] System.Net.Http.HttpClient.IStockApiClient.LogicalHandler Start processing HTTP request GET https://www.sec.gov/files/company_tickers.json
+[09:16:07 INF] System.Net.Http.HttpClient.IStockApiClient.ClientHandler Sending HTTP request GET https://www.sec.gov/files/company_tickers.json
+[09:16:07 INF] System.Net.Http.HttpClient.IStockApiClient.ClientHandler Received HTTP response headers after 29.7254ms - 200
+[09:16:07 INF] System.Net.Http.HttpClient.IStockApiClient.LogicalHandler End processing HTTP request after 53.1076ms - 200
+[09:16:07 INF] System.Net.Http.HttpClient.IYahooFinanceClient.LogicalHandler Start processing HTTP request GET https://query1.finance.yahoo.com/v8/finance/chart/ABT?*
+[09:16:07 INF] System.Net.Http.HttpClient.IYahooFinanceClient.ClientHandler Sending HTTP request GET https://query1.finance.yahoo.com/v8/finance/chart/ABT?*
+[09:16:07 INF] System.Net.Http.HttpClient.IYahooFinanceClient.ClientHandler Received HTTP response headers after 136.5223ms - 200
+[09:16:07 INF] System.Net.Http.HttpClient.IYahooFinanceClient.LogicalHandler End processing HTTP request after 167.3946ms - 200
+[09:16:07 INF] simple_bloomberg_terminal.Services.Provisioning.WeeklyVolumeRefreshService Company 189: appended 2 new weekly bars
+[09:16:07 INF] System.Net.Http.HttpClient.IStockApiClient.LogicalHandler Start processing HTTP request GET https://www.sec.gov/files/company_tickers.json
+[09:16:07 INF] System.Net.Http.HttpClient.IStockApiClient.ClientHandler Sending HTTP request GET https://www.sec.gov/files/company_tickers.json
+[09:16:07 INF] System.Net.Http.HttpClient.IStockApiClient.ClientHandler Received HTTP response headers after 29.5395ms - 200
+[09:16:07 INF] System.Net.Http.HttpClient.IStockApiClient.LogicalHandler End processing HTTP request after 41.1981ms - 200
+[09:16:07 INF] System.Net.Http.HttpClient.IYahooFinanceClient.LogicalHandler Start processing HTTP request GET https://query1.finance.yahoo.com/v8/finance/chart/FANG?*
+[09:16:07 INF] System.Net.Http.HttpClient.IYahooFinanceClient.ClientHandler Sending HTTP request GET https://query1.finance.yahoo.com/v8/finance/chart/FANG?*
+[09:16:08 INF] System.Net.Http.HttpClient.IYahooFinanceClient.ClientHandler Received HTTP response headers after 77.7753ms - 200
+[09:16:08 INF] System.Net.Http.HttpClient.IYahooFinanceClient.LogicalHandler End processing HTTP request after 88.7433ms - 200
+[09:16:08 INF] simple_bloomberg_terminal.Services.Provisioning.WeeklyVolumeRefreshService Company 379: appended 2 new weekly bars
+[09:16:08 INF] System.Net.Http.HttpClient.IStockApiClient.LogicalHandler Start processing HTTP request GET https://www.sec.gov/files/company_tickers.json
+[09:16:08 INF] System.Net.Http.HttpClient.IStockApiClient.ClientHandler Sending HTTP request GET https://www.sec.gov/files/company_tickers.json
+[09:16:08 INF] System.Net.Http.HttpClient.IStockApiClient.ClientHandler Received HTTP response headers after 24.6451ms - 200
+[09:16:08 INF] System.Net.Http.HttpClient.IStockApiClient.LogicalHandler End processing HTTP request after 34.8485ms - 200
+[09:16:08 INF] System.Net.Http.HttpClient.IYahooFinanceClient.LogicalHandler Start processing HTTP request GET https://query1.finance.yahoo.com/v8/finance/chart/GME?*
+[09:16:08 INF] System.Net.Http.HttpClient.IYahooFinanceClient.ClientHandler Sending HTTP request GET https://query1.finance.yahoo.com/v8/finance/chart/GME?*
+[09:16:08 INF] System.Net.Http.HttpClient.IYahooFinanceClient.ClientHandler Received HTTP response headers after 185.6268ms - 200
+[09:16:08 INF] System.Net.Http.HttpClient.IYahooFinanceClient.LogicalHandler End processing HTTP request after 195.695ms - 200
+[09:16:08 INF] simple_bloomberg_terminal.Services.Provisioning.WeeklyVolumeRefreshService Company 486: appended 2 new weekly bars
+[09:16:08 INF] System.Net.Http.HttpClient.IStockApiClient.LogicalHandler Start processing HTTP request GET https://www.sec.gov/files/company_tickers.json
+[09:16:08 INF] System.Net.Http.HttpClient.IStockApiClient.ClientHandler Sending HTTP request GET https://www.sec.gov/files/company_tickers.json
+[09:16:08 INF] System.Net.Http.HttpClient.IStockApiClient.ClientHandler Received HTTP response headers after 26.9796ms - 200
+[09:16:08 INF] System.Net.Http.HttpClient.IStockApiClient.LogicalHandler End processing HTTP request after 36.591ms - 200
+[09:16:08 INF] System.Net.Http.HttpClient.IYahooFinanceClient.LogicalHandler Start processing HTTP request GET https://query1.finance.yahoo.com/v8/finance/chart/WEN?*
+[09:16:08 INF] System.Net.Http.HttpClient.IYahooFinanceClient.ClientHandler Sending HTTP request GET https://query1.finance.yahoo.com/v8/finance/chart/WEN?*
+[09:16:08 INF] System.Net.Http.HttpClient.IYahooFinanceClient.ClientHandler Received HTTP response headers after 116.8605ms - 200
+[09:16:08 INF] System.Net.Http.HttpClient.IYahooFinanceClient.LogicalHandler End processing HTTP request after 126.9575ms - 200
+[09:16:08 INF] simple_bloomberg_terminal.Services.Provisioning.WeeklyVolumeRefreshService Company 487: appended 2 new weekly bars
+[09:16:53 INF] simple_bloomberg_terminal.Areas.Identity.Pages.Account.ExternalLoginModel Luka Osojnik signed in with Google.
+[09:17:14 WRN] LuckyPennySoftware.AutoMapper.License You do not have a valid license key for the Lucky Penny software AutoMapper. This is allowed for development and testing scenarios. If you are running in production you are required to have a licensed version. Please visit https://luckypennysoftware.com to obtain a valid license.
+[09:17:14 INF] System.Net.Http.HttpClient.IStockApiClient.LogicalHandler Start processing HTTP request GET https://data.sec.gov/submissions/CIK0001045810.json
+[09:17:14 INF] System.Net.Http.HttpClient.IStockApiClient.ClientHandler Sending HTTP request GET https://data.sec.gov/submissions/CIK0001045810.json
+[09:17:14 INF] System.Net.Http.HttpClient.IStockApiClient.ClientHandler Received HTTP response headers after 317.5957ms - 200
+[09:17:14 INF] System.Net.Http.HttpClient.IStockApiClient.LogicalHandler End processing HTTP request after 327.4604ms - 200
+[09:17:20 INF] System.Net.Http.HttpClient.IStockApiClient.LogicalHandler Start processing HTTP request GET https://www.sec.gov/Archives/edgar/data/1045810/000104581026000021/nvda-20260125.htm
+[09:17:20 INF] System.Net.Http.HttpClient.IStockApiClient.ClientHandler Sending HTTP request GET https://www.sec.gov/Archives/edgar/data/1045810/000104581026000021/nvda-20260125.htm
+[09:17:20 INF] System.Net.Http.HttpClient.IStockApiClient.ClientHandler Received HTTP response headers after 40.7526ms - 200
+[09:17:20 INF] System.Net.Http.HttpClient.IStockApiClient.LogicalHandler End processing HTTP request after 50.0326ms - 200
+[09:17:21 INF] System.Net.Http.HttpClient.IDeepSeekClient.LogicalHandler Start processing HTTP request POST https://api.deepseek.com/chat/completions
+[09:17:21 INF] System.Net.Http.HttpClient.IDeepSeekClient.ClientHandler Sending HTTP request POST https://api.deepseek.com/chat/completions
+[09:17:21 INF] System.Net.Http.HttpClient.IStockApiClient.LogicalHandler Start processing HTTP request GET https://www.sec.gov/Archives/edgar/data/1045810/000104581026000021/nvda-20260125.htm
+[09:17:21 INF] System.Net.Http.HttpClient.IStockApiClient.ClientHandler Sending HTTP request GET https://www.sec.gov/Archives/edgar/data/1045810/000104581026000021/nvda-20260125.htm
+[09:17:21 INF] System.Net.Http.HttpClient.IStockApiClient.ClientHandler Received HTTP response headers after 24.359ms - 200
+[09:17:21 INF] System.Net.Http.HttpClient.IStockApiClient.LogicalHandler End processing HTTP request after 33.5058ms - 200
+[09:17:21 INF] System.Net.Http.HttpClient.IDeepSeekClient.ClientHandler Received HTTP response headers after 560.1051ms - 200
+[09:17:21 INF] System.Net.Http.HttpClient.IDeepSeekClient.LogicalHandler End processing HTTP request after 569.3185ms - 200
+[09:17:56 INF] System.Net.Http.HttpClient.IStockApiClient.LogicalHandler Start processing HTTP request GET https://www.sec.gov/Archives/edgar/data/1045810/000104581026000021/FilingSummary.xml
+[09:17:56 INF] System.Net.Http.HttpClient.IStockApiClient.ClientHandler Sending HTTP request GET https://www.sec.gov/Archives/edgar/data/1045810/000104581026000021/FilingSummary.xml
+[09:17:56 INF] System.Net.Http.HttpClient.IStockApiClient.ClientHandler Received HTTP response headers after 49.6042ms - 200
+[09:17:56 INF] System.Net.Http.HttpClient.IStockApiClient.LogicalHandler End processing HTTP request after 59.3728ms - 200
+[09:17:56 INF] System.Net.Http.HttpClient.IStockApiClient.LogicalHandler Start processing HTTP request GET https://www.sec.gov/Archives/edgar/data/1045810/000104581026000021/R3.htm
+[09:17:57 INF] System.Net.Http.HttpClient.IStockApiClient.ClientHandler Sending HTTP request GET https://www.sec.gov/Archives/edgar/data/1045810/000104581026000021/R3.htm
+[09:17:57 INF] System.Net.Http.HttpClient.IStockApiClient.ClientHandler Received HTTP response headers after 27.2484ms - 200
+[09:17:57 INF] System.Net.Http.HttpClient.IStockApiClient.LogicalHandler End processing HTTP request after 38.1882ms - 200
+[09:17:57 INF] System.Net.Http.HttpClient.IStockApiClient.LogicalHandler Start processing HTTP request GET https://www.sec.gov/Archives/edgar/data/1045810/000104581026000021/R64.htm
+[09:17:57 INF] System.Net.Http.HttpClient.IStockApiClient.ClientHandler Sending HTTP request GET https://www.sec.gov/Archives/edgar/data/1045810/000104581026000021/R64.htm
+[09:17:57 INF] System.Net.Http.HttpClient.IStockApiClient.ClientHandler Received HTTP response headers after 25.9834ms - 200
+[09:17:57 INF] System.Net.Http.HttpClient.IStockApiClient.LogicalHandler End processing HTTP request after 34.827ms - 200
+[09:17:57 INF] System.Net.Http.HttpClient.IStockApiClient.LogicalHandler Start processing HTTP request GET https://www.sec.gov/Archives/edgar/data/1045810/000104581026000021/R65.htm
+[09:17:57 INF] System.Net.Http.HttpClient.IStockApiClient.ClientHandler Sending HTTP request GET https://www.sec.gov/Archives/edgar/data/1045810/000104581026000021/R65.htm
+[09:17:57 INF] System.Net.Http.HttpClient.IStockApiClient.ClientHandler Received HTTP response headers after 25.1564ms - 200
+[09:17:57 INF] System.Net.Http.HttpClient.IStockApiClient.LogicalHandler End processing HTTP request after 34.3711ms - 200
+[09:17:57 INF] System.Net.Http.HttpClient.IStockApiClient.LogicalHandler Start processing HTTP request GET https://www.sec.gov/Archives/edgar/data/1045810/000104581026000021/R71.htm
+[09:17:57 INF] System.Net.Http.HttpClient.IStockApiClient.ClientHandler Sending HTTP request GET https://www.sec.gov/Archives/edgar/data/1045810/000104581026000021/R71.htm
+[09:17:57 INF] System.Net.Http.HttpClient.IStockApiClient.ClientHandler Received HTTP response headers after 26.5169ms - 200
+[09:17:57 INF] System.Net.Http.HttpClient.IStockApiClient.LogicalHandler End processing HTTP request after 35.9134ms - 200
+[09:17:57 INF] System.Net.Http.HttpClient.IStockApiClient.LogicalHandler Start processing HTTP request GET https://www.sec.gov/Archives/edgar/data/1045810/000104581026000021/R81.htm
+[09:17:57 INF] System.Net.Http.HttpClient.IStockApiClient.ClientHandler Sending HTTP request GET https://www.sec.gov/Archives/edgar/data/1045810/000104581026000021/R81.htm
+[09:17:57 INF] System.Net.Http.HttpClient.IStockApiClient.ClientHandler Received HTTP response headers after 74.6217ms - 200
+[09:17:57 INF] System.Net.Http.HttpClient.IStockApiClient.LogicalHandler End processing HTTP request after 83.7921ms - 200
+[09:17:57 INF] System.Net.Http.HttpClient.IStockApiClient.LogicalHandler Start processing HTTP request GET https://www.sec.gov/Archives/edgar/data/1045810/000104581026000021/R82.htm
+[09:17:57 INF] System.Net.Http.HttpClient.IStockApiClient.ClientHandler Sending HTTP request GET https://www.sec.gov/Archives/edgar/data/1045810/000104581026000021/R82.htm
+[09:17:57 INF] System.Net.Http.HttpClient.IStockApiClient.ClientHandler Received HTTP response headers after 76.0736ms - 200
+[09:17:57 INF] System.Net.Http.HttpClient.IStockApiClient.LogicalHandler End processing HTTP request after 86.2085ms - 200
+[09:17:57 INF] System.Net.Http.HttpClient.IStockApiClient.LogicalHandler Start processing HTTP request GET https://www.sec.gov/Archives/edgar/data/1045810/000104581026000021/R83.htm
+[09:17:57 INF] System.Net.Http.HttpClient.IStockApiClient.ClientHandler Sending HTTP request GET https://www.sec.gov/Archives/edgar/data/1045810/000104581026000021/R83.htm
+[09:17:57 INF] System.Net.Http.HttpClient.IStockApiClient.ClientHandler Received HTTP response headers after 52.2839ms - 200
+[09:17:57 INF] System.Net.Http.HttpClient.IStockApiClient.LogicalHandler End processing HTTP request after 62.2831ms - 200
+[09:17:57 INF] System.Net.Http.HttpClient.IStockApiClient.LogicalHandler Start processing HTTP request GET https://www.sec.gov/Archives/edgar/data/1045810/000104581026000021/R84.htm
+[09:17:57 INF] System.Net.Http.HttpClient.IStockApiClient.ClientHandler Sending HTTP request GET https://www.sec.gov/Archives/edgar/data/1045810/000104581026000021/R84.htm
+[09:17:57 INF] System.Net.Http.HttpClient.IStockApiClient.ClientHandler Received HTTP response headers after 73.3308ms - 200
+[09:17:57 INF] System.Net.Http.HttpClient.IStockApiClient.LogicalHandler End processing HTTP request after 83.3814ms - 200
+[09:17:57 INF] System.Net.Http.HttpClient.IStockApiClient.LogicalHandler Start processing HTTP request GET https://www.sec.gov/Archives/edgar/data/1045810/000104581026000021/R85.htm
+[09:17:57 INF] System.Net.Http.HttpClient.IStockApiClient.ClientHandler Sending HTTP request GET https://www.sec.gov/Archives/edgar/data/1045810/000104581026000021/R85.htm
+[09:17:57 INF] System.Net.Http.HttpClient.IStockApiClient.ClientHandler Received HTTP response headers after 37.9841ms - 200
+[09:17:57 INF] System.Net.Http.HttpClient.IStockApiClient.LogicalHandler End processing HTTP request after 48.0414ms - 200
+[09:17:57 INF] System.Net.Http.HttpClient.IDeepSeekClient.LogicalHandler Start processing HTTP request POST https://api.deepseek.com/chat/completions
+[09:17:57 INF] System.Net.Http.HttpClient.IDeepSeekClient.ClientHandler Sending HTTP request POST https://api.deepseek.com/chat/completions
+[09:17:57 INF] System.Net.Http.HttpClient.IDeepSeekClient.LogicalHandler Start processing HTTP request POST https://api.deepseek.com/chat/completions
+[09:17:57 INF] System.Net.Http.HttpClient.IDeepSeekClient.ClientHandler Sending HTTP request POST https://api.deepseek.com/chat/completions
+[09:17:57 INF] System.Net.Http.HttpClient.IDeepSeekClient.LogicalHandler Start processing HTTP request POST https://api.deepseek.com/chat/completions
+[09:17:57 INF] System.Net.Http.HttpClient.IDeepSeekClient.ClientHandler Sending HTTP request POST https://api.deepseek.com/chat/completions
+[09:17:57 INF] System.Net.Http.HttpClient.IDeepSeekClient.LogicalHandler Start processing HTTP request POST https://api.deepseek.com/chat/completions
+[09:17:57 INF] System.Net.Http.HttpClient.IDeepSeekClient.ClientHandler Sending HTTP request POST https://api.deepseek.com/chat/completions
+[09:17:57 INF] System.Net.Http.HttpClient.IDeepSeekClient.LogicalHandler Start processing HTTP request POST https://api.deepseek.com/chat/completions
+[09:17:57 INF] System.Net.Http.HttpClient.IDeepSeekClient.ClientHandler Sending HTTP request POST https://api.deepseek.com/chat/completions
+[09:17:57 INF] System.Net.Http.HttpClient.IDeepSeekClient.LogicalHandler Start processing HTTP request POST https://api.deepseek.com/chat/completions
+[09:17:57 INF] System.Net.Http.HttpClient.IDeepSeekClient.ClientHandler Sending HTTP request POST https://api.deepseek.com/chat/completions
+[09:17:57 INF] System.Net.Http.HttpClient.IDeepSeekClient.ClientHandler Received HTTP response headers after 297.5146ms - 200
+[09:17:57 INF] System.Net.Http.HttpClient.IDeepSeekClient.LogicalHandler End processing HTTP request after 307.5699ms - 200
+[09:17:57 INF] System.Net.Http.HttpClient.IDeepSeekClient.ClientHandler Received HTTP response headers after 320.9172ms - 200
+[09:17:57 INF] System.Net.Http.HttpClient.IDeepSeekClient.LogicalHandler End processing HTTP request after 330.6808ms - 200
+[09:17:57 INF] System.Net.Http.HttpClient.IDeepSeekClient.ClientHandler Received HTTP response headers after 325.7509ms - 200
+[09:17:57 INF] System.Net.Http.HttpClient.IDeepSeekClient.LogicalHandler End processing HTTP request after 335.5369ms - 200
+[09:17:57 INF] System.Net.Http.HttpClient.IDeepSeekClient.ClientHandler Received HTTP response headers after 323.8403ms - 200
+[09:17:57 INF] System.Net.Http.HttpClient.IDeepSeekClient.ClientHandler Received HTTP response headers after 337.6809ms - 200
+[09:17:57 INF] System.Net.Http.HttpClient.IDeepSeekClient.LogicalHandler End processing HTTP request after 334.7064ms - 200
+[09:17:57 INF] System.Net.Http.HttpClient.IDeepSeekClient.LogicalHandler End processing HTTP request after 351.1845ms - 200
+[09:17:57 INF] System.Net.Http.HttpClient.IDeepSeekClient.ClientHandler Received HTTP response headers after 357.8036ms - 200
+[09:17:57 INF] System.Net.Http.HttpClient.IDeepSeekClient.LogicalHandler End processing HTTP request after 367.1595ms - 200
+[09:18:00 INF] System.Net.Http.HttpClient.IDeepSeekClient.LogicalHandler Start processing HTTP request POST https://api.deepseek.com/chat/completions
+[09:18:00 INF] System.Net.Http.HttpClient.IDeepSeekClient.ClientHandler Sending HTTP request POST https://api.deepseek.com/chat/completions
+[09:18:01 INF] System.Net.Http.HttpClient.IDeepSeekClient.ClientHandler Received HTTP response headers after 282.103ms - 200
+[09:18:01 INF] System.Net.Http.HttpClient.IDeepSeekClient.LogicalHandler End processing HTTP request after 290.4513ms - 200
+[09:18:03 INF] System.Net.Http.HttpClient.IDeepSeekClient.LogicalHandler Start processing HTTP request POST https://api.deepseek.com/chat/completions
+[09:18:03 INF] System.Net.Http.HttpClient.IDeepSeekClient.ClientHandler Sending HTTP request POST https://api.deepseek.com/chat/completions
+[09:18:03 INF] System.Net.Http.HttpClient.IDeepSeekClient.ClientHandler Received HTTP response headers after 293.0214ms - 200
+[09:18:03 INF] System.Net.Http.HttpClient.IDeepSeekClient.LogicalHandler End processing HTTP request after 301.2101ms - 200
+[09:18:04 INF] System.Net.Http.HttpClient.IDeepSeekClient.LogicalHandler Start processing HTTP request POST https://api.deepseek.com/chat/completions
+[09:18:04 INF] System.Net.Http.HttpClient.IDeepSeekClient.ClientHandler Sending HTTP request POST https://api.deepseek.com/chat/completions
+[09:18:04 INF] System.Net.Http.HttpClient.IDeepSeekClient.ClientHandler Received HTTP response headers after 288.3447ms - 200
+[09:18:04 INF] System.Net.Http.HttpClient.IDeepSeekClient.LogicalHandler End processing HTTP request after 296.8763ms - 200
+[09:18:07 INF] System.Net.Http.HttpClient.IDeepSeekClient.LogicalHandler Start processing HTTP request POST https://api.deepseek.com/chat/completions
+[09:18:07 INF] System.Net.Http.HttpClient.IDeepSeekClient.ClientHandler Sending HTTP request POST https://api.deepseek.com/chat/completions
+[09:18:07 INF] System.Net.Http.HttpClient.IDeepSeekClient.ClientHandler Received HTTP response headers after 296.3241ms - 200
+[09:18:07 INF] System.Net.Http.HttpClient.IDeepSeekClient.LogicalHandler End processing HTTP request after 309.0712ms - 200
+[09:18:09 INF] System.Net.Http.HttpClient.IDeepSeekClient.LogicalHandler Start processing HTTP request POST https://api.deepseek.com/chat/completions
+[09:18:09 INF] System.Net.Http.HttpClient.IDeepSeekClient.ClientHandler Sending HTTP request POST https://api.deepseek.com/chat/completions
+[09:18:09 INF] System.Net.Http.HttpClient.IDeepSeekClient.ClientHandler Received HTTP response headers after 287.2869ms - 200
+[09:18:09 INF] System.Net.Http.HttpClient.IDeepSeekClient.LogicalHandler End processing HTTP request after 295.8774ms - 200
+[09:18:11 INF] System.Net.Http.HttpClient.IDeepSeekClient.LogicalHandler Start processing HTTP request POST https://api.deepseek.com/chat/completions
+[09:18:11 INF] System.Net.Http.HttpClient.IDeepSeekClient.ClientHandler Sending HTTP request POST https://api.deepseek.com/chat/completions
+[09:18:11 INF] System.Net.Http.HttpClient.IDeepSeekClient.ClientHandler Received HTTP response headers after 293.3101ms - 200
+[09:18:11 INF] System.Net.Http.HttpClient.IDeepSeekClient.LogicalHandler End processing HTTP request after 301.6328ms - 200
+[09:18:14 INF] System.Net.Http.HttpClient.IDeepSeekClient.LogicalHandler Start processing HTTP request POST https://api.deepseek.com/chat/completions
+[09:18:14 INF] System.Net.Http.HttpClient.IDeepSeekClient.ClientHandler Sending HTTP request POST https://api.deepseek.com/chat/completions
+[09:18:14 INF] System.Net.Http.HttpClient.IDeepSeekClient.ClientHandler Received HTTP response headers after 360.7147ms - 200
+[09:18:14 INF] System.Net.Http.HttpClient.IDeepSeekClient.LogicalHandler End processing HTTP request after 368.8009ms - 200
+[09:18:19 INF] System.Net.Http.HttpClient.IDeepSeekClient.LogicalHandler Start processing HTTP request POST https://api.deepseek.com/chat/completions
+[09:18:19 INF] System.Net.Http.HttpClient.IDeepSeekClient.ClientHandler Sending HTTP request POST https://api.deepseek.com/chat/completions
+[09:18:19 INF] System.Net.Http.HttpClient.IDeepSeekClient.ClientHandler Received HTTP response headers after 321.7113ms - 200
+[09:18:19 INF] System.Net.Http.HttpClient.IDeepSeekClient.LogicalHandler End processing HTTP request after 330.0949ms - 200
+[09:18:21 INF] System.Net.Http.HttpClient.IDeepSeekClient.LogicalHandler Start processing HTTP request POST https://api.deepseek.com/chat/completions
+[09:18:21 INF] System.Net.Http.HttpClient.IDeepSeekClient.ClientHandler Sending HTTP request POST https://api.deepseek.com/chat/completions
+[09:18:21 INF] System.Net.Http.HttpClient.IDeepSeekClient.ClientHandler Received HTTP response headers after 299.0673ms - 200
+[09:18:21 INF] System.Net.Http.HttpClient.IDeepSeekClient.LogicalHandler End processing HTTP request after 307.3383ms - 200
+[09:18:23 INF] System.Net.Http.HttpClient.IDeepSeekClient.LogicalHandler Start processing HTTP request POST https://api.deepseek.com/chat/completions
+[09:18:23 INF] System.Net.Http.HttpClient.IDeepSeekClient.ClientHandler Sending HTTP request POST https://api.deepseek.com/chat/completions
+[09:18:24 INF] System.Net.Http.HttpClient.IDeepSeekClient.ClientHandler Received HTTP response headers after 323.252ms - 200
+[09:18:24 INF] System.Net.Http.HttpClient.IDeepSeekClient.LogicalHandler End processing HTTP request after 331.4052ms - 200
+[09:18:25 INF] System.Net.Http.HttpClient.IDeepSeekClient.LogicalHandler Start processing HTTP request POST https://api.deepseek.com/chat/completions
+[09:18:25 INF] System.Net.Http.HttpClient.IDeepSeekClient.ClientHandler Sending HTTP request POST https://api.deepseek.com/chat/completions
+[09:18:25 INF] System.Net.Http.HttpClient.IDeepSeekClient.ClientHandler Received HTTP response headers after 291.3549ms - 200
+[09:18:25 INF] System.Net.Http.HttpClient.IDeepSeekClient.LogicalHandler End processing HTTP request after 300.7112ms - 200
+[09:18:31 INF] System.Net.Http.HttpClient.IDeepSeekClient.LogicalHandler Start processing HTTP request POST https://api.deepseek.com/chat/completions
+[09:18:31 INF] System.Net.Http.HttpClient.IDeepSeekClient.ClientHandler Sending HTTP request POST https://api.deepseek.com/chat/completions
+[09:18:31 INF] System.Net.Http.HttpClient.IDeepSeekClient.ClientHandler Received HTTP response headers after 289.7393ms - 200
+[09:18:31 INF] System.Net.Http.HttpClient.IDeepSeekClient.LogicalHandler End processing HTTP request after 298.0564ms - 200
+[09:18:32 INF] System.Net.Http.HttpClient.IDeepSeekClient.LogicalHandler Start processing HTTP request POST https://api.deepseek.com/chat/completions
+[09:18:32 INF] System.Net.Http.HttpClient.IDeepSeekClient.ClientHandler Sending HTTP request POST https://api.deepseek.com/chat/completions
+[09:18:33 INF] System.Net.Http.HttpClient.IDeepSeekClient.ClientHandler Received HTTP response headers after 523.8008ms - 200
+[09:18:33 INF] System.Net.Http.HttpClient.IDeepSeekClient.LogicalHandler End processing HTTP request after 532.1156ms - 200
+[09:18:33 INF] System.Net.Http.HttpClient.IDeepSeekClient.LogicalHandler Start processing HTTP request POST https://api.deepseek.com/chat/completions
+[09:18:33 INF] System.Net.Http.HttpClient.IDeepSeekClient.ClientHandler Sending HTTP request POST https://api.deepseek.com/chat/completions
+[09:18:33 INF] System.Net.Http.HttpClient.IDeepSeekClient.ClientHandler Received HTTP response headers after 295.4502ms - 200
+[09:18:33 INF] System.Net.Http.HttpClient.IDeepSeekClient.LogicalHandler End processing HTTP request after 303.3995ms - 200
+[09:18:34 INF] System.Net.Http.HttpClient.IDeepSeekClient.LogicalHandler Start processing HTTP request POST https://api.deepseek.com/chat/completions
+[09:18:34 INF] System.Net.Http.HttpClient.IDeepSeekClient.ClientHandler Sending HTTP request POST https://api.deepseek.com/chat/completions
+[09:18:34 INF] System.Net.Http.HttpClient.IDeepSeekClient.ClientHandler Received HTTP response headers after 300.7398ms - 200
+[09:18:34 INF] System.Net.Http.HttpClient.IDeepSeekClient.LogicalHandler End processing HTTP request after 309.4928ms - 200
+[09:18:36 INF] System.Net.Http.HttpClient.IDeepSeekClient.LogicalHandler Start processing HTTP request POST https://api.deepseek.com/chat/completions
+[09:18:36 INF] System.Net.Http.HttpClient.IDeepSeekClient.ClientHandler Sending HTTP request POST https://api.deepseek.com/chat/completions
+[09:18:37 INF] System.Net.Http.HttpClient.IDeepSeekClient.ClientHandler Received HTTP response headers after 327.882ms - 200
+[09:18:37 INF] System.Net.Http.HttpClient.IDeepSeekClient.LogicalHandler End processing HTTP request after 336.1829ms - 200
+[09:18:38 INF] System.Net.Http.HttpClient.IDeepSeekClient.LogicalHandler Start processing HTTP request POST https://api.deepseek.com/chat/completions
+[09:18:38 INF] System.Net.Http.HttpClient.IDeepSeekClient.ClientHandler Sending HTTP request POST https://api.deepseek.com/chat/completions
+[09:18:38 INF] System.Net.Http.HttpClient.IDeepSeekClient.ClientHandler Received HTTP response headers after 290.131ms - 200
+[09:18:38 INF] System.Net.Http.HttpClient.IDeepSeekClient.LogicalHandler End processing HTTP request after 297.9189ms - 200
+[09:18:39 INF] System.Net.Http.HttpClient.IDeepSeekClient.LogicalHandler Start processing HTTP request POST https://api.deepseek.com/chat/completions
+[09:18:39 INF] System.Net.Http.HttpClient.IDeepSeekClient.ClientHandler Sending HTTP request POST https://api.deepseek.com/chat/completions
+[09:18:39 INF] System.Net.Http.HttpClient.IDeepSeekClient.ClientHandler Received HTTP response headers after 285.4126ms - 200
+[09:18:39 INF] System.Net.Http.HttpClient.IDeepSeekClient.LogicalHandler End processing HTTP request after 293.5483ms - 200
+[09:20:33 INF] System.Net.Http.HttpClient.IStockApiClient.LogicalHandler Start processing HTTP request GET https://data.sec.gov/api/xbrl/companyfacts/CIK0001045810.json
+[09:20:33 INF] System.Net.Http.HttpClient.IStockApiClient.ClientHandler Sending HTTP request GET https://data.sec.gov/api/xbrl/companyfacts/CIK0001045810.json
+[09:20:33 INF] System.Net.Http.HttpClient.IStockApiClient.ClientHandler Received HTTP response headers after 376.1636ms - 200
+[09:20:33 INF] System.Net.Http.HttpClient.IStockApiClient.LogicalHandler End processing HTTP request after 386.3441ms - 200
+[09:20:34 INF] System.Net.Http.HttpClient.IStockApiClient.LogicalHandler Start processing HTTP request GET https://data.sec.gov/submissions/CIK0001045810.json
+[09:20:34 INF] System.Net.Http.HttpClient.IStockApiClient.ClientHandler Sending HTTP request GET https://data.sec.gov/submissions/CIK0001045810.json
+[09:20:34 INF] System.Net.Http.HttpClient.IStockApiClient.ClientHandler Received HTTP response headers after 22.0159ms - 200
+[09:20:34 INF] System.Net.Http.HttpClient.IStockApiClient.LogicalHandler End processing HTTP request after 31.2552ms - 200
+[09:20:34 INF] System.Net.Http.HttpClient.IStockApiClient.LogicalHandler Start processing HTTP request GET https://www.sec.gov/Archives/edgar/data/1045810/000104581026000021/index.json
+[09:20:34 INF] System.Net.Http.HttpClient.IStockApiClient.ClientHandler Sending HTTP request GET https://www.sec.gov/Archives/edgar/data/1045810/000104581026000021/index.json
+[09:20:34 INF] System.Net.Http.HttpClient.IStockApiClient.ClientHandler Received HTTP response headers after 130.4546ms - 200
+[09:20:34 INF] System.Net.Http.HttpClient.IStockApiClient.LogicalHandler End processing HTTP request after 143.308ms - 200
+[09:20:34 INF] System.Net.Http.HttpClient.IStockApiClient.LogicalHandler Start processing HTTP request GET https://www.sec.gov/Archives/edgar/data/1045810/000104581026000021/nvda-20260125_htm.xml
+[09:20:34 INF] System.Net.Http.HttpClient.IStockApiClient.ClientHandler Sending HTTP request GET https://www.sec.gov/Archives/edgar/data/1045810/000104581026000021/nvda-20260125_htm.xml
+[09:20:34 INF] System.Net.Http.HttpClient.IStockApiClient.ClientHandler Received HTTP response headers after 26.1823ms - 200
+[09:20:34 INF] System.Net.Http.HttpClient.IStockApiClient.LogicalHandler End processing HTTP request after 34.8881ms - 200
+[09:20:34 INF] System.Net.Http.HttpClient.IDeepSeekClient.LogicalHandler Start processing HTTP request POST https://api.deepseek.com/chat/completions
+[09:20:34 INF] System.Net.Http.HttpClient.IDeepSeekClient.ClientHandler Sending HTTP request POST https://api.deepseek.com/chat/completions
+[09:20:35 INF] System.Net.Http.HttpClient.IDeepSeekClient.ClientHandler Received HTTP response headers after 453.7637ms - 200
+[09:20:35 INF] System.Net.Http.HttpClient.IDeepSeekClient.LogicalHandler End processing HTTP request after 463.4583ms - 200
+[10:47:32 INF] Microsoft.Hosting.Lifetime Application is shutting down...
