@@ -89,10 +89,11 @@ public class IndustryClassifier : IIndustryClassifier
         // and the label->sub mapping is CACHED, so a flash mistake is permanent. The cost argues for pro
         // anyway: each distinct label is resolved exactly once ever (the cache), so it's a bounded one-time
         // spend, not per-company. maxTokens headroom matters because a reasoning model spends tokens BEFORE
-        // the JSON; a tight budget truncates mid-reasoning -> empty content -> parse fails -> null. Industry
+        // the JSON; 900 was too tight and truncated EVERY call to an empty reply (see the "empty reply" no-fit
+        // logs), so the budget has to clear the reasoning trace with room to spare, not just fit the JSON. Industry
         // is best-effort, so a missing key / unreachable model just returns null rather than blocking the flow.
         string raw;
-        try { raw = await _llm.CompleteAsync(system, user, maxTokens: 900, jsonObject: true, fast: false, ct: ct); }
+        try { raw = await _llm.CompleteAsync(system, user, maxTokens: 4000, jsonObject: true, fast: false, ct: ct); }
         catch (Exception ex) when (ex is HttpRequestException or MissingApiKeyException) { return null; }
 
         // Parse + validate; on any failure, log WHY (truncation vs out-of-list vs wrong-sector vs the model

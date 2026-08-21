@@ -222,6 +222,8 @@ public class ExtractionController : Controller
 
         var saved = 0;
         var links = 0;
+        // Bare stubs phase 1 created; phase 2 fills them in after the response goes out.
+        var stubs = new List<(long CompanyId, string? Ticker)>();
         foreach (var item in req.Items ?? [])
         {
             if (string.IsNullOrWhiteSpace(item.Name)) continue;
@@ -240,7 +242,11 @@ public class ExtractionController : Controller
                     Ticker = item.RelatedCompanyTicker,
                     Value = item.Value
                 };
-                counterpartyId = await _provisioning.GetOrCreateCounterpartyAsync(linkReq, owner);
+                // Phase 1 only: a name match, else a bare stub. No FMP/Yahoo/sonar/LLM on this path.
+                var (cpId, created) = _provisioning.GetOrCreateCounterpartyFast(linkReq, owner);
+                counterpartyId = cpId;
+                // Only a FRESH stub needs enriching — a name match is an already-populated company.
+                if (created) stubs.Add((cpId, item.RelatedCompanyTicker));
             }
 
             // The block's Reference (where in the filing) and Evidence (the one verbatim quote) ride
@@ -257,7 +263,30 @@ public class ExtractionController : Controller
                 links++;
             }
         }
+        // Phase 2, detached: fill the stubs we just created. The response goes out first, so the user
+        // sees the rows land now and the counterparty cards fill in a moment later.
+        if (stubs.Count > 0) QueueCounterpartyEnrichment(stubs, await _keys.GetAsync());
+
         return Json(new { saved, links });
+    }
+
+    // Phase 2 of save-batch: enrich the bare counterparty stubs phase 1 wrote — FMP + financial history
+    // for the ticker'd ones, Perplexity sonar profile discovery for the private ones. Runs on a DETACHED
+    // scope for the same reason CompaniesController.Rediscover does: the request-scoped DbContext is
+    // disposed the moment this action returns, and the vendor + LLM calls take far longer than the save.
+    // Fire-and-forget on purpose — the rows are already saved and linked, nothing in the UI waits on
+    // this, and EnrichCounterpartiesAsync logs its own per-stub failures.
+    private void QueueCounterpartyEnrichment(
+        IReadOnlyList<(long CompanyId, string? Ticker)> stubs, UserApiKeys keys)
+    {
+        _ = Task.Run(async () =>
+        {
+            using var scope = _scopeFactory.CreateScope();
+            var sp = scope.ServiceProvider;
+            // The keyed calls run on the USER's own keys, which live on HttpContext — hence the snapshot.
+            sp.GetRequiredService<IUserApiKeyProvider>().Set(keys);
+            await sp.GetRequiredService<ICompanyProvisioningService>().EnrichCounterpartiesAsync(stubs);
+        });
     }
 
     // Mode B — AI reads one filing and proposes revenue rows + their proof for the human to

@@ -84,6 +84,21 @@ public interface ICompanyProvisioningService
     // Reuse (fuzzy name match) or create the counterparty company behind a confirmed link.
     Task<long> GetOrCreateCounterpartyAsync(LinkCounterpartyRequest req, Company owner);
 
+    // FAST counterparty resolve (phase 1) — the batch-save twin of GetOrCreateCounterpartyAsync.
+    // Reuses a name match, else writes a BARE stub (name, country, guessed sector, public/private from
+    // the ticker) with no FMP / Yahoo / sonar / LLM call at all, so a save that creates five
+    // counterparties still returns in milliseconds instead of a minute. `Created` is true only for a
+    // fresh stub — feed those to EnrichCounterpartiesAsync to fill the rest in the background.
+    (long Id, bool Created) GetOrCreateCounterpartyFast(LinkCounterpartyRequest req, Company owner);
+
+    // FULL counterparty enrichment (phase 2) — fill the stubs phase 1 left bare. Forks on the ticker
+    // the extraction proposed: PUBLIC (ticker) takes the FMP profile+income pipeline plus dated
+    // financial history; PRIVATE (no ticker) takes Perplexity sonar profile discovery, which is the
+    // only source that works without one. Best-effort and self-logging — one stub failing leaves it a
+    // usable bare row and never stops the others. Run detached, after the save has already returned.
+    Task EnrichCounterpartiesAsync(
+        IEnumerable<(long CompanyId, string? Ticker)> stubs, CancellationToken ct = default);
+
     // Overwrite a company's AI-seeded fields with fetched values (preserve curated Name; keep an
     // existing value when the fetch returned none). Used by Backfill and the re-discovery accept.
     void ApplyFetchedData(Company entity, CompanyCreateModel model);
@@ -105,6 +120,7 @@ public class CompanyProvisioningService(
     IYahooFinanceClient yahoo,
     IStockApiClient stock,
     IIndustryClassifier industryClassifier,
+    ICompanyProfileDiscovery profileDiscovery,
     ILogger<CompanyProvisioningService> logger) : ICompanyProvisioningService
 {
     public async Task<CompanyDraft?> BuildFromTickerAsync(string ticker)
@@ -453,6 +469,91 @@ public class CompanyProvisioningService(
         ApplyClassification(stub, stubSub, markNoFitOnMiss: false);
         companies.Add(stub);
         return stub.Id;
+    }
+
+    public (long Id, bool Created) GetOrCreateCounterpartyFast(LinkCounterpartyRequest req, Company owner)
+    {
+        if (companies.MatchByName(req.Name) is { } existing) return (existing.Id, false);
+
+        // Deliberately bare. The sub-industry resolve that GetOrCreateCounterpartyAsync does here costs
+        // one-to-two reasoning-model round trips (~30s) and blocks the HTTP response for a field nobody
+        // is looking at yet, so it moves to EnrichCounterpartiesAsync with everything else. Leaving
+        // ClassifyStatus at its default (Pending, not NoFit) keeps the row eligible for that pass and for
+        // the existing industry backfill sweep.
+        var stub = new Company(req.Name, ResolveCountryId(req.CountryCode, owner), ParseSector(req.Sector) ?? owner.Sector)
+        {
+            Type = string.IsNullOrWhiteSpace(req.Ticker) ? CompanyType.PRIVATE : CompanyType.PUBLIC
+        };
+        companies.Add(stub);
+        return (stub.Id, true);
+    }
+
+    public async Task EnrichCounterpartiesAsync(
+        IEnumerable<(long CompanyId, string? Ticker)> stubs, CancellationToken ct = default)
+    {
+        foreach (var (id, ticker) in stubs)
+        {
+            if (ct.IsCancellationRequested) return;
+            var company = companies.GetById(id);
+            if (company is null) continue;   // deleted between the save and this pass
+
+            try
+            {
+                if (string.IsNullOrWhiteSpace(ticker))
+                    await EnrichPrivateStubAsync(company, ct);
+                else
+                    await EnrichPublicStubAsync(company, ticker.Trim(), ct);
+            }
+            // Detached best-effort work with no user watching: a bare stub is still a usable row and the
+            // link already points at it, so ANY failure here is logged and skipped rather than propagated
+            // (an escaping exception would be swallowed by the fire-and-forget Task and vanish silently).
+            catch (Exception ex)
+            {
+                logger.LogWarning(ex, "Counterparty enrichment failed for {Company} ({Id}) — left as a bare stub.",
+                    company.Name, id);
+            }
+        }
+    }
+
+    // PUBLIC stub: the same FMP profile -> income -> industry -> country pipeline the New Company form
+    // runs, then the dated financial history. An FMP miss falls through to the private path, because a
+    // ticker the agent invented shouldn't leave the row emptier than a name-only one would be.
+    private async Task EnrichPublicStubAsync(Company company, string ticker, CancellationToken ct)
+    {
+        if (await BuildFromTickerAsync(ticker) is not { } draft)
+        {
+            logger.LogInformation("FMP has no profile for {Ticker} ({Company}) — falling back to web discovery.",
+                ticker, company.Name);
+            await EnrichPrivateStubAsync(company, ct);
+            return;
+        }
+
+        ApplyFetchedData(company, draft.Model);
+        companies.Update(company);
+
+        // History is the premium-gated part; a 402/429 here must not undo the profile written above.
+        try { companies.ReplaceFinancials(company.Id, await financials.BuildAsync(company.Id, ticker)); }
+        catch (Exception ex) when (ex is HttpRequestException or MissingApiKeyException)
+        {
+            logger.LogInformation("No financial history for {Ticker}: {Reason}", ticker, ex.Message);
+        }
+    }
+
+    // PRIVATE stub: FMP/Yahoo are ticker-keyed and can't see these at all, so the profile comes from
+    // Perplexity sonar — the same discovery the New Company "private" flow and RE-DISCOVER use. Applied
+    // straight onto the stub (unlike RE-DISCOVER, which asks first) because there is no curated value
+    // here to overwrite: every field it fills was empty a moment ago.
+    private async Task EnrichPrivateStubAsync(Company company, CancellationToken ct)
+    {
+        var result = await profileDiscovery.DiscoverAsync(company.Name, ct);
+        if (result is null)
+        {
+            logger.LogInformation("No web profile found for counterparty {Company} — left as a bare stub.", company.Name);
+            return;
+        }
+
+        ApplyFetchedData(company, (await BuildPrivateAsync(result, company.Name)).Model);
+        companies.Update(company);
     }
 
     public void ApplyFetchedData(Company e, CompanyCreateModel m) => CompanyMapper.Apply(e, m);
