@@ -5,10 +5,11 @@ namespace simple_bloomberg_terminal.Tests;
 
 /// <summary>
 /// Tiny in-memory <see cref="ICompanyRepository"/> for the Perplexity discovery tests. The discovery
-/// service only calls <see cref="GetById"/> (the inspected company) and <see cref="MatchByName"/>
-/// (mapping a found counterparty to an existing company), so only those are implemented. Backed by a
-/// plain list — no EF DbContext — so the service's parallel sub-query searches can call MatchByName
-/// concurrently without tripping "a second operation was started on this context".
+/// service calls <see cref="GetById"/> (the inspected company) and <see cref="GetAll"/> (a one-shot
+/// snapshot of existing companies it then matches counterparties against in memory), so those are
+/// implemented. Backed by a plain list — no EF DbContext — so the snapshot can be read from any of
+/// the service's parallel sub-query tasks without tripping "a second operation was started on this
+/// context".
 /// </summary>
 public sealed class FakeCompanyRepository : ICompanyRepository
 {
@@ -32,9 +33,9 @@ public sealed class FakeCompanyRepository : ICompanyRepository
             Cik.Normalize(c.Cik) == norm);
     }
 
-    // The discovery service enumerates every known company to prime its name-matching, so this one is
-    // on the path under test. Soft-deleted rows are filtered out to match the real repository.
-    public IEnumerable<Company> GetAll() => _companies.Where(c => c.DeletedAt == null);
+    // Snapshot used by CounterpartyDiscoveryService before its parallel fan-out. Mirrors the real
+    // repo: skip soft-deleted rows. Returns the in-memory list so parallel tasks read it off-context.
+    public IEnumerable<Company> GetAll() => _companies.Where(c => c.DeletedAt == null).ToList();
 
     // Unused by the discovery path under test.
     public IReadOnlyList<(string Name, string Cik)> BackfillUsCiksByName(IEnumerable<(string Title, string Cik)> secEntries) => throw new NotSupportedException();
