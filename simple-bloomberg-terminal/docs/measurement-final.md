@@ -8,6 +8,24 @@ Za svaki se prompt u komponenti *Measurement consumer* provodi deset ekstrakcija
 
 ## Metodologija mjerenja
 
+Mjerenje je provedeno s blažom i strožom inačicom prompta za agente-radnike. Blaža inačica sadržavala je osnovne upute za izdvajanje protustranaka, dok je stroža inačica dodatno propisivala uvjete koje odnos mora ispuniti kako bi se kompanija smjela izdvojiti kao protustranka. U oba je slučaja korišten jednak prompt vodećeg agenta. Jedina razlika između dvaju mjerenja stoga je bila inačica prompta agenata-radnika. Cjeloviti tekstovi blažeg i strožeg prompta agenata-radnika te zajedničkog prompta vodećeg agenta prikazani su u Prilogu A.
+
+Mjerenje je provedeno sa sljedećim postavkama:
+
+| Postavka | Vrijednost |
+|---|---|
+| Kompanija | Super Micro Computer, Inc. |
+| Vrsta izvješća | Form 10-K |
+| Razdoblje izvješća | Godina završena 30. lipnja 2025. |
+| Datum prijave | 28. kolovoza 2025. |
+| SEC pristupni broj | `0001375365-25-000027` |
+| Jezični modeli | `deepseek-v4-flash` za agente-radnike; `deepseek-v4-pro` za vodećeg agenta |
+| Pružatelj modela | DeepSeek |
+| Datum mjerenja | 27. kolovoza 2026. |
+| Broj pokretanja | 10 po inačici prompta; ukupno 20 |
+| Temperatura | Nije postavljena; primjenjuje se zadana vrijednost pružatelja, uz uključen način razmišljanja |
+| Najveći broj izlaznih tokena | 16.000 za agente-radnike i vodećeg agenta; ponovljeni poziv agenta-radnika nakon nepotpunog odgovora dopušta do 32.000 tokena |
+
 Glavna kvantitativna metrika jest **ponovljivost ekstrakcije**, a mjeri se Jaccardovim indeksom. Za svako pokretanje konačan rezultat vodećeg agenta promatra se kao skup izdvojenih protustranaka. Prije usporedbe nazivi se normaliziraju kako razlike u velikim i malim slovima, interpunkciji i uobičajenim pravnim nastavcima naziva kompanija ne bi bile pogrešno protumačene kao različite protustranke.
 
 Pri normalizaciji se spajaju i poznate varijante naziva iste kompanije. U rezultatima mjerenja `AMD` se stoga izjednačava s nazivom `Advanced Micro Devices, Inc.`, `Leadtek` s nazivom `Leadtek Research Inc.`, a `Mega Bank` s nazivom `Mega International Commercial Bank`. Izvorni nazivi ostaju sačuvani radi sljedivosti, dok se Jaccardov indeks računa nad njihovim kanonskim nazivima.
@@ -128,4 +146,76 @@ Rezultati pokazuju da je blaži prompt u ovom mjerenju bio nešto ponovljiviji o
 
 ### Ograničenja mjerenja
 
-Mjerenje je provedeno nad samo jednim financijskim izvješćem, uporabom jednog jezičnog modela i ukupno 20 ponavljanja, odnosno deset za svaki prompt. Zbog toga se dobiveni rezultati ne mogu izravno generalizirati na druga izvješća, kompanije ili modele. Također nije unaprijed izrađen referentni popis svih stvarnih protustranaka u izvješću. Stoga se mjerenjem može ocijeniti ponovljivost ekstrakcije, ali ne i njezina potpuna točnost, preciznost ili odziv.
+Mjerenje je provedeno nad samo jednim financijskim izvješćem, uporabom jedne kombinacije modela istog pružatelja i ukupno 20 ponavljanja, odnosno deset za svaki prompt. Zbog toga se dobiveni rezultati ne mogu izravno generalizirati na druga izvješća, kompanije, pružatelje ili modele. Također nije unaprijed izrađen referentni popis svih stvarnih protustranaka u izvješću. Stoga se mjerenjem može ocijeniti ponovljivost ekstrakcije, ali ne i njezina potpuna točnost, preciznost ili odziv.
+
+# Prilog A — Promptovi korišteni u mjerenju
+
+## A.1. Blaži prompt agenata-radnika
+
+```text
+You extract NAMED COUNTERPARTIES from one plain-text excerpt of a US public company's 
+SEC filing. Find only COST-SIDE counterparties: named suppliers, vendors, manufacturers, 
+foundries, contract producers, licensors, or service providers from which the filer buys 
+goods, rights, or services. A counterparty must be a named company and the excerpt must 
+establish an explicit commercial relationship. Do not use outside knowledge. Do not return 
+business segments, products, regions, industries, unnamed customer or supplier concentrations, 
+competitors, litigation adversaries, acquisition targets, or companies merely mentioned without 
+the required relationship. Do not derive values or percentages from financial tables or 
+company-wide figures. A relationship with no stated amount is valid. For every result, 
+write evidence first as one verbatim substring that names the counterparty and establishes 
+the relationship. Then return name exactly as written, related_company as the same name 
+and a short note describing the relationship. 
+Reply with JSON only: {"sources":[{"evidence":"","name":"","related_company":"","note":""}]}. 
+If the excerpt establishes no matching counterparty, reply {"sources":[]}.
+```
+
+## A.2. Stroži prompt agenata-radnika
+
+```text
+You extract NAMED COUNTERPARTIES from one plain-text excerpt of a US public company's 
+SEC filing. Find only COST-SIDE counterparties: named suppliers, vendors, manufacturers, 
+foundries, contract producers, licensors, or service providers from which the filer buys 
+goods, rights, or services. A counterparty must be a named company and the excerpt must 
+establish an explicit commercial relationship. Do not use outside knowledge. Do not 
+return business segments, products, regions, industries, unnamed customer or supplier 
+concentrations, competitors, litigation adversaries, acquisition targets, or companies 
+merely mentioned without the required relationship. Do not derive values or percentages 
+from financial tables or company-wide figures. A relationship with no stated amount is 
+valid. For every result, write evidence first as one verbatim substring that names the 
+counterparty and establishes the relationship. Then return name exactly as written, 
+related_company as the same name and a short note describing the relationship. Reply 
+with JSON only: {"sources":[{"evidence":"","name":"","related_company":"","note":""}]}. 
+If the excerpt establishes no matching counterparty, reply {"sources":[]}. STRICT MODE: 
+require the excerpt itself to state the purchase, sale, supply, license, distribution, 
+resale, or concrete collaboration. A product mention, compatibility statement, industry 
+list, or description of a company as a market leader is insufficient. If uncertain, omit it.
+```
+
+## A.3. Zajednički prompt vodećeg agenta
+
+Sistemski prompt:
+
+````text
+You are the lead financial analyst for a repeatable filing-extraction measurement. 
+Parallel workers have scanned one SEC filing and the filing context below contains 
+their counterparty findings. Use only that context; do not use outside knowledge and 
+never introduce a company absent from the findings. reply with NOTHING but a fenced block:
+```ledger
+{"items":[{"evidence":"","counterparty":"","direction":"SUPPLIER","what":"","section":""}]}
+```
+One item per NAMED counterparty in the findings above — every one of them, not a selection. 
+evidence is the VERBATIM quote from the findings naming that counterparty 
+(copy it exactly; do not paraphrase, do not shorten mid-word). counterparty 
+is the company name. direction is exactly one of SUPPLIER, CUSTOMER, PARTNER. 
+what is a SHORT description of what is bought or sold. section is the SEC Item 
+the finding came from. Never include a company that is not in the findings above. 
+Return exactly one item per counterparty. If the same counterparty appears more 
+than once or under minor variations of the same name, merge those findings into 
+one item and keep the clearest verbatim evidence. No prose before or after the block.
+````
+
+Korisnički prompt:
+
+```text
+Emit the full counterparty ledger for this filing.
+```
